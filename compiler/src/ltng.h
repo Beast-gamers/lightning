@@ -99,7 +99,8 @@ typedef enum {
     TYPE_STRING,
     TYPE_CHAR,
     TYPE_BOOL,
-    TYPE_OBJECT
+    TYPE_OBJECT,
+    TYPE_NULL
 } VarType;
 
 typedef enum {

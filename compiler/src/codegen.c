@@ -37,6 +37,7 @@ static const char *default_for(VarType t) {
         case TYPE_CHAR: return "";
         case TYPE_BOOL: return "false";
         case TYPE_OBJECT: return "";
+        case TYPE_NULL: return "";
     }
     return "";
 }
@@ -377,6 +378,7 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
                             case TYPE_CHAR: type_str = "char"; break;
                             case TYPE_BOOL: type_str = "bool"; break;
                             case TYPE_OBJECT: type_str = "object"; break;
+                            case TYPE_NULL: type_str = "null"; break;
                             default: type_str = "unknown"; break;
                         }
                         found = 1;
@@ -670,6 +672,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             if (node->value[0] == '\0' && node->is_expr == 0) {
                 pad(out, indent); fprintf(out, "return _ret;\n");
             } else if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+                       node->var_type == TYPE_NULL ||
                        strstr(node->value, "_ltng_add_sn") == node->value) {
                 pad(out, indent); fprintf(out, "snprintf(_ret, 256, \"%%s\", %s); return _ret;\n", node->value[0] ? node->value : "\"\"");
             } else if (node->var_type == TYPE_FLOAT) {

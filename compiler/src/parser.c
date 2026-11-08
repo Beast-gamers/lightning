@@ -1205,6 +1205,7 @@ static const char *var_type_name(VarType t) {
         case TYPE_CHAR: return "char";
         case TYPE_BOOL: return "bool";
         case TYPE_OBJECT: return "object";
+        case TYPE_NULL: return "null";
     }
     return "string";
 }
@@ -1937,6 +1938,18 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
+    /* Check for bare 'let x' (no assignment) - creates a null variable */
+    if (lexer_peek(lexer).type == TOKEN_NEWLINE ||
+        lexer_peek(lexer).type == TOKEN_EOF ||
+        lexer_peek(lexer).type == TOKEN_RBRACE) {
+        symbol_table_add(table, mangled, TYPE_NULL);
+        ASTNode *node = create_node(NODE_LET, mangled, "");
+        node->var_type = TYPE_NULL;
+        node->is_expr = 0;
+        emit(node);
+        return;
+    }
+
     Token equals = lexer_next(lexer);
     if (equals.type != TOKEN_EQUALS) {
         error_state_add(parser_errors, name.line, name.col,
@@ -2246,16 +2259,22 @@ static const char *type_name_str(VarType t) {
         case TYPE_CHAR: return "char";
         case TYPE_BOOL: return "bool";
         case TYPE_OBJECT: return "object";
+        case TYPE_NULL: return "null";
     }
     return "unknown";
 }
 
-/* Enforce dtype immutability: a variable cannot change its declared type. */
+/* Enforce dtype immutability: a variable cannot change its declared type.
+   TYPE_NULL is the exception: a null variable can be assigned any type. */
 static int check_set_type_immutable(SymbolTable *table, const char *mangled,
                                      VarType new_type, int line, int col,
                                      Lexer *lexer) {
     VarType existing = symbol_table_get(table, mangled);
     if (existing != new_type) {
+        /* Allow TYPE_NULL -> anything */
+        if (existing == TYPE_NULL) {
+            return 1;
+        }
         char msg[256];
         snprintf(msg, sizeof(msg),
             "Cannot change type of variable '%s' from %s to %s",
