@@ -1370,7 +1370,7 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                         if (*c == '+' || *c == '-' || *c == '*' || *c == '/' || *c == '%' ||
                             *c == '(' || *c == ')' || *c == '<' || *c == '>' ||
                             *c == '&' || *c == '|' || *c == '^' || *c == '!' ||
-                            *c == ' ') {
+                            *c == ' ' || *c == '.') {
                             is_expr = 1;
                             break;
                         }
@@ -1631,7 +1631,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                                 if (*c == '+' || *c == '-' || *c == '*' || *c == '/' || *c == '%' ||
                                     *c == '(' || *c == ')' || *c == '<' || *c == '>' ||
                                     *c == '&' || *c == '|' || *c == '^' || *c == '!' ||
-                                    *c == ' ') {
+                                    *c == ' ' || *c == '.') {
                                     is_expr = 1;
                                     break;
                                 }
