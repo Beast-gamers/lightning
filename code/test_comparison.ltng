@@ -1,0 +1,64 @@
+# Test 9: Comparison operators
+
+let a = 10
+let b = 20
+let c = 10
+
+# Equal
+write(a == b)
+write(a == c)
+
+# Not equal
+write(a != b)
+write(a != c)
+
+# Less than
+write(a < b)
+write(b < a)
+write(a < c)
+
+# Greater than
+write(a > b)
+write(b > a)
+write(a > c)
+
+# Less than or equal
+write(a <= b)
+write(b <= a)
+write(a <= c)
+write(c <= a)
+
+# Greater than or equal
+write(a >= b)
+write(b >= a)
+write(a >= c)
+write(c >= a)
+
+# Comparison with literals
+write(5 == 5)
+write(5 != 5)
+write(5 < 10)
+write(10 > 5)
+write(5 <= 5)
+write(5 >= 5)
+
+# Comparison results in expressions
+let r1 = 5 > 3
+let r2 = 10 == 10
+let r3 = 5 < 3
+write(r1)
+write(r2)
+write(r3)
+
+# Chained comparisons (C evaluates left to right)
+write(1 < 2 < 3)
+write(3 > 2 > 1)
+
+# Comparison in let/const/set
+let comp = 5 > 3
+const cc = 10 == 10
+let sv = 0
+set sv = 5 != 3
+write(comp)
+write(cc)
+write(sv)

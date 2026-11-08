@@ -1,0 +1,31 @@
+# Test 7: angle bracket escaping
+
+# Basic angle brackets
+write("<hello>")
+write("<>")
+write("<<>>")
+
+# Angle brackets with content
+write("<42>")
+write("<3.14>")
+write("<true>")
+write("<A>")
+
+# Angle brackets with interpolation inside
+let x = 10
+write("<$[x]>")
+
+# Nested angle brackets
+write("<<hello>>")
+write("<<<>>>")
+
+# Angle brackets with text around
+write("before <hello> after")
+write("< >")
+
+# Dollar signs outside angle brackets (literal)
+write("price is $5")
+
+# Angle brackets with interpolation and text
+let s = "world"
+write("<hello $[s]>")

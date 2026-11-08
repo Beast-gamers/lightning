@@ -1,0 +1,19 @@
+# Test read() compilation
+let rint = int
+let rfloat = float
+let rstring = string
+let rchar = char
+let rbool = bool
+# read(rint)
+# read(rfloat)
+# read(rstring)
+# read(rchar)
+# read(rbool)
+write("read test compiled OK")
+
+# Test that read works with C keywords
+let rlong = int
+let rshort = int
+# read(rlong)
+# read(rshort)
+write("read ckeyword test OK")

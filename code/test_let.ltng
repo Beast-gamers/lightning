@@ -1,0 +1,69 @@
+# Test 2: let with all variants
+
+# Inference from literals
+let a = 42
+let b = 3.14
+let c = "hello"
+let d = 'X'
+let e = true
+let bf = false
+let bt = t
+let hf = f
+
+# Explicit types
+let ai = 42
+let fl = 3.14
+let cs = "hello"
+let dd = 'X'
+let eb = true
+
+# Uninitialized
+let ui = int
+let uf = float
+let us = string
+let uc = char
+let ub = bool
+
+# Inference from expressions
+let sum = 2 + 3
+let prod = 4 * 5
+let mixed = 2 + 3.5
+let comp = 5 > 3
+let lcomp = 10 == 10
+
+# Variable to variable
+let v1 = a
+let v2 = b
+let v3 = c
+
+# typeof in let
+let tt = typeof(a)
+
+# Write all
+write(a)
+write(b)
+write(c)
+write(d)
+write(e)
+write(bf)
+write(bt)
+write(hf)
+write(ai)
+write(fl)
+write(cs)
+write(dd)
+write(eb)
+write(ui)
+write(uf)
+write(us)
+write(uc)
+write(ub)
+write(sum)
+write(prod)
+write(mixed)
+write(comp)
+write(lcomp)
+write(v1)
+write(v2)
+write(v3)
+write(tt)

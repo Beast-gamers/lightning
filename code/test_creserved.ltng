@@ -1,0 +1,65 @@
+# Test 13: C reserved word mangling comprehensive
+
+# All C keywords as variable names
+let long = 1
+let short = 2
+let int_val = 3
+let float_val = 4
+let double_val = 5
+let void_val = 6
+let char_val = 7
+let if_val = 8
+let else_val = 9
+let while_val = 10
+let for_val = 11
+let do_val = 12
+let return_val = 13
+let break_val = 14
+let continue_val = 15
+let switch_val = 16
+let case_val = 17
+let default_val = 18
+let struct_val = 19
+let union_val = 20
+let enum_val = 21
+let typedef_val = 22
+let sizeof_val = 23
+let static_val = 24
+let extern_val = 25
+let auto_val = 26
+let register_val = 27
+let volatile_val = 28
+let const_val = 29
+let unsigned_val = 30
+let signed_val = 31
+let main_val = 32
+let printf_val = 33
+let scanf_val = 34
+let malloc_val = 35
+let free_val = 36
+let sizeof_val2 = 37
+
+# Operations with C keywords
+set long = 100
+set short = 200
+let sum = long + short
+write(long)
+write(short)
+write(sum)
+
+# typeof with C keywords
+write(typeof(long))
+write(typeof(struct_val))
+
+# Interpolation with C keywords
+write("$[long] + $[short] = $[sum]")
+
+# Const with C keywords
+const long_c = 42
+const struct_c = "test"
+write(long_c)
+write(struct_c)
+
+# Expressions with C keywords
+let r = long * 2 + short / 2
+write(r)

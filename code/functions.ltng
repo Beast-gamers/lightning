@@ -1,0 +1,29 @@
+# Named functions
+
+function add(a, b) {
+    return a + b
+}
+
+function greet(name) {
+    return name
+}
+
+write(add(2, 3))
+write(greet("hello"))
+
+# Recursion
+function fact(n) {
+    if (n <= 1) {
+        return 1
+    } else {
+        return n * fact(n - 1)
+    }
+}
+write(fact(5))
+
+# Locals in a function
+function compute(x) {
+    let doubled = x + x
+    return doubled + 1
+}
+write(compute(4))

@@ -1,0 +1,56 @@
+# Test 1: write() with all literal types
+write("hello world")
+write(42)
+write(3.14)
+write('A')
+write(true)
+write(false)
+write(t)
+write(f)
+
+# write with variables of each type
+let i = 100
+let fl = 2.718
+let s = "test string"
+let c = 'Z'
+let b = true
+let b2 = false
+write(i)
+write(fl)
+write(s)
+write(c)
+write(b)
+write(b2)
+
+# write with negative numbers
+write(-42)
+write(-3.14)
+
+# write with expressions
+write(2 + 3)
+write(10 - 4)
+write(3 * 7)
+write(20 / 4)
+write(17 % 5)
+write(2 + 3 * 4)
+write((2 + 3) * 4)
+
+# write with unary minus on variable
+let x = 5
+write(-x)
+
+# write with typeof
+write(typeof(i))
+write(typeof(fl))
+write(typeof(s))
+write(typeof(c))
+write(typeof(b))
+
+# typeof in interpolation
+write("Type of i: $[typeof(i)]")
+
+# write with multiple typeof
+write("i=$[i] fl=$[fl] s=$[s] c=$[c] b=$[b]")
+
+# write empty string
+write("")

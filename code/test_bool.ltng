@@ -1,0 +1,18 @@
+# Bool tests
+let flag = true
+let off = false
+let t1 = t
+let f1 = f
+let b_explicit = true
+let b_explicit2 = false
+
+write(flag)
+write(off)
+write(t1)
+write(f1)
+write(b_explicit)
+write(b_explicit2)
+
+# typeof on bool
+write(typeof(flag))
+write(typeof(off))

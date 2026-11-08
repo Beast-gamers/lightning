@@ -1,0 +1,43 @@
+# Test 3: const with all variants
+
+# From literals
+const ci = 42
+const cf = 3.14
+const cs = "hello"
+const cc = 'X'
+const cb = true
+
+# Explicit types
+const cai = 100
+const cbf = 2.718
+const cbs = "world"
+const cbc = 'Y'
+
+# From expressions
+const ce1 = 2 + 3
+const ce2 = 10 * 5
+const ce3 = 100 / 4
+const ce4 = 17 % 3
+
+# Const from variable
+let v = 99
+const cv = v
+
+# Const typeof
+const ct = typeof(v)
+
+write(ci)
+write(cf)
+write(cs)
+write(cc)
+write(cb)
+write(cai)
+write(cbf)
+write(cbs)
+write(cbc)
+write(ce1)
+write(ce2)
+write(ce3)
+write(ce4)
+write(cv)
+write(ct)

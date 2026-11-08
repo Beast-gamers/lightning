@@ -1,0 +1,109 @@
+# Comprehensive logical/bitwise/xor tests
+# Covers: && || ! ^^ with bools and ints, mixed, precedence
+
+# --- Logical AND (bool) ---
+write(true && true)
+write(true && false)
+write(false && true)
+write(false && false)
+
+# --- Logical OR (bool) ---
+write(true || true)
+write(true || false)
+write(false || true)
+write(false || false)
+
+# --- Logical NOT (bool) ---
+write(!true)
+write(!false)
+
+# --- XOR (bool) ---
+write(true ^^ true)
+write(true ^^ false)
+write(false ^^ true)
+write(false ^^ false)
+
+# --- Bitwise AND (int) ---
+write(15 && 9)
+write(255 && 15)
+write(0 && 100)
+write(12 && 12)
+
+# --- Bitwise OR (int) ---
+write(15 || 9)
+write(1 || 2 || 4 || 8)
+write(0 || 0)
+write(12 || 12)
+
+# --- Bitwise NOT (int) ---
+write(!0)
+write(!1)
+write(!255)
+
+# --- XOR (int) ---
+write(15 ^^ 9)
+write(5 ^^ 3)
+write(0 ^^ 0)
+write(42 ^^ 42)
+write(1 ^^ 2 ^^ 4 ^^ 8)
+
+# --- Chained logical (bool) ---
+write(true && true && true)
+write(true && false && true)
+write(true || false || true)
+write(false || false || false)
+
+# --- Chained XOR (bool) ---
+write(true ^^ false ^^ true)
+write(true ^^ true ^^ true)
+write(false ^^ false ^^ false)
+
+# --- Mixed operators (bool) ---
+write(true && true || false)
+write(false || true && true)
+write(!true && false)
+write(!false || true)
+write(true ^^ !false)
+
+# --- Mixed operators (int) ---
+write(15 && 9 || 6)
+write(12 ^^ 3 && 5)
+
+# --- With variables ---
+let a = 1
+let b = 0
+write(a && b)
+write(a || b)
+write(!a)
+write(a ^^ b)
+write(a ^^ a)
+
+# --- Int variables ---
+let x = 15
+let y = 9
+write(x && y)
+write(x || y)
+write(x ^^ y)
+write(!x)
+
+# --- Bool from comparison in logical ---
+let c1 = 5 > 3
+let c2 = 3 > 5
+write(c1 && c2)
+write(c1 || c2)
+write(!c1)
+write(c1 ^^ c2)
+
+# --- Complex expressions ---
+let m = 1
+let n = 0
+write(m && n || m)
+write(!m ^^ m)
+write(m || n && m)
+write((m && n) || (n || m))
+
+# --- XOR in larger expression ---
+let r = 10
+let s = 5
+write(r + s ^^ r - s)
+write(r * 2 ^^ s * 2)

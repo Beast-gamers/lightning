@@ -1,0 +1,31 @@
+# Test 5: typeof() with all types
+let x = 42
+let y = 3.14
+let s = "hello"
+let c = 'X'
+let b = true
+
+write(typeof(x))
+write(typeof(y))
+write(typeof(s))
+write(typeof(c))
+write(typeof(b))
+
+# typeof with explicit type
+let ex = 10
+write(typeof(ex))
+
+# typeof with const
+const cx = 5
+write(typeof(cx))
+
+# typeof with expression result
+let expr = 2 + 3
+write(typeof(expr))
+
+# typeof in string interpolation
+let name = "lightning"
+write("Type of name is $[typeof(name)]")
+
+# nested typeof
+write(typeof(typeof(x)))

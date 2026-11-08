@@ -1,0 +1,69 @@
+# Test edge cases for all features
+
+# Empty string assignment and operations
+let empty = ""
+write(empty)
+write(typeof(empty))
+
+# String with escape sequences
+let esc = "line1\nline2\ttab\\slash\"quote\'apos"
+write(esc)
+
+# Deeply nested parentheses
+write((((((1 + 2))))))
+
+# Chained unary minus
+let a = 5
+write(-a)
+write(-(-a))
+write(-(a))
+
+# Bool in arithmetic context
+let bt = true
+let bf = false
+write(bt + 1)
+write(bf + 1)
+write(bt * 10)
+write(bf * 10)
+
+# char in arithmetic
+let ch = 'A'
+write(ch + 0)
+write(ch + 1)
+write(ch + 25)
+
+# Write with many interpolations
+let x = 1
+let y = 2
+let z = 3
+write("$[x] $[y] $[z] $[x] $[y] $[z]")
+
+# Const from expression
+const ce = 10 * 5 + 3
+write(ce)
+
+# Set changing type via expression
+let sv = "hello"
+set sv = 42
+write(sv)
+
+# Multiple typeof nesting
+write(typeof(typeof(typeof(42))))
+
+# Write with long string
+write("this is a fairly long string that should still work fine in the output")
+
+# Write number 0
+write(0)
+write(0.0)
+
+# Negative float
+write(-3.14)
+
+# Big expression
+write(1 + 2 * 3 - 4 + 5 * 6 - 7 + 8)
+
+# Parenthesized sub-expression precedence
+write((1 + 2) * (3 + 4))
+write(10 * (2 + 3))
+write((100 - 50) / (10 - 5))

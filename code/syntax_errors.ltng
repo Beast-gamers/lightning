@@ -1,0 +1,102 @@
+# Lightning Language - Syntax Errors Example
+# Each error is labeled so you can see what goes wrong
+
+# ERROR 1: Semicolons are not allowed
+write("hello");
+
+# ERROR 2: Missing closing parenthesis
+write("hello"
+
+# ERROR 3: Missing opening parenthesis
+write"hello")
+
+# ERROR 4: Type mismatch - int expected but string given
+let x = int "hello"
+
+# ERROR 5: Type mismatch - float expected but string given
+let y = float "hello"
+
+# ERROR 6: Type mismatch - char expected but string given
+let z = char "hello"
+
+# ERROR 7: Unexpected character
+let a = 10 @ 5
+
+# ERROR 8: Missing value after equals
+let b =
+
+# ERROR 9: Missing variable name after let
+let = 10
+
+# ERROR 10: read() with no argument
+read()
+
+# ERROR 11: read() with string literal instead of variable
+read("hello")
+
+# ERROR 12: Unclosed string
+let c = "hello
+
+# ERROR 13: Unclosed char
+let d = 'a
+
+# ERROR 14: Empty char literal
+let e = ''
+
+# ERROR 15: Multiple characters in char literal
+let f = 'ab'
+
+# ERROR 16: Unknown keyword
+foo bar
+
+# ERROR 17: Missing value in let with type
+let g = int
+
+# ERROR 18: Wrong value for type
+let h = string 42
+
+# ERROR 19: Invalid variable name (starts with number)
+let 1name = 10
+
+# ERROR 20: Using undefined variable in write
+write(undefined_var)
+
+# ERROR 21: Uninitialized const
+const bad_const = int
+
+# ERROR 22: Uninitialized const with string
+const bad_string = string
+
+# ERROR 23: Missing variable name after const
+const = 10
+
+# ERROR 24: Missing equals in const
+const x 10
+
+# ERROR 25: Set undefined variable
+set undefined = 10
+
+# ERROR 26: Missing variable name after set
+set = 10
+
+# ERROR 27: Missing equals in set
+let setvar = 10
+set setvar 10
+
+# ERROR 28: Reserved word as variable name (let)
+let let = 10
+
+# ERROR 29: Reserved word as variable name (int)
+let int = 5
+
+# ERROR 30: Bool literal as variable name (true)
+let true = 10
+
+# ERROR 31: Bool literal as variable name (f)
+let f = 10
+
+# ERROR 32: typeof with undeclared variable
+let undef_var = typeof(nope)
+
+# ERROR 33: typeof used as variable name
+let typeof = 10

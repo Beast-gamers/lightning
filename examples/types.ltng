@@ -1,0 +1,18 @@
+# auto-detected types
+let x = 0
+let pi = 3.14
+let name = "lightning"
+
+# explicit types
+let y = 42
+let score = 99.5
+let greeting = "hello"
+let letter = 'A'
+
+write(x)
+write(pi)
+write(name)
+write(y)
+write(score)
+write(greeting)
+write(letter)

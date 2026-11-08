@@ -1,0 +1,38 @@
+# Comprehensive string interpolation tests
+# Covers: $[var], $[typeof(x)], multiple interpolations, edge cases
+
+# --- Basic interpolation ---
+let x = 42
+let y = "world"
+let z = 'X'
+let b = true
+write("$[x]")
+write("$[y]")
+write("$[z]")
+write("$[b]")
+
+# --- Multiple interpolations ---
+let a = 1
+let c = 2
+let d = 3
+write("$[a] $[c] $[d]")
+write("$[a]+$[c]")
+write("$[a]$[c]$[d]")
+
+# --- Mixed text and interpolation ---
+write("x = $[x]")
+write("hello $[y]!")
+write("$[x] is a number")
+write("sum: $[a]")
+
+# --- Interpolation with typeof (uses identifiers) ---
+let iv = 42
+write("$[typeof(iv)]")
+write("Type: $[typeof(iv)]")
+write("$[typeof(y)]")
+write("$[typeof(z)]")
+write("$[typeof(b)]")
+
+# --- Interpolation edge cases ---
+write("$[x]$[y]$[z]$[b]")
+write("1:$[a] 2:$[c] 3:$[d]")

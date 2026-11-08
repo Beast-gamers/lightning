@@ -1,0 +1,2 @@
+# Error: const not initialized
+const x = int

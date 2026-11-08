@@ -1,0 +1,14 @@
+# Build artifacts
+*.o
+*.bin
+*.c~
+*.c.bak
+/compiled/
+/tmp/ltng_*
+ltng
+compiler/ltng
+compiler/hello
+*.universal
+
+# OS
+.DS_Store

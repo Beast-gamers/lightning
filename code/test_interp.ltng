@@ -1,0 +1,38 @@
+# Test 6: string interpolation
+
+let x = 42
+let y = 3.14
+let s = "hello"
+let c = 'Z'
+let b = true
+
+# Single interpolation
+write("$[x]")
+write("$[y]")
+write("$[s]")
+write("$[c]")
+write("$[b]")
+
+# Multiple in one string
+write("$[s] $[x] $[y]")
+
+# With surrounding text
+write("value is $[x]")
+write("x=$[x], y=$[y], s=$[s]")
+
+# typeof in interpolation
+write("$[typeof(x)]")
+write("type=$[typeof(x)]")
+
+# Interpolation with const
+const cx = 99
+write("$[cx]")
+
+# Interpolation after set
+set x = 777
+write("$[x]")
+
+# Multiple typeof in one string
+write("$[typeof(x)] and $[typeof(y)]")
+
+# Empty interpolation content should fail - tested in error tests

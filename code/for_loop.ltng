@@ -1,0 +1,31 @@
+# For loop examples (from ... to ... step ...)
+
+# Basic for loop
+for (i from 0 to 5) {
+    write(i)
+}
+
+# With plain step (additive)
+for (i from 0 to 10 step 2) {
+    write(i)
+}
+
+# With explicit + step
+for (i from 0 to 9 step +3) {
+    write(i)
+}
+
+# Descending with - step
+for (i from 5 to 0 step -1) {
+    write(i)
+}
+
+# Multiplicative step
+for (i from 1 to 16 step *2) {
+    write(i)
+}
+
+# Division step
+for (i from 64 to 1 step /2) {
+    write(i)
+}

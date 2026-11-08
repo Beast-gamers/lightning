@@ -1,0 +1,29 @@
+# Test ^^ (xor) operator
+
+# Boolean xor
+write(true ^^ false)
+write(false ^^ true)
+write(true ^^ true)
+write(false ^^ false)
+
+# Int xor (bitwise)
+write(15 ^^ 9)
+write(5 ^^ 3)
+write(0 ^^ 0)
+write(42 ^^ 42)
+
+# With variables
+let a = 1
+let b = 0
+write(a ^^ b)
+write(a ^^ a)
+write(b ^^ b)
+
+# Mixed with other operators
+write(true ^^ false ^^ true)
+write(10 ^^ 5 ^^ 3)
+
+# Xor in expressions
+let x = 7
+let y = 3
+write(x + y ^^ x - y)

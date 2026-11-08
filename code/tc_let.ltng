@@ -1,0 +1,119 @@
+# Comprehensive let() tests
+# Covers: type inference, explicit types, uninitialized, expressions,
+#         variable-to-variable, type coercion, edge cases
+
+# --- Type inference from literals ---
+let a1 = 42
+let a2 = 3.14
+let a3 = "hello"
+let a4 = 'A'
+let a5 = true
+let a6 = t
+let a7 = false
+let a8 = f
+write(a1)
+write(a2)
+write(a3)
+write(a4)
+write(a5)
+write(a6)
+write(a7)
+write(a8)
+
+# --- Explicit types ---
+let b1 = 0
+let b2 = 0.0
+let b3 = ""
+let b4 = 'Z'
+let b5 = true
+write(b1)
+write(b2)
+write(b3)
+write(b4)
+write(b5)
+
+# --- Uninitialized defaults ---
+let c1 = int
+let c2 = float
+let c3 = string
+let c4 = char
+let c5 = bool
+write(c1)
+write(c2)
+write(c3)
+write(c4)
+write(c5)
+
+# --- Uninitialized with explicit negative/float ---
+let d1 = -5
+let d2 = float -3.14
+write(d1)
+write(d2)
+
+# --- Expressions ---
+let e1 = 2 + 3
+let e2 = 1.5 + 2.5
+let e3 = 10 * 2 - 5
+let e4 = (1 + 2) * 3
+write(e1)
+write(e2)
+write(e3)
+write(e4)
+
+# --- Variable to variable ---
+let f1 = 100
+let f2 = f1
+let f3 = f2
+write(f1)
+write(f2)
+write(f3)
+
+# --- Variable to variable ---
+let g1 = 100
+let g2 = g1
+let g3 = g2
+write(g1)
+write(g2)
+write(g3)
+
+# --- Implicit string from variable ---
+let h1 = "first"
+let h2 = h1
+write(h1)
+write(h2)
+
+# --- Type coercion in expressions ---
+let i1 = true
+let i2 = 'A'
+let i3 = i1 + 1
+let i4 = i2 + 1
+let i5 = i1 * 10
+let i6 = i2 + 25
+write(i3)
+write(i4)
+write(i5)
+write(i6)
+
+# --- Multiple lets on separate lines ---
+let j1 = 1
+let j2 = 2
+let j3 = 3
+write(j1 + j2 + j3)
+
+# --- Large values ---
+let k1 = 999999
+let k2 = -999999
+write(k1)
+write(k2)
+
+# --- Char escapes in let ---
+let l1 = '\n'
+let l2 = '\t'
+let l3 = '\\'
+let l4 = '\"'
+let l5 = '\''
+write(l1)
+write(l2)
+write(l3)
+write(l4)
+write(l5)

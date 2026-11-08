@@ -1,0 +1,29 @@
+# UFCS / method-style calls
+# A function whose first parameter is "base" (or any name) can be called
+# as: receiver.func(args...) which is equivalent to func(receiver, args...)
+
+function a(base) {
+    return base + 1
+}
+
+let x = 5
+write(x.a())        # 6  (same as a(x))
+write(a(x))         # 6
+
+function add(base, n) {
+    return base + n
+}
+
+write(x.add(10))    # 15 (same as add(x, 10))
+
+let y = x.add(3)
+write(y)            # 8
+
+set x = x.add(1)
+write(x)            # 6
+
+if (x.add(4) == 10) {
+    write("ok")
+} else {
+    write("bad")
+}

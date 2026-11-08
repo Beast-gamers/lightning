@@ -1,0 +1,2 @@
+# Error: reserved word as variable name
+let write = 5

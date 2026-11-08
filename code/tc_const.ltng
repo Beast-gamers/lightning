@@ -1,0 +1,80 @@
+# Comprehensive const tests
+# Covers: inference, explicit types, expressions, variable-to-variable,
+#         re-declaration blocking, edge cases
+
+# --- Basic const ---
+const a1 = 42
+const a2 = 3.14
+const a3 = "hello"
+const a4 = 'X'
+const a5 = true
+const a6 = false
+write(a1)
+write(a2)
+write(a3)
+write(a4)
+write(a5)
+write(a6)
+
+# --- Explicit types ---
+const b1 = 100
+const b2 = 2.71
+const b3 = "const"
+const b4 = 'Y'
+const b5 = false
+write(b1)
+write(b2)
+write(b3)
+write(b4)
+write(b5)
+
+# --- Const from expression ---
+const c1 = 10 + 5
+const c2 = 100 / 4
+const c3 = 7 % 3
+const c4 = (1 + 2) * 10
+write(c1)
+write(c2)
+write(c3)
+write(c4)
+
+# --- Const from other const ---
+const d1 = 10
+const d2 = d1 * 2
+const d3 = d2 + d1
+const d4 = d1 + d2 + d3
+write(d1)
+write(d2)
+write(d3)
+write(d4)
+
+# --- Const from variable ---
+let ev = 50
+const e1 = ev
+write(e1)
+
+# --- Const with typeof ---
+const f1 = typeof(42)
+const f2 = typeof(3.14)
+const f3 = typeof("hi")
+write(f1)
+write(f2)
+write(f3)
+
+# --- Const negative values ---
+const g1 = -42
+const g2 = float -1.5
+write(g1)
+write(g2)
+
+# --- Const bool expressions ---
+const h1 = true && false
+const h2 = true || false
+const h3 = !true
+const h4 = true ^^ true
+const h5 = true ^^ false
+write(h1)
+write(h2)
+write(h3)
+write(h4)
+write(h5)

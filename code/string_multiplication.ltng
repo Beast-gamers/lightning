@@ -1,0 +1,21 @@
+# String multiplication examples
+let stars = "*" * 5
+write(stars)
+
+let line = "-" * 10
+write(line)
+
+let repeated = "ab" * 3
+write(repeated)
+
+# String multiplication in assignment
+let pattern = "xy" * 4
+write(pattern)
+
+# String multiplication with number on left
+let msg = 3 * "ha"
+write(msg)
+
+# Combined with string addition (multiplication has higher precedence)
+let combined = "ab" + "cd" * 2
+write(combined)

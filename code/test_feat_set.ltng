@@ -1,0 +1,29 @@
+# Test 4: set with all types
+let x = 42
+let y = 3.14
+let s = "hello"
+let c = 'X'
+let b = true
+
+set x = 100
+set y = 2.718
+set s = "world"
+set c = 'Y'
+set b = false
+
+# set with expression
+set x = x + 50
+set y = y * 2
+set x = x - y
+
+write(x)
+write(y)
+write(s)
+write(c)
+write(b)
+
+# set with explicit type
+set x = 999
+write(x)
+set y = 1.618
+write(y)

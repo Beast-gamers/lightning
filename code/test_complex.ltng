@@ -1,0 +1,78 @@
+# Test complex multi-feature interactions
+
+# typeof with set type change
+let v = 42
+let tt = typeof(v)
+write(tt)
+set v = 3.14
+set tt = typeof(v)
+write(tt)
+set v = "hello"
+set tt = typeof(v)
+write(tt)
+
+# Const expression that references another const
+const a = 10
+const b = a * 2
+const c = b + a
+write(a)
+write(b)
+write(c)
+
+# Interpolation after type change
+let s = "first"
+write("$[s]")
+set s = 42
+write("$[s]")
+set s = 'X'
+write("$[s]")
+
+# Expression with mixed types
+let m1 = 10
+let m2 = 3.5
+let mixed_result = m1 + m2
+write(mixed_result)
+
+# Bitwise on expression results
+let bw1 = 15
+let bw2 = 9
+write(bw1 && bw2)
+write(bw1 || bw2)
+
+# Comparison chain
+write(1 < 2 < 3)
+write(3 > 2 > 1)
+write(1 == 1 == 1)
+
+# Bool from comparison used in logical
+let cmp1 = 5 > 3
+let cmp2 = 3 > 5
+write(cmp1 && cmp2)
+write(cmp1 || cmp2)
+write(!cmp1)
+
+# Nested typeof in interpolation
+let nx = 42
+write("$[typeof(nx)]")
+write("Type is: $[typeof(nx)]")
+
+# Set with typeof
+let st = int
+set st = typeof(nx)
+write(st)
+
+# Write with char variable interpolation
+let cv = 'A'
+write("Char is: $[cv]")
+
+# Write with bool variable interpolation
+let bv = true
+write("Bool is: $[bv]")
+
+# Complex expression with all operator types
+let ce1 = 2
+let ce2 = 3
+let ce3 = 4
+let result = ce1 + ce2 * ce3 - ce1
+write(result)
+write((ce1 + ce2) * (ce3 - ce1))

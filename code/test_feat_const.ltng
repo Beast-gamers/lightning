@@ -1,0 +1,20 @@
+# Test 3: const declarations
+const c1 = 42
+const c2 = 3.14
+const c3 = "hello"
+const c4 = 'X'
+const c5 = true
+
+# Const with expressions
+const c6 = 2 + 3
+const c7 = 10 * 5
+const c8 = 3.14 * 2
+
+write(c1)
+write(c2)
+write(c3)
+write(c4)
+write(c5)
+write(c6)
+write(c7)
+write(c8)

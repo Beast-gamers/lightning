@@ -1,0 +1,80 @@
+# Deep edge cases - trying to break things
+
+# Expression with only unary operators
+write(!!!!true)
+
+# write with const value
+const pi = 3.14
+write(pi)
+
+# set on const should fail (tested in error detection)
+# const frozen = 10
+# set frozen = 20
+
+# typeof on uninitialized variables
+let xi = int
+let xf = float
+let xs = string
+let xc = char
+let xb = bool
+write(typeof(xi))
+write(typeof(xf))
+write(typeof(xs))
+write(typeof(xc))
+write(typeof(xb))
+write(xi)
+write(xf)
+write(xs)
+write(xc)
+write(xb)
+
+# String with only spaces
+let spaces = "   "
+write(spaces)
+
+# Char with special chars
+let cn = '\n'
+let ct = '\t'
+let cs = '\\'
+let cq = '\"'
+let ca = '\''
+write(cn)
+write(ct)
+write(cs)
+write(cq)
+write(ca)
+
+# Expression that should error but doesn't (empty parens)
+# write(())
+
+# Set to expression with typeof
+let stype = int
+set stype = typeof(42)
+write(stype)
+
+# Multiple let with same name should error (tested in error detection)
+# let dup = 1
+# let dup = 2
+
+# Const from typeof
+const ctype = typeof(42)
+write(ctype)
+
+# Variable declared but not used - should compile
+let unused = 42
+
+# Variable used before assignment but after declaration
+let later = int
+write(later)
+
+# Interpolation with char variable
+let iv = 'B'
+write("char=$[iv]")
+
+# Interpolation with bool variable
+let ib = false
+write("bool=$[ib]")
+
+# Write char literal
+write('Z')
+write('\n')

@@ -1,0 +1,54 @@
+# Combined demo: functions + loops + conditionals
+
+function absval(x) {
+    if (x < 0) {
+        return 0 - x
+    }
+    return x
+}
+
+function sum_squares(n) {
+    let total = 0
+    let i = 1
+    while (i <= n) {
+        set total += i * i
+        set i += 1
+    }
+    return total
+}
+
+function fizzbuzz(n) {
+    let i = 1
+    let m3 = 0
+    let m5 = 0
+    while (i <= n) {
+        set m3 = i % 3
+        set m5 = i % 5
+        if (m3 == 0) {
+            if (m5 == 0) {
+                write("FizzBuzz")
+            } else {
+                write("Fizz")
+            }
+        } else if (m5 == 0) {
+            write("Buzz")
+        } else {
+            write(i)
+        }
+        set i += 1
+    }
+}
+
+function countdown(start) {
+    let i = start
+    while (i > 0) {
+        write(i)
+        set i -= 1
+    }
+    write("go")
+}
+
+write(absval(0 - 7))
+write(sum_squares(4))
+fizzbuzz(16)
+countdown(3)

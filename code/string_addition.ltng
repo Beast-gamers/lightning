@@ -1,0 +1,23 @@
+# String addition examples
+let greeting = "hello" + " " + "world"
+write(greeting)
+
+let first = "light"
+let last = "ning"
+write(first + last)
+
+# String addition in if statements
+if ("he" + "llo" == "hello") {
+    write("string addition works in conditions")
+}
+
+# String addition in switch statements
+let result = "foo" + "bar"
+switch (result) {
+    case "foobar": {
+        write("string addition works in switch")
+    }
+    default: {
+        write("no match")
+    }
+}

@@ -1,0 +1,29 @@
+# Strings: concatenation, repetition, and compound/inc-dec
+
+let a = "light"
+let b = "ning"
+let c = a + b
+write(c)
+
+let name = "bolt"
+set name += "!"
+write(name)
+
+let bar = "-"
+write(bar * 5)
+
+let msg = "go " * 3
+write(msg)
+
+# inc/dec and compound assignments
+let x = 10
+x++
+write(x)
+x--
+write(x)
+set x += 5
+write(x)
+set x *= 2
+write(x)
+set x %= 7
+write(x)

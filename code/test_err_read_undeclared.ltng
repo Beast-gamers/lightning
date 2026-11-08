@@ -1,0 +1,3 @@
+# Error: read undeclared variable
+let x = int
+read(y)

@@ -1,0 +1,7 @@
+let x = 0
+let name = "lightning"
+let pi = 3.14
+
+write(x)
+write(name)
+write(pi)

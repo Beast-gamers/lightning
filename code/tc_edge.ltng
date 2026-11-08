@@ -1,0 +1,146 @@
+# Comprehensive edge case tests
+# Covers: empty programs (via comments), long values, nested structures,
+#         type coercion, zero values, boundary conditions
+
+# --- Zero values ---
+let z1 = int
+let z2 = float
+let z3 = string
+let z4 = char
+let z5 = bool
+write(z1)
+write(z2)
+write(z3)
+write(z4)
+write(z5)
+
+# --- Setting to zero ---
+let zz = 10
+set zz = 0
+write(zz)
+
+# --- Long variable names ---
+let very_long_variable_name_here = 42
+write(very_long_variable_name_here)
+
+# --- Many variables ---
+let v1 = 1
+let v2 = 2
+let v3 = 3
+let v4 = 4
+let v5 = 5
+let v6 = 6
+let v7 = 7
+let v8 = 8
+let v9 = 9
+let v10 = 10
+write(v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 + v9 + v10)
+
+# --- Deeply nested expressions ---
+write(((((1 + 2)))))
+write((((10 - 5) * (2 + 3))))
+write(((((1)) + (((2))))))
+
+# --- Many interpolations in one string ---
+let m1 = 1
+let m2 = 2
+let m3 = 3
+let m4 = 4
+let m5 = 5
+write("$[m1] $[m2] $[m3] $[m4] $[m5]")
+
+# --- Const chain ---
+const c1 = 1
+const c2 = c1 + 1
+const c3 = c2 + 1
+const c4 = c3 + 1
+const c5 = c4 + 1
+write(c1)
+write(c2)
+write(c3)
+write(c4)
+write(c5)
+
+# --- Type changes in sequence ---
+let tc = 1
+set tc = 1.5
+set tc = "str"
+set tc = 'X'
+set tc = true
+set tc = 999
+write(tc)
+
+# --- Interpolation with typeof after type changes ---
+let its = 42
+write("$[its]")
+set its = "changed"
+write("$[its]")
+set its = typeof(its)
+write("$[its]")
+
+# --- Write after many operations ---
+let w = 1
+set w = w + 1
+set w = w * 10
+set w = w - 5
+write(w)
+
+# --- Multiple error-free edge cases ---
+let a = 'A'
+let b = a + 1
+write(b)
+let c = b + 1
+write(c)
+
+# --- Bool logic chains ---
+let bx = true
+let by = false
+let bz = true
+write(bx && by || bz)
+write(bx || by && bz)
+write(!bx ^^ by)
+write(bx ^^ by ^^ bz)
+
+# --- Nested typeof in expression ---
+let nx = 42
+let nt = typeof(nx)
+write(nt)
+write(typeof(nt))
+
+# --- Const with typeof ---
+const ct = typeof(42)
+write(ct)
+
+# --- Write with complex multi-feature ---
+let mf = 10
+write("Value: $[mf], Type: $[typeof(mf)]")
+set mf = 3.14
+write("Value: $[mf], Type: $[typeof(mf)]")
+set mf = "hello"
+write("Value: $[mf], Type: $[typeof(mf)]")
+
+# --- Set with expression from multiple sources ---
+let sa = 1
+let sb = 2
+let sc = 3
+set sa = sb + sc
+write(sa)
+set sa = sa * sa
+write(sa)
+set sa = sa - sa + 1
+write(sa)
+
+# --- Write char literal as only content ---
+write('A')
+
+# --- Negative zero ---
+write(-0)
+write(-0.0)
+
+# --- Large expression ---
+write(1 + 2 * 3 - 4 + 5 * 6 - 7 + 8 * 9 - 10)
+
+# --- Parenthesized single values ---
+write((1))
+write((42))
+write(((10)))

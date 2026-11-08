@@ -1,0 +1,244 @@
+#ifndef LTNG_H
+#define LTNG_H
+
+#define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#define MAX_TOKENS 1024
+#define MAX_STRING_LEN 4096
+#define MAX_IDENTIFIER_LEN 256
+#define MAX_VARS 256
+#define MAX_ERRORS 256
+#define MAX_SOURCE_LINES 4096
+
+typedef enum {
+    TOKEN_WRITE,
+    TOKEN_READ,
+    TOKEN_LET,
+    TOKEN_CONST,
+    TOKEN_SET,
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
+    TOKEN_EQUALS,
+    TOKEN_STRING,
+    TOKEN_CHAR,
+    TOKEN_INT_LIT,
+    TOKEN_FLOAT_LIT,
+    TOKEN_IDENT,
+    TOKEN_NEWLINE,
+    TOKEN_EOF,
+    TOKEN_ERROR,
+    TOKEN_PLUS,
+    TOKEN_MINUS,
+    TOKEN_STAR,
+    TOKEN_SLASH,
+    TOKEN_PERCENT,
+    TOKEN_PLUS_PLUS,
+    TOKEN_MINUS_MINUS,
+    TOKEN_PLUS_EQUALS,
+    TOKEN_MINUS_EQUALS,
+    TOKEN_STAR_EQUALS,
+    TOKEN_SLASH_EQUALS,
+    TOKEN_PERCENT_EQUALS,
+    TOKEN_AMP_AMP,
+    TOKEN_PIPE_PIPE,
+    TOKEN_CARET_CARET,
+    TOKEN_BANG,
+    TOKEN_EQ_EQ,
+    TOKEN_BANG_EQ,
+    TOKEN_LT,
+    TOKEN_GT,
+    TOKEN_LT_EQ,
+    TOKEN_GT_EQ,
+    TOKEN_IF,
+    TOKEN_ELSE,
+    TOKEN_SWITCH,
+    TOKEN_CASE,
+    TOKEN_DEFAULT,
+    TOKEN_BREAK,
+    TOKEN_CONTINUE,
+    TOKEN_WHILE,
+    TOKEN_DO,
+    TOKEN_FOR,
+    TOKEN_FROM,
+    TOKEN_TO,
+    TOKEN_STEP,
+    TOKEN_FUNCTION,
+    TOKEN_RETURN,
+    TOKEN_COMMA,
+    TOKEN_DOT,
+    TOKEN_COLON,
+    TOKEN_LBRACE,
+    TOKEN_RBRACE
+} TokenType;
+
+typedef struct {
+    TokenType type;
+    char value[MAX_STRING_LEN];
+    int line;
+    int col;
+} Token;
+
+typedef struct {
+    Token tokens[MAX_TOKENS];
+    int count;
+    int current;
+    char *source;
+    int source_len;
+    int pos;
+    int line;
+    int col;
+} Lexer;
+
+typedef enum {
+    TYPE_INT,
+    TYPE_FLOAT,
+    TYPE_STRING,
+    TYPE_CHAR,
+    TYPE_BOOL,
+    TYPE_OBJECT
+} VarType;
+
+typedef enum {
+    NODE_WRITE,
+    NODE_READ,
+    NODE_LET,
+    NODE_CONST,
+    NODE_SET,
+    NODE_IF,
+    NODE_ELSE,
+    NODE_SWITCH,
+    NODE_CASE,
+    NODE_BREAK,
+    NODE_CONTINUE,
+    NODE_WHILE,
+    NODE_DO_WHILE,
+    NODE_FOR,
+    NODE_FUNCTION,
+    NODE_RETURN,
+    NODE_CALL,
+    NODE_PARAM,
+    NODE_PROGRAM
+} NodeType;
+
+typedef struct ASTNode {
+    NodeType type;
+    char name[MAX_IDENTIFIER_LEN];
+    char value[MAX_STRING_LEN];
+    VarType var_type;
+    int is_variable;
+    int is_expr;
+    int is_default;
+    char for_var[MAX_IDENTIFIER_LEN];
+    char for_start[MAX_STRING_LEN];
+    char for_end[MAX_STRING_LEN];
+    char for_step[MAX_STRING_LEN];
+    char for_step_op; /* '+', '-', '*', '/' or 0 for default (+) */
+    struct ASTNode *body;
+    struct ASTNode *orelse;
+    struct ASTNode *cases;
+    struct ASTNode *params;  /* function parameters (NODE_PARAM/name chain) */
+    struct ASTNode *args;    /* call arguments (expression nodes chain) */
+    struct ASTNode *next;
+} ASTNode;
+
+typedef struct {
+    char name[MAX_IDENTIFIER_LEN];
+    VarType type;
+    int is_const;
+} VarEntry;
+
+#define MAX_OBJ_FIELDS 32
+typedef struct {
+    char name[MAX_IDENTIFIER_LEN];   /* source field name */
+    char value[MAX_STRING_LEN];      /* stringified value */
+    VarType type;
+} ObjField;
+
+typedef struct {
+    char var[MAX_IDENTIFIER_LEN];    /* mangled var name */
+    ObjField fields[MAX_OBJ_FIELDS];
+    int count;
+    char default_val[MAX_STRING_LEN];
+} ObjSchema;
+
+#define MAX_FUNCBINDS 64
+typedef struct {
+    char src[MAX_IDENTIFIER_LEN];   /* source name as written */
+    char cname[MAX_IDENTIFIER_LEN]; /* lifted/global C (mangled) name */
+    int param_count;
+} FuncBind;
+
+typedef struct Scope {
+    VarEntry vars[MAX_VARS];
+    int count;
+    int disallow_decl;       /* 1 = let/const not allowed (control blocks) */
+    FuncBind funcs[MAX_FUNCBINDS];
+    int func_count;
+    struct Scope *parent;
+} Scope;
+
+typedef Scope SymbolTable; /* global/root scope */
+
+typedef struct {
+    ASTNode *head;
+    ASTNode *functions;
+    SymbolTable symbol_table;
+    int count;
+} Program;
+
+typedef struct {
+    int line;
+    int col;
+    char message[MAX_STRING_LEN];
+} CompileError;
+
+typedef struct {
+    CompileError errors[MAX_ERRORS];
+    int count;
+    char *source_lines[MAX_SOURCE_LINES];
+    int total_lines;
+    char *filename;
+    int check_only;
+} ErrorState;
+
+void error_state_init(ErrorState *state, char *source, const char *filename, int check_only);
+void error_state_add(ErrorState *state, int line, int col, const char *msg);
+void error_state_print(ErrorState *state);
+int error_state_has_errors(ErrorState *state);
+
+void lexer_init(Lexer *lexer, char *source);
+void lexer_tokenize(Lexer *lexer, ErrorState *errors);
+Token lexer_next(Lexer *lexer);
+Token lexer_peek(Lexer *lexer);
+
+Program *parse(Lexer *lexer, ErrorState *errors);
+void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors);
+void codegen_free(Program *program);
+
+int is_c_reserved(const char *name);
+void mangle_name(const char *in, char *out, int out_size);
+
+VarType parse_expression_from_string(const char *expr, SymbolTable *table,
+                                     char *out, int out_size);
+ErrorState *codegen_get_errors(void);
+int symbol_table_has(SymbolTable *table, const char *name);
+VarType symbol_table_get(SymbolTable *table, const char *name);
+int symbol_table_is_const(SymbolTable *table, const char *name);
+void scope_init(Scope *scope, Scope *parent, int disallow_decl);
+void symbol_table_add_local(SymbolTable *table, const char *name, VarType type);
+void symbol_table_update(SymbolTable *table, const char *name, VarType type);
+int symbol_table_has_local(SymbolTable *table, const char *name);
+
+void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
+const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);
+int is_function_name_scoped(SymbolTable *table, const char *src);
+
+void obj_register(const char *mangled_var, ObjSchema *schema);
+ObjSchema *obj_lookup(const char *mangled_var);
+const char *obj_resolve_field(const char *mangled_var, const char *field, char *out, int out_size);
+
+#endif

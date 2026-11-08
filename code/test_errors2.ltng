@@ -1,0 +1,34 @@
+# Test error detection edge cases
+
+# Missing closing paren
+# write("hello"
+
+# Missing opening paren
+# write "hello"
+
+# Missing closing string
+# write("hello)
+
+# Missing value after let
+# let x
+
+# Missing value after =
+# let x =
+
+# Invalid type keyword
+# let x = integer 5
+
+# Extra closing paren
+# write("hello"))
+
+# Missing variable name in read
+# read()
+
+# set on undeclared variable
+# set undeclared = 5
+
+# const without value
+# const x
+
+# Empty program (this file has comments so it's not truly empty)
+# just a comment

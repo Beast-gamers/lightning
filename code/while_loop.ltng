@@ -1,0 +1,14 @@
+# While loop example
+let i = 0
+while (i < 5) {
+    write(i)
+    set i = i + 1
+}
+
+# While loop with condition
+let count = 3
+while (count > 0) {
+    write("counting down")
+    set count = count - 1
+}
+write("done")

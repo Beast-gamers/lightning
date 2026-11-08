@@ -1,0 +1,12 @@
+# Basic write tests
+write("hello world")
+write("") # empty string
+write("has no special chars")
+write("special: !@#$^&*()") # no interpolation, just literal chars (no % format specifiers)
+
+# write with string escapes
+write("line1\nline2")
+write("tab\there")
+write("back\\slash")
+write("say \"hello\"")
+write("single \'quote\'")

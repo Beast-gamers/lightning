@@ -1,0 +1,3 @@
+# Error: undeclared variable
+let x = 5
+write(y)

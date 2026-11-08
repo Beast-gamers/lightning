@@ -1,0 +1,27 @@
+# Compound assignment operators
+let x = 10
+write(x)
+
+set x += 5
+write(x)
+
+set x -= 3
+write(x)
+
+set x *= 2
+write(x)
+
+set x /= 4
+write(x)
+
+set x %= 3
+write(x)
+
+# With different types of values
+let y = 20
+set y += 10
+write(y)
+
+let z = 5
+set z *= 3
+write(z)

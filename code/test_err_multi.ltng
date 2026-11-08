@@ -1,0 +1,6 @@
+# Error: multiple errors
+let x = int "hello"
+let write = 5
+set z = 10
+read(w)
+write("$[q]")

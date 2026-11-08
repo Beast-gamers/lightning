@@ -1,0 +1,41 @@
+# Test 5: typeof with all variants
+
+# typeof on variables
+let i = 42
+let fl = 3.14
+let s = "hello"
+let c = 'X'
+let b = true
+
+write(typeof(i))
+write(typeof(fl))
+write(typeof(s))
+write(typeof(c))
+write(typeof(b))
+
+# typeof on explicit type variables
+let ei = 10
+let ef = 2.0
+let es = "test"
+let ec = 'Z'
+let eb = false
+write(typeof(ei))
+write(typeof(ef))
+write(typeof(es))
+write(typeof(ec))
+write(typeof(eb))
+
+# typeof on const
+const cc = 55
+write(typeof(cc))
+
+# typeof nested
+write(typeof(typeof(i)))
+
+# typeof in string interpolation
+write("Type of i: $[typeof(i)]")
+write("Type of fl: $[typeof(fl)]")
+write("Type of s: $[typeof(s)]")
+
+# typeof with multiple vars in one string
+write("i=$[typeof(i)] fl=$[typeof(fl)] s=$[typeof(s)] c=$[typeof(c)] b=$[typeof(b)]")

@@ -1,0 +1,67 @@
+# Test 10: Logical/Bitwise operators
+
+# Bool logical operators
+let bt = true
+let bf = false
+write(bt && bt)
+write(bt && bf)
+write(bf && bt)
+write(bf && bf)
+write(bt || bt)
+write(bt || bf)
+write(bf || bf)
+write(!bt)
+write(!bf)
+
+# Int bitwise operators
+let a = 12
+let b = 10
+write(a && b)
+write(a || b)
+write(!a)
+
+# Bitwise with literals
+write(12 && 10)
+write(12 || 10)
+write(!12)
+
+# Bitwise chaining
+write(15 && 9 && 3)
+write(1 || 2 || 4)
+
+# Bool variables with logical
+write(bt && bf)
+write(bt || bf)
+write(!bt)
+write(!bf)
+
+# Mixed int and bool (should be logical)
+let iv = 5
+let bv = true
+write(iv && bv)
+write(bv && iv)
+write(iv || bv)
+write(bv || iv)
+
+# Float with logical (should be logical)
+let fv = 3.14
+write(fv && true)
+write(fv || false)
+write(!fv)
+
+# Comparison result in logical
+write((5 > 3) && (10 < 20))
+write((5 > 3) || (10 > 20))
+write(!(5 > 3))
+
+# Arithmetic in logical
+write((2 + 3) && (4 + 6))
+write((2 + 3) || (4 + 6))
+
+# Logical in let/const/set
+let lr = true && false
+let lr2 = true || false
+let lr3 = !true
+write(lr)
+write(lr2)
+write(lr3)

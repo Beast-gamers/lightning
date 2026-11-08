@@ -1,0 +1,76 @@
+# Test 1: write with char escape sequences in char literals
+let cn = '\n'
+let ct = '\t'
+let cbs = '\\'
+let cdq = '\"'
+let csq = '\''
+let cz = '\0'
+write(cn)
+write(ct)
+write(cbs)
+write(cdq)
+write(csq)
+write(cz)
+
+# Test 2: write with string escape sequences in string literals
+write("line1\nline2")
+write("tab\there")
+write("back\\slash")
+write("double\"quote")
+write("single'quote")
+
+# Test 3: typeof in various contexts
+let v = 42
+write(typeof(v))
+write(typeof(42))
+write(typeof(3.14))
+write(typeof("hello"))
+write(typeof('X'))
+write(typeof(true))
+
+# Test 4: Nested typeof
+write(typeof(typeof(v)))
+write(typeof(typeof(typeof(v))))
+
+# Test 5: set type changes
+let chg = 10
+write(chg)
+set chg = 3.14
+write(chg)
+set chg = "now string"
+write(chg)
+set chg = 'C'
+write(chg)
+set chg = true
+write(chg)
+
+# Test 6: const from expression
+const ce1 = 10 + 5
+const ce2 = ce1 * 2
+const ce3 = ce2 - ce1
+write(ce1)
+write(ce2)
+write(ce3)
+
+# Test 7: Interpolation edge cases
+let ie = "test"
+write("$[ie]")
+write("$$[ie]")
+write("$[ie]$")
+write("$$")
+
+# Test 8: write with all bool values
+write(true)
+write(false)
+write(t)
+write(f)
+
+# Test 9: char to int conversion in expressions
+let ca = 'A'
+let cz2 = 'Z'
+write(ca)
+write(cz2)
+write(cz2 - ca)
+
+# Test 10: Empty and minimal programs
+# (already tested above)

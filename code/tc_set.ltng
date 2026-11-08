@@ -1,0 +1,82 @@
+# Comprehensive set tests
+# Covers: all type changes, expressions, variable-to-variable,
+#         C keyword targets, edge cases
+
+# --- Basic set ---
+let a = 10
+write(a)
+set a = 20
+write(a)
+set a = 30
+write(a)
+
+# --- Set changing types ---
+let b = 42
+write(typeof(b))
+set b = 3.14
+write(typeof(b))
+set b = "now string"
+write(typeof(b))
+set b = 'C'
+write(typeof(b))
+set b = true
+write(typeof(b))
+write(b)
+
+# --- Set with expression ---
+let c = 0
+set c = 10 + 5
+write(c)
+set c = c * 2
+write(c)
+set c = c - 10
+write(c)
+
+# --- Set from variable ---
+let d = 0
+let e = 99
+set d = e
+write(d)
+
+# --- Set on C keyword variable ---
+let ret = 1
+write(ret)
+set ret = 42
+write(ret)
+set ret = ret + 1
+write(ret)
+
+# --- Set changing type repeatedly ---
+let h = 1
+write(typeof(h))
+set h = 1.5
+write(typeof(h))
+set h = "abc"
+write(typeof(h))
+set h = 'Z'
+write(typeof(h))
+set h = false
+write(typeof(h))
+set h = 100
+write(typeof(h))
+
+# --- Set with unary minus ---
+let i = 5
+set i = -i
+write(i)
+set i = -(-i)
+write(i)
+
+# --- Set from typeof expression ---
+let j = int
+set j = typeof(42)
+write(j)
+
+# --- Set with bitwise ops ---
+let k = 0
+set k = 15 ^^ 9
+write(k)
+set k = 12 && 10
+write(k)
+set k = 12 || 10
+write(k)

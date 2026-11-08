@@ -1,0 +1,38 @@
+# Variable tests
+
+# Type inference
+let x = 42
+let y = 3.14
+let s = "hello"
+let c = 'Z'
+
+write(x)
+write(y)
+write(s)
+write(c)
+
+# Explicit types
+let ex_int = 100
+let ex_float = 2.718
+let ex_string = "world"
+let ex_char = 'Q'
+
+write(ex_int)
+write(ex_float)
+write(ex_string)
+write(ex_char)
+
+# Uninitialized (defaults)
+let d_int = int
+let d_float = float
+let d_str = string
+let d_char = char
+
+write(d_int)
+write(d_float)
+write(d_str)
+write(d_char)
+
+# Multi-word strings
+let sentence = "hello world from lightning"
+write(sentence)

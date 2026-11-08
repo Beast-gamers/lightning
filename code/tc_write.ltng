@@ -1,0 +1,126 @@
+# Comprehensive write() tests
+# Covers: literals, variables, expressions, interpolation, typeof-in-strings,
+#         empty strings, special chars, angle brackets, char escapes, bool values
+
+# --- Plain literals ---
+write("hello world")
+write("")
+write(" ")
+write("a")
+
+# --- Int literals ---
+write(0)
+write(1)
+write(-1)
+write(42)
+write(-42)
+write(999999)
+
+# --- Float literals ---
+write(0.0)
+write(3.14)
+write(-3.14)
+write(1.0)
+
+# --- Char literals ---
+write('A')
+write('Z')
+write('0')
+
+# --- Bool literals ---
+write(true)
+write(false)
+write(t)
+write(f)
+
+# --- Variable writes ---
+let x = 10
+let y = 3.14
+let s = "hello"
+let c = 'X'
+let b = true
+write(x)
+write(y)
+write(s)
+write(c)
+write(b)
+
+# --- Expression writes (int) ---
+write(1 + 2)
+write(10 - 3)
+write(4 * 5)
+write(20 / 4)
+write(7 % 3)
+write(-5)
+write(2 + 3 * 4)
+write((2 + 3) * 4)
+
+# --- Expression writes (float) ---
+write(1.5 + 2.5)
+write(10.0 / 3.0)
+
+# --- Expression with variables ---
+write(x + 1)
+write(x * x)
+write(x - x)
+
+# --- typeof in write() ---
+write(typeof(42))
+write(typeof(3.14))
+write(typeof("hi"))
+write(typeof('C'))
+write(typeof(true))
+write(typeof(typeof(42)))
+
+# --- Interpolation ---
+let ix = 5
+let iy = "world"
+write("x = $[ix]")
+write("hello $[iy]")
+write("$[ix] + $[ix] = 10")
+write("typeof: $[typeof(ix)]")
+write("$[ix]$[iy]")
+write("$$[ix]")
+
+# --- Empty and whitespace strings ---
+write("   ")
+write("\t")
+write("\n")
+
+# --- Angle brackets ---
+write("<raw>")
+write("<b>bold</b>")
+write("2 < 3")
+write("a<b")
+
+# --- Char escape sequences ---
+write("\n")
+write("\t")
+write("\\")
+write("\"")
+write("\'")
+
+# --- Long string ---
+write("this is a long string that tests the buffer limits of the write function and should print correctly")
+
+# --- Nested expressions ---
+write(1 + 2 + 3 + 4 + 5)
+write(100 / 10 / 5)
+write(2 * 3 + 4 * 5)
+write((1 + 2) * (3 + 4))
+write(((10 - 5) * 2) / 2)
+
+# --- Unary minus chains ---
+let um = 7
+write(-um)
+write(-(-um))
+write(-(um))
+write(-(-(-um)))
+
+# --- Write with bool expressions ---
+let b1 = true
+let b2 = false
+write(b1 && b2)
+write(b1 || b2)
+write(!b1)
+write(b1 ^^ b2)

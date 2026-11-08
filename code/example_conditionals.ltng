@@ -1,0 +1,28 @@
+# Conditionals: if / else if / else and switch
+
+let n = 7
+if (n < 5) {
+    write("small")
+} else if (n < 10) {
+    write("medium")
+} else {
+    write("large")
+}
+
+let day = 3
+switch (day) {
+    case 1: { write("Mon") }
+    case 2: { write("Tue") }
+    case 3: { write("Wed") }
+    default: { write("other") }
+}
+
+# switch with string result via variable
+let code = 2
+let label = "unknown"
+switch (code) {
+    case 1: { set label = "one" }
+    case 2: { set label = "two" }
+    default: { set label = "many" }
+}
+write(label)

@@ -1,0 +1,3 @@
+# Error: undeclared in interpolation
+let x = 5
+write("$[y]")

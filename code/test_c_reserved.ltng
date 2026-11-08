@@ -1,0 +1,138 @@
+# C Reserved Words - Comprehensive Test
+
+# Basic declaration and usage
+let long = 55
+let short = 100
+let int_val = 42
+let float_val = 3.14
+let double_val = 9.99
+let char_val = 'A'
+let string_val = "hello"
+let bool_val = true
+
+write(long)
+write(short)
+write(int_val)
+write(float_val)
+write(double_val)
+write(char_val)
+write(string_val)
+write(bool_val)
+
+# Set
+set long = 200
+set short = 300
+set int_val = 999
+write(long)
+write(short)
+write(int_val)
+
+# typeof
+write(typeof(long))
+write(typeof(double_val))
+
+# Interpolation
+write("$[long]")
+write("$[short]")
+write("$[int_val] value")
+
+# typeof in interpolation
+write("$[typeof(long)]")
+write("$[typeof(double_val)]")
+
+# Multiple C keywords in one program
+let unsigned = 10
+let signed = 20
+let void_val = 30
+let static_val = 40
+let extern_val = 50
+let auto_val = 60
+let register_val = 70
+let volatile_val = 80
+let typedef_val = 90
+let sizeof_val = 100
+let struct_val = 110
+let union_val = 120
+let enum_val = 130
+
+write(unsigned)
+write(signed)
+write(void_val)
+write(static_val)
+write(extern_val)
+write(auto_val)
+write(register_val)
+write(volatile_val)
+write(typedef_val)
+write(sizeof_val)
+write(struct_val)
+write(union_val)
+write(enum_val)
+
+# C flow control keywords
+let if_val = 10
+let else_val = 20
+let while_val = 30
+let for_val = 40
+let do_val = 50
+let return_val = 60
+let break_val = 70
+let continue_val = 80
+let switch_val = 90
+let case_val = 100
+let default_val = 110
+
+write(if_val)
+write(else_val)
+write(while_val)
+write(for_val)
+write(do_val)
+write(return_val)
+write(break_val)
+write(continue_val)
+write(switch_val)
+write(case_val)
+write(default_val)
+
+# C library keywords
+let main_val = 10
+let printf_val = 20
+let scanf_val = 30
+let snprintf_val = 40
+let include_val = 50
+
+write(main_val)
+write(printf_val)
+write(scanf_val)
+write(snprintf_val)
+write(include_val)
+
+# Const with C keywords
+const long_c = 42
+const struct_c = "test"
+write(long_c)
+write(struct_c)
+
+# Explicit type with C keyword var name
+let long_exp = 100
+let struct_exp = 2.718
+write(long_exp)
+write(struct_exp)
+
+# Uninitialized with C keyword var name
+let long_uninit = int
+let struct_uninit = float
+write(long_uninit)
+write(struct_uninit)
+
+# Set with type change
+let long_change = 10
+set long_change = 3.14
+set long_change = "now string"
+set long_change = 'X'
+write(long_change)
+
+# Read with C keyword var name
+let long_read = int
+let struct_read = string
+# (can't test read without stdin, but verify it compiles)

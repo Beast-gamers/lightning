@@ -1,0 +1,89 @@
+# Comprehensive typeof tests
+# Covers: all types, nested, in expressions, in interpolation, edge cases
+
+# --- typeof literals ---
+write(typeof(42))
+write(typeof(314))
+write(typeof(0))
+write(typeof("hello"))
+write(typeof('A'))
+write(typeof('\n'))
+write(typeof(true))
+write(typeof(false))
+write(typeof(t))
+write(typeof(f))
+
+# --- typeof variables ---
+let v1 = 10
+let v2 = 3.14
+let v3 = "hi"
+let v4 = 'X'
+let v5 = true
+let v6 = false
+write(typeof(v1))
+write(typeof(v2))
+write(typeof(v3))
+write(typeof(v4))
+write(typeof(v5))
+write(typeof(v6))
+
+# --- typeof with explicit types ---
+let e1 = 42
+let e2 = 1.0
+let e3 = "s"
+let e4 = 'C'
+let e5 = true
+write(typeof(e1))
+write(typeof(e2))
+write(typeof(e3))
+write(typeof(e4))
+write(typeof(e5))
+
+# --- typeof uninitialized ---
+let u1 = int
+let u2 = float
+let u3 = string
+let u4 = char
+let u5 = bool
+write(typeof(u1))
+write(typeof(u2))
+write(typeof(u3))
+write(typeof(u4))
+write(typeof(u5))
+
+# --- Nested typeof ---
+write(typeof(typeof(42)))
+write(typeof(typeof(typeof(42))))
+write(typeof(typeof(typeof(typeof(42)))))
+
+# --- typeof in interpolation ---
+let iv = 42
+write("$[typeof(iv)]")
+write("Type is: $[typeof(iv)]")
+write("$[typeof(v1)]")
+write("$[typeof(v2)]")
+write("$[typeof(v4)]")
+write("$[typeof(v5)]")
+
+# --- typeof after type changes ---
+let ct = 10
+write(typeof(ct))
+set ct = 3.14
+write(typeof(ct))
+set ct = "hello"
+write(typeof(ct))
+set ct = 'Z'
+write(typeof(ct))
+set ct = false
+write(typeof(ct))
+
+# --- typeof in const ---
+const ct1 = typeof(42)
+const ct2 = typeof("hello")
+write(ct1)
+write(ct2)
+
+# --- typeof in expression context ---
+let tx = 42
+let ty = typeof(tx)
+write(ty)

@@ -1,0 +1,84 @@
+# Arithmetic operations
+let sum = 2 + 3
+let diff = 10 - 4
+let prod = 3 * 7
+let quot = 20 / 4
+let rem = 17 % 5
+write(sum)
+write(diff)
+write(prod)
+write(quot)
+write(rem)
+
+# Negative numbers
+let neg = -5
+let neg2 = -3 + 10
+write(neg)
+write(neg2)
+
+# Parentheses
+let parens = (2 + 3) * 4
+write(parens)
+
+# Float expressions
+let fprod = 3.14 * 2
+let fdiv = 10.0 / 3.0
+write(fprod)
+write(fdiv)
+
+# Variables in expressions
+let x = 10
+let y = 3
+let vz = x + y
+let vw = x * y
+let vq = x - y
+write(vz)
+write(vw)
+write(vq)
+
+# set with expressions
+set x = 50 + 50
+write(x)
+set x = x + 1
+write(x)
+
+# write with inline expression
+write(2 + 3)
+write(100 / 4)
+write(7 * 8)
+
+# Comparison operators
+let gt = 5 > 3
+let lt = 5 < 3
+let eq = 5 == 5
+let neq = 5 != 3
+let gte = 5 >= 5
+let lte = 5 <= 5
+write(gt)
+write(lt)
+write(eq)
+write(neq)
+write(gte)
+write(lte)
+
+# Logical operators
+let land = true && true
+let landf = true && false
+let lor = false || true
+let lor2 = false || false
+write(land)
+write(landf)
+write(lor)
+write(lor2)
+
+# Unary not
+let not1 = !false
+let not2 = !true
+write(not1)
+write(not2)
+
+# Const expressions
+const c1 = 2 + 3
+const c2 = 3.14 * 2
+write(c1)
+write(c2)

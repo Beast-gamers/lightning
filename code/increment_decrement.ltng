@@ -1,0 +1,32 @@
+# Pre and post increment/decrement examples
+let i = 5
+write(i)
+
+# Pre-increment
+++i
+write(i)
+
+# Post-increment
+let j = 10
+write(j)
+j++
+write(j)
+
+# Pre-decrement
+let k = 7
+write(k)
+--k
+write(k)
+
+# Post-decrement
+let m = 3
+write(m)
+m--
+write(m)
+
+# In while loops
+let n = 0
+while (n < 3) {
+    write(n)
+    n++
+}

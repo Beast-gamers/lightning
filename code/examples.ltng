@@ -1,0 +1,191 @@
+# Lightning Language - All Features Example
+
+# ============================================
+# 1. Comments
+# ============================================
+# This is a comment
+write("=== Lightning Language Demo ===") # inline comment
+
+# ============================================
+# 2. Variables with Type Inference
+# ============================================
+let age = 25
+let name = "lightning"
+let score = 99.5
+let grade = 'A'
+
+write("Name: ")
+write(name)
+write("Age: ")
+write(age)
+write("Score: ")
+write(score)
+write("Grade: ")
+write(grade)
+
+# ============================================
+# 3. Explicit Type Declarations
+# ============================================
+let x = 42
+let y = 3.14
+let s = "hello"
+let c = 'Z'
+
+write("Explicit int: ")
+write(x)
+write("Explicit float: ")
+write(y)
+write("Explicit string: ")
+write(s)
+write("Explicit char: ")
+write(c)
+
+# ============================================
+# 4. Uninitialized Variables (defaults)
+# ============================================
+let empty_int = int
+let empty_float = float
+let empty_string = string
+let empty_char = char
+
+write("Default int: ")
+write(empty_int)
+write("Default float: ")
+write(empty_float)
+write("Default string (empty): ")
+write(empty_string)
+
+# ============================================
+# 5. Input with read()
+# ============================================
+let user_name = string
+let user_age = int
+let user_score = float
+let user_letter = char
+
+write("Enter your name:")
+read(user_name)
+write("Enter your age:")
+read(user_age)
+write("Enter your score:")
+read(user_score)
+write("Enter a letter:")
+read(user_letter)
+
+write("Hello, ")
+write(user_name)
+write("You are ")
+write(user_age)
+write(" years old")
+write("Your score: ")
+write(user_score)
+write("Your letter: ")
+write(user_letter)
+
+# ============================================
+# 6. Escape Sequences
+# ============================================
+write("Line one\nLine two")
+write("Tab\there")
+
+# ============================================
+# 7. Multiple Variables
+# ============================================
+let a = 10
+let b = 20
+let c2 = 30
+
+write("Numbers: ")
+write(a)
+write(b)
+write(c2)
+
+# ============================================
+# 8. Constants
+# ============================================
+const pi = 3.14159
+const max_score = 100
+const greeting = "hello"
+const letter = 'X'
+
+write("Pi: ")
+write(pi)
+write("Max score: ")
+write(max_score)
+write("Greeting: ")
+write(greeting)
+write("Letter: ")
+write(letter)
+
+# ============================================
+# 9. Setting Variables
+# ============================================
+let val = 10
+write("Before: ")
+write(val)
+set val = 20
+write("After set 20: ")
+write(val)
+set val = 3.14
+write("After set float: ")
+write(val)
+set val = 100
+write("After set int: ")
+write(val)
+
+# ============================================
+# 10. Type Introspection with typeof()
+# ============================================
+let t1 = 10
+let t1_type = typeof(t1)
+write("typeof(10): ")
+write(t1_type)
+
+let t2 = 3.14
+let t2_type = typeof(t2)
+write("typeof(3.14): ")
+write(t2_type)
+
+let t3 = "hello"
+let t3_type = typeof(t3)
+write("typeof(\"hello\"): ")
+write(t3_type)
+
+let t4 = 'A'
+let t4_type = typeof(t4)
+write("typeof('A'): ")
+write(t4_type)
+
+let t5 = true
+let t5_type = typeof(t5)
+write("typeof(true): ")
+write(t5_type)
+
+# typeof with explicit types
+let t6 = 42
+write("typeof(int 42): ")
+write(typeof(t6))
+
+# typeof in const
+const my_pi = 3.14
+write("typeof(const pi): ")
+write(typeof(my_pi))
+
+# typeof in write directly
+write(typeof(t1))
+
+# ============================================
+# 11. String Interpolation with $[var]
+# ============================================
+let msg_name = "bolt"
+let msg_age = 10
+write("Hello, $[msg_name]!")
+write("Name: $[msg_name], Age: $[msg_age]")
+write("2 + 2 is $[msg_age]")
+
+# typeof inside interpolation
+write("x is typeof $[typeof(t1)]")
+
+# literal angle brackets
+write("cost is $5")
+write("<$[t1]>")

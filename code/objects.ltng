@@ -1,0 +1,24 @@
+# Objects: named fields, a "default" display value, and "obj" for all values
+
+let x = {
+    default = "object"
+    name = "saim"
+    age = 17
+    class = "xi"
+}
+
+write(x)        # prints the "default" field -> object
+write(x.age)    # field access -> 17
+write(x.name)   # -> saim
+write(x.obj)    # all values in order -> object saim 17 xi
+
+# another object
+let point = {
+    default = "point"
+    x = 3
+    y = 4
+}
+write(point)
+write(point.x)
+write(point.y)
+write(point.obj)

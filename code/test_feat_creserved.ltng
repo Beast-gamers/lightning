@@ -1,0 +1,66 @@
+# Test 7: C reserved word mangling
+let long = 55
+let short = 100
+let int_val = 42
+let float_val = 3.14
+let double_val = 9.99
+let void_val = 0
+let if_val = 10
+let else_val = 20
+let while_val = 30
+let for_val = 40
+let return_val = 50
+let break_val = 60
+let continue_val = 70
+let switch_val = 80
+let case_val = 90
+let default_val = 100
+let struct_val = 110
+let union_val = 120
+let enum_val = 130
+let typedef_val = 140
+let sizeof_val = 150
+let static_val = 160
+let extern_val = 170
+let auto_val = 180
+let register_val = 190
+let volatile_val = 200
+let unsigned_val = 210
+let signed_val = 220
+let main_val = 230
+let printf_val = 240
+let scanf_val = 250
+let snprintf_val = 260
+let include_val = 270
+
+write(long)
+write(short)
+write(int_val)
+write(float_val)
+write(struct_val)
+write(main_val)
+write(printf_val)
+
+# Set with C keywords
+set long = 999
+set short = 888
+write(long)
+write(short)
+
+# Expressions with C keyword vars
+let result = long + short
+write(result)
+
+# typeof with C keywords
+write(typeof(long))
+write(typeof(struct_val))
+
+# Interpolation with C keywords
+write("$[long] and $[short]")
+write("$[typeof(long)]")
+
+# Const with C keywords
+const long_c = 42
+const struct_c = "test"
+write(long_c)
+write(struct_c)

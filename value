@@ -1,0 +1,16 @@
+189:        fprintf(out, "%s[0] = '\\0';\n", node->name);
+192:        fprintf(out, "snprintf(%s, sizeof(%s), \"", node->name, node->name);
+229:        fprintf(out, "%s[0] = '\\0';\n", node->name);
+232:        fprintf(out, "snprintf(%s, sizeof(%s), \"", node->name, node->name);
+427:            fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
+429:            fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
+431:            fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
+434:        fprintf(out, "printf(\"%%s\\n\", %s);\n", node->name);
+466:            fprintf(out, "scanf(\" %%255s\", %s);\n", node->name);
+503:                    fprintf(out, "if (!_sw_matched && strcmp(%s, %s) == 0) { _sw_matched = 1;\n", node->value, c->value);
+505:                    fprintf(out, "if (!_sw_matched && strcmp(%s, %s) == 0) { _sw_matched = 1;\n", node->value, c->value);
+518:        fprintf(out, "switch ((long long)(%s)) {\n", node->value);
+520:        fprintf(out, "switch ((int)(%s[0])) {\n", node->value);
+522:        fprintf(out, "switch ((%s[0]=='t'||%s[0]=='T')?1:0) {\n", node->value, node->value);
+524:        fprintf(out, "switch ((long long)(%s)) {\n", node->value);
+558:    fprintf(out, "if (%s) {\n", node->value);

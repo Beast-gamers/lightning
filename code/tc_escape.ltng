@@ -1,0 +1,75 @@
+# Comprehensive escape sequence tests
+# Covers: \n \t \\ \" \' \0 in both string and char contexts
+
+# --- String escapes ---
+write("newline\nhere")
+write("tab\there")
+write("back\\slash")
+write("double\"quote")
+write("single'quote")
+write("mixed\n\t\\\"\'")
+
+# --- Char escapes ---
+let cn = '\n'
+let ct = '\t'
+let cbs = '\\'
+let cdq = '\"'
+let csq = '\''
+write(cn)
+write(ct)
+write(cbs)
+write(cdq)
+write(csq)
+
+# --- Escapes in interpolation ---
+let v = "hi"
+write("$[v]\n")
+write("line1\n$[v]\nline2")
+write("\t$[v]\t")
+
+# --- Escape in let/const ---
+let s1 = "a\nb"
+let s2 = "a\tb"
+let s3 = "a\\b"
+const cs1 = "x\ny"
+const cs2 = "x\ty"
+write(s1)
+write(s2)
+write(s3)
+write(cs1)
+write(cs2)
+
+# --- Bare < in string (no matching >) ---
+write("a<b")
+
+# --- < > with matching ---
+write("<raw>")
+write("<x>")
+write("a<b>c")
+
+# --- Nested angle brackets ---
+write("<<double>>")
+
+# --- Angles with content ---
+write("<b>bold</b>")
+write("<i>italic</i>")
+
+# --- Empty angle brackets ---
+write("<>")
+
+# --- String with only escape sequences ---
+write("\n")
+write("\t")
+write("\\")
+write("\"")
+write("\'")
+
+# --- Multiple escapes in one string ---
+write("a\nb\tc\\d\"e\'f")
+
+# --- Escapes in set ---
+let es = ""
+set es = "new\nline"
+write(es)
+set es = "tab\there"
+write(es)

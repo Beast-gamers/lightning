@@ -1,0 +1,108 @@
+# Comprehensive if/else tests
+# Covers: if, else, else if, nesting, truthiness, and/or/not, blocks
+
+let x = 7
+if (x > 5) {
+    write("big")
+} else {
+    write("small")
+}
+
+# --- else if chain ---
+let score = 85
+if (score >= 90) {
+    write("A")
+} else if (score >= 80) {
+    write("B")
+} else if (score >= 70) {
+    write("C")
+} else {
+    write("F")
+}
+
+# --- else if alias ---
+if (score >= 90) {
+    write("A2")
+} else if (score >= 80) {
+    write("B2")
+} else {
+    write("F2")
+}
+
+# --- truthiness ---
+let flag = true
+if (flag) {
+    write("flag set")
+}
+
+if (not flag) {
+    write("not reached")
+} else {
+    write("flag false branch")
+}
+
+let n = 0
+if (n) {
+    write("nonzero")
+} else {
+    write("zero")
+}
+
+if (true) {
+    write("literal true")
+}
+
+if (1) {
+    write("literal 1")
+}
+
+if (0) {
+    write("literal 0")
+} else {
+    write("literal 0 is false")
+}
+
+# --- and/or/not ---
+let a = 1
+let b = 0
+if (a and b) {
+    write("no")
+}
+if (a or b) {
+    write("a or b")
+}
+if (a and not b) {
+    write("a and not b")
+}
+
+# --- nesting ---
+let val = 15
+if (val > 10) {
+    write("greater than 10")
+    if (val > 20) {
+        write("much greater")
+    } else {
+        write("between 11 and 20")
+    }
+}
+
+# --- no braces ---
+# commented: single statement without braces not tested as per grammar
+
+# --- with variables ---
+let age = int
+set age = 18
+if (age >= 18) {
+    write("adult")
+} else {
+    write("minor")
+}
+
+write("parens")
+let p = 5
+if (p > 0) {
+    if (p < 10) {
+        write("small-positive")
+    }
+}
+write("positive")

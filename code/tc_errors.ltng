@@ -1,0 +1,40 @@
+# Comprehensive error detection tests
+# Each section tests a specific error type
+# These should ALL fail with --check
+
+# --- Undeclared variable in let ---
+let x = undeclared_var
+
+# --- Undeclared variable in write ---
+# write(undeclared_var)
+
+# --- Undeclared variable in set ---
+# set undeclared_var = 10
+
+# --- Undeclared in interpolation ---
+# write("$[undeclared_var]")
+
+# --- Undeclared in typeof ---
+# write(typeof(undeclared_var))
+
+# --- Semicolon ---
+# write("hello");
+
+# --- Reserved word as variable name ---
+# let write = 5
+# let read = 5
+# let let = 5
+# let const = 5
+# let set = 5
+# let typeof = 5
+# let int = 5
+# let float = 5
+# let string = 5
+# let char = 5
+# let bool = 5
+
+# --- Const without initialization ---
+# const x
+
+# --- Set on undeclared ---
+# set unknown = 42

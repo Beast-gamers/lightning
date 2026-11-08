@@ -1,0 +1,30 @@
+# Test 6: String interpolation
+let x = 42
+let y = 3.14
+let s = "hello"
+let bb = true
+
+# Simple interpolation
+write("$[x]")
+write("$[y]")
+write("$[s]")
+write("$[bb]")
+
+# Multiple interpolations in one string
+write("$[s] world, value is $[x]")
+
+# Interpolation with typeof
+write("$[typeof(x)]")
+
+# Interpolation in string with normal text
+write("The value of x is $[x] and it is of type $[typeof(x)]")
+
+# Angle bracket escaping
+write("<$[x]>")
+write("<hello>")
+write("<>")
+write("<<>>")
+write("<before $[s] after>")
+
+# Mixed
+write("Result: $[x] <$[typeof(y)]>")

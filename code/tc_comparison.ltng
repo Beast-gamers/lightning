@@ -1,0 +1,83 @@
+# Comprehensive comparison tests
+# Covers: all comparison operators, chained, with variables, edge cases
+
+# --- Basic comparisons ---
+write(1 < 2)
+write(2 < 1)
+write(1 < 1)
+write(2 > 1)
+write(1 > 2)
+write(1 > 1)
+write(1 <= 1)
+write(1 <= 2)
+write(2 <= 1)
+write(1 >= 1)
+write(2 >= 1)
+write(1 >= 2)
+write(1 == 1)
+write(1 == 2)
+write(1 != 1)
+write(1 != 2)
+
+# --- Chained comparisons ---
+write(1 < 2 < 3)
+write(3 > 2 > 1)
+write(1 < 2 > 3)
+write(1 == 1 == 1)
+write(1 == 2 == 3)
+
+# --- With variables ---
+let a = 10
+let b = 20
+let c = 10
+write(a < b)
+write(b < a)
+write(a > b)
+write(b > a)
+write(a == c)
+write(a != b)
+write(a <= c)
+write(a >= c)
+write(a <= b)
+write(b >= a)
+
+# --- Comparison with expressions ---
+write(1 + 1 == 2)
+write(2 * 3 > 5)
+write(10 / 2 < 6)
+write(7 % 3 == 1)
+write(1 + 2 == 3)
+
+# --- Float comparisons ---
+write(1.0 < 2.0)
+write(2.0 > 1.0)
+write(1.0 == 1.0)
+write(1.0 != 2.0)
+write(1.0 <= 1.0)
+write(1.0 >= 1.0)
+
+# --- Int and float mixed comparison ---
+write(1 < 1.5)
+write(2 > 1.5)
+write(1.5 == 1.5)
+write(1.5 != 2.5)
+
+# --- Large values ---
+write(999999 > 1)
+write(1 < 999999)
+write(-100 < 0)
+write(0 > -100)
+
+# --- Bool comparisons ---
+write(true == true)
+write(true != false)
+write(false == false)
+write(true != true)
+
+# --- Comparison result used in write ---
+let cmp1 = 5 > 3
+let cmp2 = 3 > 5
+let cmp3 = 5 == 5
+write(cmp1)
+write(cmp2)
+write(cmp3)

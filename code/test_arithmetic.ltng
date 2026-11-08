@@ -1,0 +1,79 @@
+# Test 8: Arithmetic operators
+
+# Basic operations
+write(5 + 3)
+write(10 - 4)
+write(6 * 7)
+write(20 / 4)
+write(17 % 5)
+
+# With variables
+let a = 10
+let b = 3
+write(a + b)
+write(a - b)
+write(a * b)
+write(a / b)
+write(a % b)
+
+# Negative numbers
+write(-5)
+write(-3.14)
+let c = 5
+write(-c)
+
+# Chained operations
+write(1 + 2 + 3 + 4)
+write(10 - 3 - 2 - 1)
+write(2 * 3 * 4)
+write(100 / 2 / 5)
+
+# Mixed operators - PEMDAS
+write(2 + 3 * 4)
+write(10 - 6 / 2)
+write(2 * 3 + 4 * 5)
+write(1 + 2 * 3 + 4)
+write(100 / 10 / 2)
+
+# Parentheses override
+write((2 + 3) * 4)
+write(10 / (5 - 3))
+write((1 + 2) * (3 + 4))
+write(((2 + 3) * 2) - 1)
+
+# Float arithmetic
+let f1 = 3.5
+let f2 = 2.0
+write(f1 + f2)
+write(f1 - f2)
+write(f1 * f2)
+write(f1 / f2)
+
+# Mixed int/float
+write(5 + 2.5)
+write(10 - 1.5)
+write(3 * 2.0)
+write(7.0 / 2)
+
+# Modulo
+write(10 % 3)
+write(17 % 5)
+write(0 % 5)
+write(100 % 10)
+
+# Unary minus in expression
+let x = 5
+write(-x + 10)
+write(-x * 2)
+write(-(x + 1))
+
+# Expressions in let/const/set
+let expr1 = 2 + 3 * 4
+let expr2 = (2 + 3) * 4
+const ce = 10 / 2 + 3
+let sx = 0
+set sx = 5 * 5 - 1
+write(expr1)
+write(expr2)
+write(ce)
+write(sx)

@@ -1,0 +1,42 @@
+# Test 4: set with all variants
+
+# Setup
+let i = 10
+let fl = 1.0
+let s = "alpha"
+let c = 'A'
+let b = true
+
+# Set with same-type literals
+set i = 20
+set fl = 2.0
+set s = "beta"
+set c = 'B'
+set b = false
+
+# Set with expression
+set i = i + 5
+set fl = fl * 3.0
+set i = i - 3
+
+# Set with explicit type
+set i = 100
+set fl = 9.99
+
+# Set variable to variable
+let other = 42
+set i = other
+
+# Set with typeof
+let tv = typeof(i)
+set tv = typeof(fl)
+
+write(i)
+write(fl)
+write(s)
+write(c)
+write(b)
+write(other)
+write(tv)
+
+# Set after const should fail - tested in error tests

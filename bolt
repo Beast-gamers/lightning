@@ -1,0 +1,368 @@
+#!/bin/sh
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/compiler/ltng" ]; then
+    LTNG_BIN="$SCRIPT_DIR/compiler/ltng"
+elif [ -f "$SCRIPT_DIR/ltng" ]; then
+    LTNG_BIN="$SCRIPT_DIR/ltng"
+else
+    echo "Error: ltng compiler not found"
+    exit 1
+fi
+
+install_zig() {
+    if command -v zig >/dev/null 2>&1; then
+        echo "Zig already installed: $(command -v zig)"
+        return 0
+    fi
+    if [ -x /usr/local/bin/zig ]; then
+        echo "Zig already installed: /usr/local/bin/zig"
+        return 0
+    fi
+    echo "Installing Zig..."
+    ZIG_ARCH=""
+    case "$(uname -m)" in
+        aarch64|arm64) ZIG_ARCH="aarch64-linux" ;;
+        x86_64|amd64) ZIG_ARCH="x86_64-linux" ;;
+        armv7l|armv7*) ZIG_ARCH="arm-linux" ;;
+        i686|i386|x86) ZIG_ARCH="x86-linux" ;;
+        riscv64) ZIG_ARCH="riscv64-linux" ;;
+        *) echo "Warning: Unsupported architecture for Zig auto-install: $(uname -m)"; return 0 ;;
+    esac
+    ZIG_URL="https://ziglang.org/download/0.14.1/zig-${ZIG_ARCH}-0.14.1.tar.xz"
+    ZIG_TMP="/tmp/zig_install_$$.tar.xz"
+    ZIG_DIR="/usr/local/zig"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --progress-bar -o "$ZIG_TMP" "$ZIG_URL" || { echo "Warning: Failed to download Zig"; rm -f "$ZIG_TMP"; return 0; }
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$ZIG_TMP" "$ZIG_URL" || { echo "Warning: Failed to download Zig"; rm -f "$ZIG_TMP"; return 0; }
+    else
+        echo "Warning: curl/wget not found, cannot install Zig"
+        return 0
+    fi
+    rm -rf "$ZIG_DIR" /tmp/zig-extract-$$
+    mkdir -p /tmp/zig-extract-$$
+    tar -xf "$ZIG_TMP" -C /tmp/zig-extract-$$ || { echo "Warning: Failed to extract Zig"; rm -f "$ZIG_TMP"; rm -rf /tmp/zig-extract-$$; return 0; }
+    extracted="$(find /tmp/zig-extract-$$ -maxdepth 1 -type d -name 'zig-*' | head -1)"
+    if [ -z "$extracted" ]; then
+        echo "Warning: Zig extraction failed"
+        rm -f "$ZIG_TMP"; rm -rf /tmp/zig-extract-$$
+        return 0
+    fi
+    mv "$extracted" "$ZIG_DIR"
+    ln -sf "$ZIG_DIR/zig" /usr/local/bin/zig
+    rm -f "$ZIG_TMP"
+    rm -rf /tmp/zig-extract-$$
+    echo "Installed Zig: $(/usr/local/bin/zig version 2>/dev/null || echo unknown)"
+}
+
+install_compiler() {
+    if [ ! -f "$LTNG_BIN" ]; then
+        echo "Building ltng compiler..."
+        make -C "$SCRIPT_DIR/compiler" clean && make -C "$SCRIPT_DIR/compiler"
+    fi
+
+    install -d /usr/local/bin
+
+    if [ "$LTNG_BIN" != "/usr/local/bin/ltng" ]; then
+        install -m 755 "$LTNG_BIN" /usr/local/bin/ltng
+    fi
+
+    if [ -f "$SCRIPT_DIR/bolt" ] && [ "$SCRIPT_DIR" != "/usr/local/bin" ]; then
+        install -m 755 "$SCRIPT_DIR/bolt" /usr/local/bin/bolt
+    fi
+
+    install_zig
+
+    echo "Installed ltng and bolt to /usr/local/bin/"
+}
+
+uninstall_compiler() {
+    rm -f /usr/local/bin/ltng
+    rm -f /usr/local/bin/bolt
+    echo "Uninstalled ltng and bolt from /usr/local/bin/"
+}
+
+debug=""
+check=""
+compile_mode=""
+ltng_args=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --install) install_compiler; exit 0 ;;
+        --uninstall) uninstall_compiler; exit 0 ;;
+        --reinstall) uninstall_compiler; install_compiler; exit 0 ;;
+        --debug) debug="--debug" ;;
+        --check) check="--check" ;;
+        --compile) compile_mode="1" ;;
+        --help) echo "Usage: bolt [--debug] [--check] [--compile] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]
+Options:
+  --compile    Compile to a universal executable in the compiled folder
+  --check      Only check for errors, don't compile
+  --debug      Show compilation log
+  --install    Install ltng and bolt to /usr/local/bin/
+  --uninstall  Remove ltng and bolt from /usr/local/bin/
+  --reinstall  Uninstall then install"; exit 0 ;;
+        *) ltng_args="$ltng_args $arg" ;;
+    esac
+done
+
+set -- $ltng_args
+
+if [ $# -lt 1 ]; then
+    echo "Usage: bolt [--debug] [--check] [--compile] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]"
+    echo ""
+    echo "Options:"
+    echo "  --compile    Compile to a universal executable in the compiled folder"
+    echo "  --check      Only check for errors, don't compile"
+    echo "  --debug      Show compilation log"
+    exit 1
+fi
+
+input="$1"
+orig="$1"
+shift
+
+if [ ! -f "$input" ]; then
+    if [ -f "${input}.ltng" ]; then
+        input="${input}.ltng"
+    else
+        echo "Error: File '${orig}' not found"
+        exit 1
+    fi
+fi
+
+if ! echo "$input" | grep -q '\.ltng$'; then
+    echo "Error: File must have a .ltng extension"
+    exit 1
+fi
+
+if [ -n "$check" ]; then
+    "$LTNG_BIN" $debug --check "$input"
+    exit $?
+fi
+
+if [ -n "$compile_mode" ]; then
+    src_dir="$(cd "$(dirname "$input")" && pwd)"
+    base="$(basename "$input" .ltng)"
+    out_dir="$src_dir/compiled/$base"
+    mkdir -p "$out_dir"
+    tmpc="/tmp/ltng_uc_$$_${base}.c"
+    
+    # Emit C
+    "$LTNG_BIN" $debug --emit-c "$input" "$tmpc"
+    if [ $? -ne 0 ]; then
+        rm -f "$tmpc"
+        exit 1
+    fi
+    
+    # Detect available compilers and target architectures
+    archs=""
+    native_arch="$(uname -m)"
+    case "$native_arch" in
+        x86_64|amd64) native_arch="x86_64" ;;
+        aarch64|arm64) native_arch="aarch64" ;;
+        armv7l|armv7*) native_arch="armv7l" ;;
+        i686|i386|x86) native_arch="i686" ;;
+        riscv64) native_arch="riscv64" ;;
+    esac
+
+    # Native compiler
+    if command -v gcc >/dev/null 2>&1; then
+        archs="$archs ${native_arch}:gcc:native"
+    elif command -v cc >/dev/null 2>&1; then
+        archs="$archs ${native_arch}:cc:native"
+    fi
+
+    # Cross compilers via gcc (only add if different from native)
+    if [ "$native_arch" != "x86_64" ] && command -v x86_64-linux-gnu-gcc >/dev/null 2>&1; then
+        archs="$archs x86_64:x86_64-linux-gnu-gcc:gcc"
+    fi
+    if [ "$native_arch" != "aarch64" ] && command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+        archs="$archs aarch64:aarch64-linux-gnu-gcc:gcc"
+    fi
+    if [ "$native_arch" != "armv7l" ] && command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then
+        archs="$archs armv7l:arm-linux-gnueabihf-gcc:gcc"
+    fi
+    if [ "$native_arch" != "i686" ] && command -v i686-linux-gnu-gcc >/dev/null 2>&1; then
+        archs="$archs i686:i686-linux-gnu-gcc:gcc"
+    fi
+    if [ "$native_arch" != "riscv64" ] && command -v riscv64-linux-gnu-gcc >/dev/null 2>&1; then
+        archs="$archs riscv64:riscv64-linux-gnu-gcc:gcc"
+    fi
+
+    # Zig cross-compilation (covers missing targets)
+    if command -v zig >/dev/null 2>&1; then
+        for zt in "x86_64:x86_64-linux-musl" "aarch64:aarch64-linux-musl" "i686:x86-linux-musl" "armv7l:arm-linux-musleabihf" "riscv64:riscv64-linux-musl"; do
+            zarch="${zt%%:*}"
+            ztarget="${zt#*:}"
+            # Add if not already present
+            case " $archs " in
+                *" ${zarch}:"*) ;;
+                *) archs="$archs ${zarch}:zig:${ztarget}" ;;
+            esac
+        done
+    fi
+    
+    if [ -z "$archs" ]; then
+        echo "Error: No compilers found"
+        rm -f "$tmpc"
+        exit 1
+    fi
+    
+    tmpdir="/tmp/ltng_uc_build_$$_${base}"
+    rm -rf "$tmpdir"
+    mkdir -p "$tmpdir"
+    
+    built=""
+    for triple in $archs; do
+        arch="${triple%%:*}"
+        rest="${triple#*:}"
+        cc="${rest%%:*}"
+        extra="${rest#*:}"
+        outbin="$out_dir/${base}_${arch}"
+        ok=0
+        if [ "$cc" = "zig" ]; then
+            if zig cc -target "$extra" -static -w -o "$outbin" "$tmpc" 2>/dev/null; then
+                ok=1
+            fi
+        else
+            if "$cc" -w -static -o "$outbin" "$tmpc" 2>/dev/null; then
+                ok=1
+            fi
+        fi
+        if [ "$ok" = "1" ]; then
+            chmod +x "$outbin" 2>/dev/null || true
+            built="$built $arch"
+            if [ -n "$debug" ]; then
+                echo "Built for $arch: $outbin"
+            fi
+        else
+            if [ -n "$debug" ]; then
+                echo "Warning: Failed to build for $arch"
+            fi
+        fi
+    done
+    
+    rm -f "$tmpc"
+    
+    if [ -z "$built" ]; then
+        echo "Error: Failed to compile for any architecture"
+        rm -rf "$tmpdir"
+        exit 1
+    fi
+
+    # Create hello_x86 alias (prefer i686, fallback to x86_64)
+    if [ -f "$out_dir/${base}_i686" ]; then
+        cp "$out_dir/${base}_i686" "$out_dir/${base}_x86"
+        chmod +x "$out_dir/${base}_x86" 2>/dev/null || true
+        built="$built x86"
+    elif [ -f "$out_dir/${base}_x86_64" ]; then
+        cp "$out_dir/${base}_x86_64" "$out_dir/${base}_x86"
+        chmod +x "$out_dir/${base}_x86" 2>/dev/null || true
+        built="$built x86"
+    fi
+
+    # Create amd64 and arm64 aliases
+    if [ -f "$out_dir/${base}_x86_64" ]; then
+        cp "$out_dir/${base}_x86_64" "$out_dir/${base}_amd64"
+        chmod +x "$out_dir/${base}_amd64" 2>/dev/null || true
+        built="$built amd64"
+    fi
+    if [ -f "$out_dir/${base}_aarch64" ]; then
+        cp "$out_dir/${base}_aarch64" "$out_dir/${base}_arm64"
+        chmod +x "$out_dir/${base}_arm64" 2>/dev/null || true
+        built="$built arm64"
+    fi
+    
+    # Create universal wrapper
+    universal="$out_dir/${base}_universal"
+    
+    cat > "$universal" << 'WRAPPER_HEAD'
+#!/bin/sh
+# Universal Lightning executable
+set -e
+SELF="$0"
+ARCH="$(uname -m)"
+case "$ARCH" in
+    x86_64|amd64) ARCH="x86_64" ;;
+    i686|i386|x86) ARCH="i686" ;;
+    aarch64|arm64) ARCH="aarch64" ;;
+    armv7l|armv7*) ARCH="armv7l" ;;
+    i686|i386|x86) ARCH="i686" ;;
+    riscv64) ARCH="riscv64" ;;
+esac
+TMPBIN="${TMPDIR:-/tmp}/.ltng_univ_$$_${ARCH}_$(basename "$SELF")"
+cleanup() { rm -f "$TMPBIN"; }
+trap cleanup EXIT INT TERM
+extract_and_run() {
+    arch="$1"
+    marker="__LTNG_BIN_${arch}__"
+    if ! grep -q "$marker" "$SELF" 2>/dev/null; then
+        return 1
+    fi
+    # Extract base64 payload between markers
+    awk -v m="$marker" '
+        $0==m {found=1; next}
+        found && $0==("__END_" m) {exit}
+        found {print}
+    ' "$SELF" | base64 -d > "$TMPBIN" 2>/dev/null || return 1
+    chmod +x "$TMPBIN" 2>/dev/null || true
+    "$TMPBIN" "$@"
+    return $?
+}
+WRAPPER_HEAD
+    
+    # Add fallback logic and extraction
+    cat >> "$universal" << 'WRAPPER_TAIL'
+extract_and_run "$ARCH" "$@" && exit $?
+# Try fallbacks
+for a in x86_64 amd64 i686 x86 aarch64 arm64 armv7l riscv64; do
+    [ "$a" = "$ARCH" ] && continue
+    extract_and_run "$a" "$@" 2>/dev/null && exit $?
+done
+echo "Error: No compatible binary found for architecture $ARCH" >&2
+exit 1
+WRAPPER_TAIL
+    
+    # Append binaries
+    for arch in $built; do
+        binfile="$out_dir/${base}_${arch}"
+        if [ -f "$binfile" ]; then
+            echo "__LTNG_BIN_${arch}__" >> "$universal"
+            base64 < "$binfile" >> "$universal"
+            echo "__END___LTNG_BIN_${arch}__" >> "$universal"
+        fi
+    done
+    
+    chmod +x "$universal" 2>/dev/null || true
+    rm -rf "$tmpdir"
+    
+    echo "Compiled to $out_dir (architectures:$built, universal: ${base}_universal)"
+    exit 0
+fi
+
+# Normal run mode - compile to temp and run (no compiled output left behind)
+tmpbin="/tmp/ltng_run_$$"
+
+"$LTNG_BIN" $debug $check "$input" "$tmpbin"
+ret=$?
+
+if [ -n "$check" ]; then
+    rm -f "$tmpbin"
+    exit $ret
+fi
+
+if [ $ret -ne 0 ]; then
+    rm -f "$tmpbin"
+    exit $ret
+fi
+
+"$tmpbin" "$@"
+ret=$?
+
+rm -f "$tmpbin"
+
+exit $ret

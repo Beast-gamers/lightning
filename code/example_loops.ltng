@@ -1,0 +1,35 @@
+# Loops: while, do-while, and for (from/to/step)
+
+write("while:")
+let i = 0
+while (i < 3) {
+    write(i)
+    set i = i + 1
+}
+
+write("do-while:")
+let j = 0
+do {
+    write(j)
+    set j = j + 1
+} while (j < 3)
+
+write("for up:")
+for (k from 1 to 5) {
+    write(k)
+}
+
+write("for step +2:")
+for (m from 0 to 10 step 2) {
+    write(m)
+}
+
+write("for step -1 (down):")
+for (n from 3 to 0 step -1) {
+    write(n)
+}
+
+write("for step *2:")
+for (p from 1 to 16 step *2) {
+    write(p)
+}

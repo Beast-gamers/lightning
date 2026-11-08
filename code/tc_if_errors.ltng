@@ -1,0 +1,25 @@
+# These conditional programs should ALL fail with --check
+
+# --- Missing condition ---
+if () {
+    write("no condition")
+}
+
+# --- Missing parentheses around condition ---
+let x = 1
+if x > 0 {
+    write("no parens")
+}
+
+# --- Missing opening brace ---
+if (x > 0)
+    write("missing brace")
+}
+
+# --- Undeclared variable in condition ---
+if (nope > 1) {
+    write("undeclared")
+}
+
+# --- Unexpected closing brace ---
+}

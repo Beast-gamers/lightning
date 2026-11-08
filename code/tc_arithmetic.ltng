@@ -1,0 +1,107 @@
+# Comprehensive arithmetic tests
+# Covers: all operators, precedence, parenthesization, unary minus,
+#         mixed int/float, zero values, edge cases
+
+# --- Basic operations ---
+write(2 + 3)
+write(10 - 7)
+write(4 * 5)
+write(20 / 4)
+write(7 % 3)
+
+# --- Zero operations ---
+write(0 + 5)
+write(5 + 0)
+write(0 * 100)
+write(0 / 1)
+write(100 / 0)
+
+# --- Negative numbers ---
+write(-5)
+write(-0)
+write(-(-5))
+write(-(-(-5)))
+
+# --- Unary minus with variable ---
+let a = 10
+write(-a)
+write(-(-a))
+write(-(a))
+write(-(-(-a)))
+
+# --- PEMDAS ---
+write(2 + 3 * 4)
+write(2 * 3 + 4)
+write(10 - 2 * 3)
+write(10 * 2 - 3)
+write(2 + 3 + 4 + 5)
+write(2 * 3 * 4)
+
+# --- Parenthesized precedence ---
+write((2 + 3) * 4)
+write(2 * (3 + 4))
+write((10 - 5) * (2 + 3))
+write((1 + 2) * (3 + 4) * (5 + 6))
+
+# --- Deep nesting ---
+write((((((1 + 2))))))
+write((((10 - 5))))
+write(((2)) * ((3)))
+
+# --- Division ---
+write(10 / 3)
+write(10 / 5)
+write(0 / 5)
+write(100 / 10)
+
+# --- Modulo ---
+write(10 % 3)
+write(10 % 5)
+write(7 % 7)
+write(0 % 3)
+
+# --- Float arithmetic ---
+write(1.5 + 2.5)
+write(10.0 - 3.5)
+write(2.0 * 3.0)
+write(10.0 / 4.0)
+write(-3.14)
+write(0.0 + 0.0)
+write(1.5 * 2.0)
+
+# --- Int expressions with variables ---
+let x = 10
+let y = 3
+write(x + y)
+write(x - y)
+write(x * y)
+write(x / y)
+write(x % y)
+write(x + x)
+write(x * 0)
+write(y * y * y)
+
+# --- Complex expressions ---
+write(1 + 2 * 3 - 4 + 5 * 6 - 7 + 8)
+write(100 - 50 + 25 - 12 + 6)
+write(2 * 3 + 4 * 5 + 6 * 7)
+write((100 - 50) / (10 - 5))
+write(10 * (2 + 3))
+
+# --- Bool in arithmetic ---
+let bt = true
+let bf = false
+write(bt + 1)
+write(bf + 1)
+write(bt * 10)
+write(bf * 10)
+write(bt + bf)
+
+# --- Char in arithmetic ---
+let ca = 'A'
+let cz = 'Z'
+write(ca + 0)
+write(ca + 1)
+write(ca + 25)
+write(cz - ca)
+write(ca + (cz - ca))

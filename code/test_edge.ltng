@@ -1,0 +1,74 @@
+# Test 12: Edge cases
+
+# Zero values
+let zi = 0
+let zf = 0.0
+let zs = ""
+write(zi)
+write(zf)
+write(zs)
+
+# Negative zero
+let nz = -0
+write(nz)
+
+# Large numbers
+let big = 999999
+let bigf = 999999.999
+write(big)
+write(bigf)
+
+# Single char
+let sc = 'A'
+write(sc)
+
+# Char arithmetic
+let ch = 'A'
+let ch2 = ch + 1
+write(ch2)
+
+# Bool as numbers
+let bt = true
+let bf = false
+let bsum = bt + bf
+write(bsum)
+
+# Multiple set
+let ms = 1
+set ms = 2
+set ms = 3
+set ms = 4
+write(ms)
+
+# Change value with set
+let rd = 1
+write(rd)
+set rd = 2
+write(rd)
+
+# Const expression from variable
+let base = 10
+const derived = base * 2
+write(derived)
+
+# typeof with set type change
+let ts = typeof(42)
+write(ts)
+set ts = typeof(3.14)
+write(ts)
+
+# Interpolation with set value
+let iv = 10
+write("$[iv]")
+set iv = 99
+write("$[iv]")
+
+# Empty write
+# write() should error
+
+# Complex expression with all operator types
+let cx = 5
+let cy = 3
+write(cx + cy * 2 - 1)
+write((cx + cy) * 2 - 1)
+write(cx * cy + cx / cy)

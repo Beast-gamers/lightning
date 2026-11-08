@@ -1,0 +1,85 @@
+# Comprehensive C reserved word tests
+# Covers: all C keywords as variables, declaration, set, typeof, interpolation
+
+# --- Basic C keyword usage ---
+let return = 1
+let break = 2
+let continue = 3
+let switch = 4
+let case = 5
+let default = 6
+let if_var = 7
+let else_var = 8
+let while_var = 9
+let for_var = 10
+let do_var = 11
+let struct = 12
+let union = 13
+let enum = 14
+let typedef = 15
+let sizeof = 16
+let static = 17
+let extern = 18
+let auto = 19
+let register = 20
+let volatile = 21
+let const_var = 22
+let double = 23
+let long = 24
+let short = 25
+let unsigned = 26
+let signed = 27
+let void_var = 28
+let main = 29
+let printf_var = 30
+let scanf_var = 31
+let snprintf_var = 32
+let include = 33
+
+write(return)
+write(break)
+write(switch)
+write(double)
+write(long)
+write(short)
+write(main)
+write(printf_var)
+write(include)
+
+# --- C keywords with set ---
+set return = 100
+set break = 200
+set main = 300
+write(return)
+write(break)
+write(main)
+
+# --- C keywords with typeof ---
+write(typeof(return))
+write(typeof(double))
+write(typeof(long))
+
+# --- C keywords in interpolation ---
+let kw = 42
+write("$[return]")
+write("$[break]")
+write("$[main]")
+
+# --- C keywords in expressions ---
+write(return + break)
+write(double * 2)
+write(main - return)
+
+# --- C keywords as const ---
+const const_ret = 55
+const const_dbl = 66
+write(const_ret)
+write(const_dbl)
+
+# --- C keywords with explicit types ---
+let int_ret = 10
+let float_dbl = 1.5
+let string_main = "hello"
+write(int_ret)
+write(float_dbl)
+write(string_main)
