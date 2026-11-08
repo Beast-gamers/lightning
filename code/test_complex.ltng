@@ -1,15 +1,23 @@
 # Test complex multi-feature interactions
 
-# typeof with set type change
+# typeof with consistent types
 let v = 42
 let tt = typeof(v)
 write(tt)
-set v = 3.14
+set v = 100
 set tt = typeof(v)
 write(tt)
-set v = "hello"
+set v = -7
 set tt = typeof(v)
 write(tt)
+
+# Interpolation with consistent type
+let s = "first"
+write("$[s]")
+set s = "second"
+write("$[s]")
+set s = "third"
+write("$[s]")
 
 # Const expression that references another const
 const a = 10
@@ -18,14 +26,6 @@ const c = b + a
 write(a)
 write(b)
 write(c)
-
-# Interpolation after type change
-let s = "first"
-write("$[s]")
-set s = 42
-write("$[s]")
-set s = 'X'
-write("$[s]")
 
 # Expression with mixed types
 let m1 = 10
@@ -57,7 +57,7 @@ write("$[typeof(nx)]")
 write("Type is: $[typeof(nx)]")
 
 # Set with typeof
-let st = int
+let st = string
 set st = typeof(nx)
 write(st)
 

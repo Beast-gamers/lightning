@@ -10,16 +10,14 @@ write(a)
 set a = 30
 write(a)
 
-# --- Set changing types ---
+# --- Set same type ---
 let b = 42
 write(typeof(b))
-set b = 3.14
+set b = 100
 write(typeof(b))
-set b = "now string"
+set b = 255
 write(typeof(b))
-set b = 'C'
-write(typeof(b))
-set b = true
+set b = -7
 write(typeof(b))
 write(b)
 
@@ -46,18 +44,16 @@ write(ret)
 set ret = ret + 1
 write(ret)
 
-# --- Set changing type repeatedly ---
+# --- Set same type repeatedly ---
 let h = 1
 write(typeof(h))
-set h = 1.5
-write(typeof(h))
-set h = "abc"
-write(typeof(h))
-set h = 'Z'
-write(typeof(h))
-set h = false
+set h = 10
 write(typeof(h))
 set h = 100
+write(typeof(h))
+set h = -50
+write(typeof(h))
+set h = 1000
 write(typeof(h))
 
 # --- Set with unary minus ---
@@ -68,7 +64,7 @@ set i = -(-i)
 write(i)
 
 # --- Set from typeof expression ---
-let j = int
+let j = string
 set j = typeof(42)
 write(j)
 

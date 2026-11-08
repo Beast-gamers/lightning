@@ -36,6 +36,7 @@ static const char *default_for(VarType t) {
         case TYPE_STRING: return "";
         case TYPE_CHAR: return "";
         case TYPE_BOOL: return "false";
+        case TYPE_OBJECT: return "";
     }
     return "";
 }
@@ -45,7 +46,8 @@ static int is_simple_var_or_keyword(const char *name, SymbolTable *table) {
         strcmp(name, "false") == 0 || strcmp(name, "f") == 0) return 1;
     if (strcmp(name, "int") == 0 || strcmp(name, "float") == 0 ||
         strcmp(name, "string") == 0 || strcmp(name, "char") == 0 ||
-        strcmp(name, "bool") == 0 || strcmp(name, "typeof") == 0 ||
+        strcmp(name, "bool") == 0 || strcmp(name, "obj") == 0 ||
+        strcmp(name, "typeof") == 0 ||
         strcmp(name, "let") == 0 || strcmp(name, "const") == 0 ||
         strcmp(name, "set") == 0 || strcmp(name, "write") == 0 ||
         strcmp(name, "read") == 0) return 1;

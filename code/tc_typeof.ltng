@@ -65,16 +65,14 @@ write("$[typeof(v2)]")
 write("$[typeof(v4)]")
 write("$[typeof(v5)]")
 
-# --- typeof after type changes ---
+# --- typeof with consistent types ---
 let ct = 10
 write(typeof(ct))
-set ct = 3.14
+set ct = 20
 write(typeof(ct))
-set ct = "hello"
+set ct = 300
 write(typeof(ct))
-set ct = 'Z'
-write(typeof(ct))
-set ct = false
+set ct = -5
 write(typeof(ct))
 
 # --- typeof in const ---

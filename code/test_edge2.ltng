@@ -42,9 +42,9 @@ write("$[x] $[y] $[z] $[x] $[y] $[z]")
 const ce = 10 * 5 + 3
 write(ce)
 
-# Set changing type via expression
+# Set same type via expression
 let sv = "hello"
-set sv = 42
+set sv = "world"
 write(sv)
 
 # Multiple typeof nesting

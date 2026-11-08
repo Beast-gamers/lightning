@@ -32,16 +32,16 @@ write(typeof(true))
 write(typeof(typeof(v)))
 write(typeof(typeof(typeof(v))))
 
-# Test 5: set type changes
+# Test 5: set same type
 let chg = 10
 write(chg)
-set chg = 3.14
+set chg = 20
 write(chg)
-set chg = "now string"
+set chg = 300
 write(chg)
-set chg = 'C'
+set chg = -50
 write(chg)
-set chg = true
+set chg = 1000
 write(chg)
 
 # Test 6: const from expression

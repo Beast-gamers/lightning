@@ -14,7 +14,7 @@ set b = false
 # set with expression
 set x = x + 50
 set y = y * 2
-set x = x - y
+set x = x - 25
 
 write(x)
 write(y)

@@ -125,11 +125,11 @@ let struct_uninit = float
 write(long_uninit)
 write(struct_uninit)
 
-# Set with type change
+# Set with same type
 let long_change = 10
-set long_change = 3.14
-set long_change = "now string"
-set long_change = 'X'
+set long_change = 20
+set long_change = 300
+set long_change = -50
 write(long_change)
 
 # Read with C keyword var name

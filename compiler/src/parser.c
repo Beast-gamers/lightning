@@ -225,7 +225,8 @@ static int is_type_keyword(const char *name) {
            strcmp(name, "float") == 0 ||
            strcmp(name, "string") == 0 ||
            strcmp(name, "char") == 0 ||
-           strcmp(name, "bool") == 0;
+           strcmp(name, "bool") == 0 ||
+           strcmp(name, "obj") == 0;
 }
 
 static int is_ltng_reserved(const char *name) {
@@ -326,6 +327,7 @@ static VarType type_keyword_to_vartype(const char *name) {
     if (strcmp(name, "string") == 0) return TYPE_STRING;
     if (strcmp(name, "char") == 0) return TYPE_CHAR;
     if (strcmp(name, "bool") == 0) return TYPE_BOOL;
+    if (strcmp(name, "obj") == 0) return TYPE_OBJECT;
     return TYPE_STRING;
 }
 
@@ -779,6 +781,8 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
     return 0;
 }
 
+static const char *type_name_str(VarType t);
+
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
                                   int stop_on_rparen, int stop_on_comma) {
@@ -911,12 +915,47 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         goto collect_ident_var;
                     }
                 } else if (strcmp(tok.value, "typeof") == 0) {
-                    Token typeof_val;
-                    if (try_parse_typeof(lexer, table, &typeof_val)) {
-                        pos += snprintf(out + pos, out_size - pos, "\"%s\"", typeof_val.value);
-                        if (!type_locked) result_type = TYPE_STRING;
+                    /* typeof was already consumed by lexer_next; parse typeof(arg) */
+                    Token open = lexer_peek(lexer);
+                    if (open.type != TOKEN_LPAREN) {
+                        goto collect_ident_var;
+                    }
+                    lexer_next(lexer); /* consume ( */
+                    Token arg = lexer_next(lexer);
+                    Token close = lexer_next(lexer);
+                    if (close.type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, close.line, close.col,
+                            "Expected ')' after typeof argument");
+                        skip_to_newline(lexer);
+                        pos += snprintf(out + pos, out_size - pos, "0");
                         continue;
                     }
+                    VarType vt;
+                    if (arg.type == TOKEN_INT_LIT) {
+                        vt = TYPE_INT;
+                    } else if (arg.type == TOKEN_FLOAT_LIT) {
+                        vt = TYPE_FLOAT;
+                    } else if (arg.type == TOKEN_STRING) {
+                        vt = TYPE_STRING;
+                    } else if (arg.type == TOKEN_CHAR) {
+                        vt = TYPE_CHAR;
+                    } else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) {
+                        vt = TYPE_BOOL;
+                    } else if (arg.type == TOKEN_IDENT || token_is_name(arg)) {
+                        char mangled[MAX_IDENTIFIER_LEN];
+                        mangle_name(arg.value, mangled, MAX_IDENTIFIER_LEN);
+                        if (symbol_table_has(table, mangled)) {
+                            vt = symbol_table_get(table, mangled);
+                        } else {
+                            vt = TYPE_STRING;
+                        }
+                    } else {
+                        vt = TYPE_STRING;
+                    }
+                    const char *vtname = type_name_str(vt);
+                    pos += snprintf(out + pos, out_size - pos, "\"%s\"", vtname);
+                    if (!type_locked) result_type = TYPE_STRING;
+                    continue;
                 } else {
                 collect_ident_var:
                     char mangled[MAX_IDENTIFIER_LEN];
@@ -1923,25 +1962,21 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
 
         Token peek_val = lexer_peek(lexer);
         if (peek_val.type == TOKEN_NEWLINE || peek_val.type == TOKEN_EOF) {
-            value.type = TOKEN_INT_LIT;
+            /* Type declaration without value - init to default */
             switch (vtype) {
-                case TYPE_INT: strcpy(value.value, "0"); break;
-                case TYPE_FLOAT: strcpy(value.value, "0.0"); break;
+                case TYPE_INT: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
+                case TYPE_FLOAT: value.type = TOKEN_INT_LIT; strcpy(value.value, "0.0"); break;
                 case TYPE_STRING: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
                 case TYPE_CHAR: value.type = TOKEN_CHAR; strcpy(value.value, "\0"); break;
-                case TYPE_BOOL: strcpy(value.value, "false"); break;
+                case TYPE_BOOL: value.type = TOKEN_INT_LIT; strcpy(value.value, "false"); break;
+                case TYPE_OBJECT: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
             }
             value.line = let_tok.line;
             value.col = equals.col;
         } else {
-            /* typed value: e.g. let d2 = float -3.14 */
-            char expr[MAX_STRING_LEN];
-            collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
-            symbol_table_add(table, mangled, vtype);
-            ASTNode *node = create_node(NODE_LET, mangled, expr);
-            node->var_type = vtype;
-            node->is_expr = 1;
-            emit(node);
+            error_state_add(parser_errors, type_tok.line, type_tok.col,
+                "Cannot assign a value with a type declaration");
+            skip_to_newline(lexer);
             return;
         }
     } else {
@@ -2218,6 +2253,35 @@ static void token_append_source(char *out, int *pos, int out_size, Token tok) {
     }
 }
 
+static const char *type_name_str(VarType t) {
+    switch (t) {
+        case TYPE_INT: return "int";
+        case TYPE_FLOAT: return "float";
+        case TYPE_STRING: return "string";
+        case TYPE_CHAR: return "char";
+        case TYPE_BOOL: return "bool";
+        case TYPE_OBJECT: return "object";
+    }
+    return "unknown";
+}
+
+/* Enforce dtype immutability: a variable cannot change its declared type. */
+static int check_set_type_immutable(SymbolTable *table, const char *mangled,
+                                     VarType new_type, int line, int col,
+                                     Lexer *lexer) {
+    VarType existing = symbol_table_get(table, mangled);
+    if (existing != new_type) {
+        char msg[256];
+        snprintf(msg, sizeof(msg),
+            "Cannot change type of variable '%s' from %s to %s",
+            mangled, type_name_str(existing), type_name_str(new_type));
+        error_state_add(parser_errors, line, col, msg);
+        skip_to_newline(lexer);
+        return 0;
+    }
+    return 1;
+}
+
 static void parse_set(Lexer *lexer, SymbolTable *table) {
     Token set_tok = lexer_next(lexer);
 
@@ -2278,6 +2342,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         snprintf(full_expr, sizeof(full_expr), "%s %c %s", name.value, opchar, expr_rhs_src);
         char expr_out[MAX_STRING_LEN];
         VarType etype = parse_expression_from_string(full_expr, table, expr_out, sizeof(expr_out));
+        if (!check_set_type_immutable(table, mangled, etype, set_tok.line, set_tok.col, lexer))
+            return;
         symbol_table_update(table, mangled, etype);
         ASTNode *node = create_node(NODE_SET, mangled, expr_out);
         node->var_type = etype;
@@ -2294,6 +2360,15 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
     Token next = lexer_peek(lexer);
     VarType vtype;
     Token value;
+
+    /* object literal assignment */
+    if (next.type == TOKEN_LBRACE) {
+        lexer_next(lexer); /* consume { */
+        if (!check_set_type_immutable(table, mangled, TYPE_OBJECT, set_tok.line, set_tok.col, lexer))
+            return;
+        parse_object_literal(lexer, table, mangled, 0, 0);
+        return;
+    }
 
     if (next.type == TOKEN_IDENT && is_type_keyword(next.value)) {
         Token type_tok = lexer_next(lexer);
@@ -2312,6 +2387,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             char expr[MAX_STRING_LEN];
             if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr))) {
                 vtype = TYPE_STRING;
+                if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
+                    return;
                 symbol_table_update(table, mangled, vtype);
                 ASTNode *node = create_node(NODE_SET, mangled, expr);
                 node->var_type = vtype;
@@ -2325,6 +2402,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             char expr[MAX_STRING_LEN];
             VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
             vtype = expr_type;
+            if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
+                return;
             symbol_table_update(table, mangled, vtype);
             ASTNode *node = create_node(NODE_SET, mangled, expr);
             node->var_type = vtype;
@@ -2388,6 +2467,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             char expr[MAX_STRING_LEN];
             VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
             vtype = expr_type;
+            if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
+                return;
             symbol_table_update(table, mangled, vtype);
             ASTNode *node = create_node(NODE_SET, mangled, expr);
             node->var_type = vtype;
@@ -2423,6 +2504,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         }
     }
 
+    if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
+        return;
     symbol_table_update(table, mangled, vtype);
 
     resolve_string_interpolation(&value, table, value.line, value.col);

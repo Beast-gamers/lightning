@@ -61,21 +61,20 @@ write(c3)
 write(c4)
 write(c5)
 
-# --- Type changes in sequence ---
+# --- Type consistency in sequence ---
 let tc = 1
-set tc = 1.5
-set tc = "str"
-set tc = 'X'
-set tc = true
-set tc = 999
+set tc = 2
+set tc = 3
+set tc = 4
+set tc = 5
 write(tc)
 
 # --- Interpolation with typeof after type changes ---
 let its = 42
 write("$[its]")
-set its = "changed"
+set its = 100
 write("$[its]")
-set its = typeof(its)
+set its = its + 1
 write("$[its]")
 
 # --- Write after many operations ---
@@ -114,9 +113,9 @@ write(ct)
 # --- Write with complex multi-feature ---
 let mf = 10
 write("Value: $[mf], Type: $[typeof(mf)]")
-set mf = 3.14
+set mf = 20
 write("Value: $[mf], Type: $[typeof(mf)]")
-set mf = "hello"
+set mf = 300
 write("Value: $[mf], Type: $[typeof(mf)]")
 
 # --- Set with expression from multiple sources ---

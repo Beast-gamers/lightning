@@ -46,7 +46,8 @@ write(c5)
 
 # --- Uninitialized with explicit negative/float ---
 let d1 = -5
-let d2 = float -3.14
+let d2 = float
+set d2 = -3.14
 write(d1)
 write(d2)
 

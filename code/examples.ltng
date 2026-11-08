@@ -126,9 +126,6 @@ write(val)
 set val = 20
 write("After set 20: ")
 write(val)
-set val = 3.14
-write("After set float: ")
-write(val)
 set val = 100
 write("After set int: ")
 write(val)

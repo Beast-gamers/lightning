@@ -48,7 +48,7 @@ write(ca)
 # write(())
 
 # Set to expression with typeof
-let stype = int
+let stype = string
 set stype = typeof(42)
 write(stype)
 
