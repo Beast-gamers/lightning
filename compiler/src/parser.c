@@ -11,6 +11,7 @@ static int g_func_count = 0;
 static int g_in_function = 0;
 static Program *g_program_ref = NULL;
 static char g_enclosing_cname[MAX_IDENTIFIER_LEN] = "";
+static int g_ret_obj_count = 0;
 
 #define MAX_OBJS 128
 static ObjSchema g_objs[MAX_OBJS];
@@ -241,6 +242,24 @@ static int is_ltng_reserved(const char *name) {
            strcmp(name, "else") == 0 ||
            is_type_keyword(name) ||
            is_bool_value(name);
+}
+
+/* ltng keywords that cannot be used as function names (C reserved words like
+   return/break/continue/switch/case/default are allowed as variable names). */
+static int is_ltng_keyword(const char *name) {
+    return strcmp(name, "return") == 0 ||
+           strcmp(name, "break") == 0 ||
+           strcmp(name, "continue") == 0 ||
+           strcmp(name, "function") == 0 ||
+           strcmp(name, "switch") == 0 ||
+           strcmp(name, "case") == 0 ||
+           strcmp(name, "default") == 0 ||
+           strcmp(name, "from") == 0 ||
+           strcmp(name, "to") == 0 ||
+           strcmp(name, "step") == 0 ||
+           strcmp(name, "and") == 0 ||
+           strcmp(name, "or") == 0 ||
+           strcmp(name, "not") == 0;
 }
 
 /* Tokens that can serve as identifier names in declaration/reference contexts.
@@ -664,11 +683,45 @@ static void sanitize_mod_atof(char *out, int out_size) {
     out[out_size - 1] = 0;
 }
 
-/* Post-process: replace atof(X) + atof(Y) with _ltng_add_sn(X, Y)
-   for runtime string/number detection on buffer variables that can hold
-   either strings or numbers (e.g. function parameters typed as float).
-   We only replace atof() (float-typed), never atoi() (int-typed), because
-   int variables are always numeric. */
+/* Post-process: replace atof(X) + atof(Y), atof(X) + _ltng_add_sn(Y, Z),
+   _ltng_add_sn(X, Y) + atof(Z), etc. with _ltng_add_sn(...) for runtime
+   string/number detection on buffer variables (e.g. function params typed
+   as float). We only replace atof() (float-typed), never atoi() (int-typed). */
+static int is_add_operand(const char *p, char *content, int content_size) {
+    /* Try atof(X) */
+    if (strncmp(p, "atof(", 5) == 0) {
+        const char *op = p + 5;
+        const char *start = op;
+        while (*op && (isalnum((unsigned char)*op) || *op == '_')) op++;
+        int len = (int)(op - start);
+        if (*op == ')' && len > 0 && len < content_size - 1) {
+            memcpy(content, start, len);
+            content[len] = '\0';
+            return 1; /* single ident */
+        }
+        return 0;
+    }
+    /* Try _ltng_add_sn(X, Y) */
+    if (strncmp(p, "_ltng_add_sn(", 13) == 0) {
+        const char *op = p + 13;
+        const char *start1 = op;
+        while (*op && (isalnum((unsigned char)*op) || *op == '_')) op++;
+        int len1 = (int)(op - start1);
+        if (*op != ',' || len1 == 0 || len1 >= content_size - 1) return 0;
+        op++; /* skip , */
+        while (*op == ' ' || *op == '\t') op++;
+        const char *start2 = op;
+        while (*op && (isalnum((unsigned char)*op) || *op == '_')) op++;
+        int len2 = (int)(op - start2);
+        if (*op != ')' || len2 == 0 || len2 >= content_size - 1) return 0;
+        /* Build content: _ltng_add_sn(X, Y) */
+        int n = snprintf(content, content_size, "_ltng_add_sn(%.*s, %.*s)",
+                         len1, start1, len2, start2);
+        return (n > 0 && n < content_size);
+    }
+    return 0;
+}
+
 static int optimize_add_concat(char *out, int out_size, int pos) {
     char result[4096] = {0};
     char *src = out;
@@ -676,53 +729,37 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
     int replaced = 0;
 
     while (*src && (int)(dst - result) < 4095) {
-        int is_atof = (strncmp(src, "atof(", 5) == 0);
+        char left[256], right[256];
 
-        if (is_atof && pos > 0) {
-            char *op = src + 5;
-            char *ident1_start = op;
-            while (*op && (isalnum((unsigned char)*op) || *op == '_')) op++;
-            int ident1_len = (int)(op - ident1_start);
-
-            if (*op == ')' && ident1_len > 0 && ident1_len < 255) {
-                op++; /* skip ) */
-                while (*op == ' ' || *op == '\t') op++;
-                if (*op == '+') {
-                    op++; /* skip + */
-                    while (*op == ' ' || *op == '\t') op++;
-                    int is_atof2 = (strncmp(op, "atof(", 5) == 0);
-
-                    if (is_atof2) {
-                        op += 5;
-                        char *ident2_start = op;
-                        while (*op && (isalnum((unsigned char)*op) || *op == '_')) op++;
-                        int ident2_len = (int)(op - ident2_start);
-
-                        if (*op == ')' && ident2_len > 0 && ident2_len < 255) {
-                            char *after = op + 1;
-                            while (*after == ' ' || *after == '\t') after++;
-                            /* Skip replacement if '+' is not top-level:
-                               followed by another operator or a closing paren */
-                            int next_op = (*after == '*' || *after == '/' || *after == '%' ||
-                                           *after == '+' || *after == '-' || *after == '^' ||
-                                           *after == '&' || *after == '|' || *after == '<' ||
-                                           *after == '>' || *after == '!' || *after == '=' ||
-                                           *after == ')');
-                            if (!next_op) {
-                                char ident1[256], ident2[256];
-                                memcpy(ident1, ident1_start, ident1_len);
-                                ident1[ident1_len] = '\0';
-                                memcpy(ident2, ident2_start, ident2_len);
-                                ident2[ident2_len] = '\0';
-
-                                int n = snprintf(dst, 4096 - (int)(dst - result),
-                                                 "_ltng_add_sn(%s, %s)", ident1, ident2);
-                                dst += n;
-                                src = op + 1; /* skip ) */
-                                replaced = 1;
-                                continue;
-                            }
-                        }
+        if (is_add_operand(src, left, sizeof(left))) {
+            const char *after_left = src;
+            while (*after_left && (isalnum((unsigned char)*after_left) || *after_left == '_' ||
+                                   *after_left == '(' || *after_left == ')' || *after_left == ',' ||
+                                   *after_left == ' ' || *after_left == '\t')) after_left++;
+            while (*after_left == ' ' || *after_left == '\t') after_left++;
+            if (*after_left == '+') {
+                const char *after_plus = after_left + 1;
+                while (*after_plus == ' ' || *after_plus == '\t') after_plus++;
+                if (is_add_operand(after_plus, right, sizeof(right))) {
+                    const char *after_right = after_plus;
+                    while (*after_right && (isalnum((unsigned char)*after_right) || *after_right == '_' ||
+                                            *after_right == '(' || *after_right == ')' ||
+                                            *after_right == ',' || *after_right == ' ' ||
+                                            *after_right == '\t')) after_right++;
+                    while (*after_right == ' ' || *after_right == '\t') after_right++;
+                    /* Skip replacement if followed by another operator or closing paren */
+                    int next_op = (*after_right == '*' || *after_right == '/' || *after_right == '%' ||
+                                   *after_right == '+' || *after_right == '-' || *after_right == '^' ||
+                                   *after_right == '&' || *after_right == '|' || *after_right == '<' ||
+                                   *after_right == '>' || *after_right == '!' || *after_right == '=' ||
+                                   *after_right == ')');
+                    if (!next_op) {
+                        int n = snprintf(dst, 4096 - (int)(dst - result),
+                                         "_ltng_add_sn(%s, %s)", left, right);
+                        dst += n;
+                        src = after_right;
+                        replaced = 1;
+                        continue;
                     }
                 }
             }
@@ -1045,9 +1082,12 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     }
     out[pos] = '\0';
     sanitize_mod_atof(out, out_size);
-    /* Replace atof(X)+atof(Y) with runtime string/number add */
+    /* Replace atof(X)+atof(Y) / chained add patterns with runtime string/number add.
+       When a replacement happens, result_type becomes STRING (_ltng_add_sn returns char*). */
     if (!has_string_concat && !has_string_mult && result_type != TYPE_STRING) {
-        optimize_add_concat(out, out_size, pos);
+        while (optimize_add_concat(out, out_size, pos)) {
+            result_type = TYPE_STRING;
+        }
     }
     if (has_string_concat || has_string_mult || (result_type == TYPE_STRING && !strstr(out, "atof(") && !strstr(out, "_ltng_") && !strstr(out, "({") && (strstr(out, "+") != NULL || strstr(out, "*") != NULL))) {
         /* Handle multiplication with higher precedence - split by + at top level first */
@@ -3180,6 +3220,20 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             emit(node);
             return;
         }
+        /* object literal return: return { default = "x" v = 1 } */
+        if (next.type == TOKEN_LBRACE) {
+            lexer_next(lexer); /* consume { */
+            char temp_mangled[MAX_IDENTIFIER_LEN];
+            snprintf(temp_mangled, sizeof(temp_mangled), "__ret_obj_%d", g_ret_obj_count++);
+            symbol_table_add(table, temp_mangled, TYPE_OBJECT);
+            parse_object_literal(lexer, table, temp_mangled, 0, 0);
+            /* parse_object_literal emitted a NODE_LET to init fields; now emit return */
+            ASTNode *node = create_node(NODE_RETURN, "", temp_mangled);
+            node->var_type = TYPE_STRING;
+            node->is_expr = 1;
+            emit(node);
+            return;
+        }
         etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
     }
     ASTNode *node = create_node(NODE_RETURN, "", expr);
@@ -3197,7 +3251,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
         skip_to_newline(lexer);
         return NULL;
     }
-    if (is_ltng_reserved(name.value)) {
+    if (is_ltng_reserved(name.value) || is_ltng_keyword(name.value)) {
         error_state_add(parser_errors, name.line, name.col,
             "Cannot use reserved word as function name");
         skip_to_newline(lexer);
@@ -3237,15 +3291,14 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     ASTNode *params = NULL;
     ASTNode *plast = NULL;
     int pcount = 0;
-    /* function body scope: parent is global/root for non-capturing nested functions */
+    /* function body scope: parent is enclosing function scope
+       (so sibling nested functions are visible to each other) */
     Scope *func_scope = (Scope *)malloc(sizeof(Scope));
     if (!func_scope) {
         error_state_add(parser_errors, kw.line, kw.col, "Memory allocation failed");
         return NULL;
     }
-    Scope *root = table;
-    while (root && root->parent) root = root->parent;
-    scope_init(func_scope, root ? root : table, 0);
+    scope_init(func_scope, table, 0);
 
     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
         while (1) {

@@ -566,7 +566,8 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
     fprintf(out, "snprintf(%s, sizeof(%s), \"%%lld\", (long long)(%s));\n", var, var, start);
     pad(out, indent + 1);
     fprintf(out, "for (; ");
-    if (op == '-') {
+    /* Division and subtraction step downward; others step upward */
+    if (op == '-' || op == '/') {
         fprintf(out, "(long long)atoll(%s) >= (long long)(%s)", var, end);
     } else {
         fprintf(out, "(long long)atoll(%s) <= (long long)(%s)", var, end);
@@ -611,7 +612,12 @@ static void codegen_switch(FILE *out, ASTNode *node, SymbolTable *table, int ind
             pad(out, indent);
             if (first) fprintf(out, "if (");
             else fprintf(out, " else if (");
-            fprintf(out, "(%s) == (%s)) {\n", node->value, c->value);
+            /* Use strcmp for string comparison, == for numeric/bool */
+            if (node->var_type == TYPE_STRING) {
+                fprintf(out, "strcmp(%s, %s) == 0) {\n", node->value, c->value);
+            } else {
+                fprintf(out, "(%s) == (%s)) {\n", node->value, c->value);
+            }
             if (c->body) emit_block(out, c->body, table, indent + 1);
             pad(out, indent);
             fprintf(out, "}");
@@ -719,7 +725,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ snprintf(buf,256,\"%%lld\",v); return buf; }\n");
     fprintf(out, "static char *_ltng_from_double(char *buf, double v){ snprintf(buf,256,\"%%g\",v); return buf; }\n");
     fprintf(out, "static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit(*p)) h=1; else if(*p=='.'){} else return 0; } return h; }\n");
-    fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char buf[256]; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a),nb=atof(b); snprintf(buf,256,\"%%g\",na+nb); } else { snprintf(buf,256,\"%%s%%s\",a,b); } return buf; }\n");
+    fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char buf[32][256]; static int _ltng_asn_idx=0; _ltng_asn_idx=(_ltng_asn_idx+1)%%32; char *r=buf[_ltng_asn_idx]; r[0]=0; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a),nb=atof(b); snprintf(r,256,\"%%g\",na+nb); } else { snprintf(r,256,\"%%s%%s\",a,b); } return r; }\n");
     fprintf(out, "\n");
 
     /* Emit function prototypes and definitions */
@@ -745,6 +751,20 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             for (ASTNode *p = fn->params; p; p = p->next) {
                 fprintf(out, "    char %s[256] = \"\"; if(_a_%s) { strncpy(%s, _a_%s, 255); %s[255]=0; }\n",
                     p->name, p->name, p->name, p->name, p->name);
+            }
+            /* declare object field variables for object-typed parameters */
+            for (ASTNode *p = fn->params; p; p = p->next) {
+                ObjSchema *sc = obj_lookup(p->name);
+                if (sc) {
+                    for (int fi = 0; fi < sc->count; fi++) {
+                        char fv[MAX_IDENTIFIER_LEN*2+8];
+                        obj_resolve_field(p->name, sc->fields[fi].name, fv, sizeof(fv));
+                        int bsz = (strcmp(sc->fields[fi].name, "obj") == 0) ? 512 : 256;
+                        fprintf(out, "    char %s[%d] = \"", fv, bsz);
+                        { const char *v=sc->fields[fi].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\\n'){fputs("\\n",out);} else if(*v=='\\t'){fputs("\\t",out);} else fputc(*v,out);} }
+                        fprintf(out, "\";\n");
+                    }
+                }
             }
             /* declare locals from body */
             {
