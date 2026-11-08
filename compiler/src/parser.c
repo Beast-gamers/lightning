@@ -2103,28 +2103,13 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     VarType vtype;
     Token value;
 
+    /* const requires a value assignment: const x = <value>
+       Type-only declarations like 'const x = int' are not supported. */
     if (next.type == TOKEN_IDENT && is_type_keyword(next.value)) {
-        Token type_tok = lexer_next(lexer);
-        vtype = type_keyword_to_vartype(type_tok.value);
-
-        Token peek_val = lexer_peek(lexer);
-        if (peek_val.type == TOKEN_NEWLINE || peek_val.type == TOKEN_EOF) {
-            error_state_add(parser_errors, type_tok.line, type_tok.col,
-                "Constants must be initialized");
-            skip_to_newline(lexer);
-            return;
-        } else {
-            /* typed const value: e.g. const g2 = float -1.5 */
-            char expr[MAX_STRING_LEN];
-            collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
-            symbol_table_add(table, mangled, vtype);
-            symbol_table_set_const(table, mangled, 1);
-            ASTNode *node = create_node(NODE_CONST, mangled, expr);
-            node->var_type = vtype;
-            node->is_expr = 1;
-            emit(node);
-            return;
-        }
+        error_state_add(parser_errors, next.line, next.col,
+            "const requires a value assignment, not a type declaration");
+        skip_to_newline(lexer);
+        return;
     } else {
         Token peek_first = lexer_peek(lexer);
         int use_expr = has_operator_ahead(lexer) || peek_first.type == TOKEN_LPAREN ||

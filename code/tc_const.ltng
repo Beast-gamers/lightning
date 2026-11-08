@@ -63,7 +63,7 @@ write(f3)
 
 # --- Const negative values ---
 const g1 = -42
-const g2 = float -1.5
+const g2 = -1.5
 write(g1)
 write(g2)
 
