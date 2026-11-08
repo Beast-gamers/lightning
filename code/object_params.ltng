@@ -1,0 +1,39 @@
+# Objects passed as function parameters - schema transfers to parameter name
+
+function show(p) {
+    write(p.age)
+    write(p.default)
+    write(p.name)
+}
+
+let person = obj
+set person = { default = "Person" name = "Saim" age = 17 }
+
+show(person)
+write(person.age)
+write(person.name)
+
+# Multiple object parameters
+function copy(dest, src) {
+    set dest = src
+    write(dest.age)
+}
+
+let a = obj
+let b = obj
+set a = { default = "A" age = 10 }
+set b = { default = "B" age = 20 }
+
+copy(b, a)
+write(b.age)
+
+# Nested function with object parameter
+function outer() {
+    function inner(p) {
+        write(p.age)
+    }
+    let x = obj
+    set x = { default = "Nested" age = 42 }
+    inner(x)
+}
+outer()

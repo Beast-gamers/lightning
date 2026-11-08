@@ -713,9 +713,100 @@ static void emit_block(FILE *out, ASTNode *node, SymbolTable *table, int indent)
     }
 }
 
+static ASTNode *find_function_by_cname(ASTNode *fns, const char *cname) {
+    for (ASTNode *fn = fns; fn; fn = fn->next) {
+        if (strcmp(fn->name, cname) == 0) return fn;
+    }
+    return NULL;
+}
+
+#define MAX_PARAM_SCHEMAS 256
+typedef struct {
+    char fn_name[MAX_IDENTIFIER_LEN];
+    int param_index;
+    char arg_var[MAX_IDENTIFIER_LEN];
+} ParamSchema;
+static ParamSchema g_param_schemas[MAX_PARAM_SCHEMAS];
+static int g_param_schema_count = 0;
+
+/* Record that an object variable is passed to a function parameter at a call site. */
+static void record_param_schema(ASTNode *call, ASTNode *fns) {
+    ASTNode *fn = find_function_by_cname(fns, call->name);
+    if (!fn) return;
+    int pidx = 0;
+    for (ASTNode *p = fn->params, *a = call->args; p && a; p = p->next, a = a->next, pidx++) {
+        if (a->is_variable && a->value[0] != '\0' && obj_lookup(a->value)) {
+            /* avoid duplicates */
+            int dup = 0;
+            for (int i = 0; i < g_param_schema_count; i++) {
+                if (strcmp(g_param_schemas[i].fn_name, fn->name) == 0 &&
+                    g_param_schemas[i].param_index == pidx &&
+                    strcmp(g_param_schemas[i].arg_var, a->value) == 0) { dup = 1; break; }
+            }
+            if (!dup && g_param_schema_count < MAX_PARAM_SCHEMAS) {
+                ParamSchema *e = &g_param_schemas[g_param_schema_count++];
+                strncpy(e->fn_name, fn->name, MAX_IDENTIFIER_LEN - 1);
+                e->fn_name[MAX_IDENTIFIER_LEN - 1] = '\0';
+                e->param_index = pidx;
+                strncpy(e->arg_var, a->value, MAX_IDENTIFIER_LEN - 1);
+                e->arg_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            }
+        }
+    }
+}
+
+static void traverse_record_param_schemas(ASTNode *node, ASTNode *fns) {
+    if (!node) return;
+    if (node->type == NODE_CALL) {
+        record_param_schema(node, fns);
+    }
+    traverse_record_param_schemas(node->body, fns);
+    traverse_record_param_schemas(node->orelse, fns);
+    traverse_record_param_schemas(node->cases, fns);
+    traverse_record_param_schemas(node->args, fns);
+    traverse_record_param_schemas(node->next, fns);
+}
+
+/* Merge all object schemas recorded for a function parameter into a combined schema.
+   Returns the number of fields in the combined schema. */
+static int merge_param_schemas(ObjSchema *combined, const char *fn_name, int param_index) {
+    memset(combined, 0, sizeof(ObjSchema));
+    int field_count = 0;
+    for (int i = 0; i < g_param_schema_count; i++) {
+        if (strcmp(g_param_schemas[i].fn_name, fn_name) != 0)
+            continue;
+        if (g_param_schemas[i].param_index != param_index)
+            continue;
+        ObjSchema *sc = obj_lookup(g_param_schemas[i].arg_var);
+        if (!sc) continue;
+        for (int fi = 0; fi < sc->count && field_count < MAX_OBJ_FIELDS; fi++) {
+            /* check if field already in combined */
+            int dup = 0;
+            for (int k = 0; k < field_count; k++) {
+                if (strcmp(combined->fields[k].name, sc->fields[fi].name) == 0) { dup = 1; break; }
+            }
+            if (!dup) {
+                combined->fields[field_count] = sc->fields[fi];
+                field_count++;
+            }
+        }
+    }
+    combined->count = field_count;
+    strncpy(combined->var, fn_name, MAX_IDENTIFIER_LEN - 1);
+    return field_count;
+}
+
 void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors) {
     codegen_errors = errors;
     codegen_table = table;
+
+    /* Pre-pass: record object schemas passed to function parameters at all call sites */
+    if (program->functions) {
+        traverse_record_param_schemas(program->head, program->functions);
+        for (ASTNode *fn = program->functions; fn; fn = fn->next) {
+            traverse_record_param_schemas(fn->body, program->functions);
+        }
+    }
 
     fprintf(out, "#include <stdio.h>\n");
     fprintf(out, "#include <string.h>\n");
@@ -759,14 +850,19 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             }
             /* declare object field variables for object-typed parameters */
             for (ASTNode *p = fn->params; p; p = p->next) {
-                ObjSchema *sc = obj_lookup(p->name);
-                if (sc) {
-                    for (int fi = 0; fi < sc->count; fi++) {
+                /* find the parameter index */
+                int pidx = 0;
+                for (ASTNode *pp = fn->params; pp && pp != p; pp = pp->next) pidx++;
+                /* Merge schemas from all call sites that pass an object to this parameter */
+                ObjSchema combined;
+                int fcount = merge_param_schemas(&combined, fn->name, pidx);
+                if (fcount > 0) {
+                    for (int fi = 0; fi < combined.count; fi++) {
                         char fv[MAX_IDENTIFIER_LEN*2+8];
-                        obj_resolve_field(p->name, sc->fields[fi].name, fv, sizeof(fv));
-                        int bsz = (strcmp(sc->fields[fi].name, "obj") == 0) ? 512 : 256;
+                        obj_resolve_field(p->name, combined.fields[fi].name, fv, sizeof(fv));
+                        int bsz = (strcmp(combined.fields[fi].name, "obj") == 0) ? 512 : 256;
                         fprintf(out, "    char %s[%d] = \"", fv, bsz);
-                        { const char *v=sc->fields[fi].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\\n'){fputs("\\n",out);} else if(*v=='\\t'){fputs("\\t",out);} else fputc(*v,out);} }
+                        { const char *v=combined.fields[fi].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\\n'){fputs("\\n",out);} else if(*v=='\\t'){fputs("\\t",out);} else fputc(*v,out);} }
                         fprintf(out, "\";\n");
                     }
                 }

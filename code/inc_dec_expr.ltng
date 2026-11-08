@@ -1,0 +1,31 @@
+# Increment/decrement as expressions (pre and post)
+
+let x = 5
+
+# Pre-increment: returns new value
+write(++x)    # 6
+write(x)      # 6
+
+# Post-increment: returns old value
+write(x++)    # 6
+write(x)      # 7
+
+# Pre-decrement: returns new value
+write(--x)    # 6
+write(x)      # 6
+
+# Post-decrement: returns old value
+write(x--)    # 6
+write(x)      # 5
+
+# Float increment/decrement
+let y = 3.5
+write(++y)    # 4.5
+write(y++)    # 4.5
+write(y)      # 5.5
+
+# Use in write() directly
+let z = 10
+write(++z)    # 11
+write(z--)    # 11
+write(z)      # 10

@@ -20,9 +20,19 @@ static int g_obj_count = 0;
 void obj_register(const char *mangled_var, ObjSchema *schema) {
     if (!mangled_var || !schema) return;
     for (int i = 0; i < g_obj_count; i++) {
-        if (strcmp(g_objs[i].var, mangled_var) == 0) { g_objs[i] = *schema; return; }
+        if (strcmp(g_objs[i].var, mangled_var) == 0) {
+            g_objs[i] = *schema;
+            strncpy(g_objs[i].var, mangled_var, MAX_IDENTIFIER_LEN - 1);
+            g_objs[i].var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            return;
+        }
     }
-    if (g_obj_count < MAX_OBJS) { g_objs[g_obj_count] = *schema; g_obj_count++; }
+    if (g_obj_count < MAX_OBJS) {
+        g_objs[g_obj_count] = *schema;
+        strncpy(g_objs[g_obj_count].var, mangled_var, MAX_IDENTIFIER_LEN - 1);
+        g_objs[g_obj_count].var[MAX_IDENTIFIER_LEN - 1] = '\0';
+        g_obj_count++;
+    }
 }
 
 ObjSchema *obj_lookup(const char *mangled_var) {
@@ -446,7 +456,8 @@ static int is_operator(TokenType t) {
            t == TOKEN_SLASH || t == TOKEN_PERCENT || t == TOKEN_AMP_AMP ||
            t == TOKEN_PIPE_PIPE || t == TOKEN_CARET_CARET || t == TOKEN_BANG || t == TOKEN_EQ_EQ ||
            t == TOKEN_BANG_EQ || t == TOKEN_LT || t == TOKEN_GT ||
-           t == TOKEN_LT_EQ || t == TOKEN_GT_EQ;
+           t == TOKEN_LT_EQ || t == TOKEN_GT_EQ ||
+           t == TOKEN_PLUS_PLUS || t == TOKEN_MINUS_MINUS;
 }
 
 static int token_is_int(Token tok, SymbolTable *table) {
@@ -806,6 +817,53 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
         tok = lexer_next(lexer);
 
         switch (tok.type) {
+            case TOKEN_PLUS_PLUS:
+            case TOKEN_MINUS_MINUS: {
+                /* Pre-increment/decrement as expression: ++x or --x
+                   Generates a C statement expression that converts to number,
+                   increments/decrements, stores back as string, returns result. */
+                int is_inc = (tok.type == TOKEN_PLUS_PLUS);
+                Token name = lexer_next(lexer);
+                if (name.type != TOKEN_IDENT && !token_is_name(name)) {
+                    error_state_add(parser_errors, tok.line, tok.col,
+                        "Expected variable name after '++' or '--'");
+                    break;
+                }
+                if (is_ltng_reserved(name.value)) {
+                    error_state_add(parser_errors, name.line, name.col,
+                        "Cannot use reserved word as variable name");
+                    break;
+                }
+                char mangled[MAX_IDENTIFIER_LEN];
+                mangle_name(name.value, mangled, MAX_IDENTIFIER_LEN);
+                if (!symbol_table_has(table, mangled)) {
+                    error_state_add(parser_errors, name.line, name.col,
+                        "Variable not declared");
+                    break;
+                }
+                VarType vt = symbol_table_get(table, mangled);
+                if (vt == TYPE_FLOAT) {
+                    if (is_inc)
+                        pos += snprintf(out + pos, out_size - pos,
+                            "({ double _n = (double)(atof(%s) + 1.0); snprintf(%s, sizeof(%s), \"%%g\", _n); _n; })",
+                            mangled, mangled, mangled);
+                    else
+                        pos += snprintf(out + pos, out_size - pos,
+                            "({ double _n = (double)(atof(%s) - 1.0); snprintf(%s, sizeof(%s), \"%%g\", _n); _n; })",
+                            mangled, mangled, mangled);
+                } else {
+                    if (is_inc)
+                        pos += snprintf(out + pos, out_size - pos,
+                            "({ long long _n = (long long)(atoi(%s) + 1); snprintf(%s, sizeof(%s), \"%%lld\", _n); _n; })",
+                            mangled, mangled, mangled);
+                    else
+                        pos += snprintf(out + pos, out_size - pos,
+                            "({ long long _n = (long long)(atoi(%s) - 1); snprintf(%s, sizeof(%s), \"%%lld\", _n); _n; })",
+                            mangled, mangled, mangled);
+                }
+                result_type = vt;
+                break;
+            }
             case TOKEN_INT_LIT:
                 pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
                 break;
@@ -829,7 +887,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     pos += snprintf(out + pos, out_size - pos, "'\\0'");
                 }
                 break;
-            case TOKEN_IDENT:
+            case TOKEN_IDENT: {
+                int saved_pos = pos;
                 if (is_bool_value(tok.value)) {
                     pos += snprintf(out + pos, out_size - pos, "%s",
                         (strcmp(tok.value, "true") == 0 || strcmp(tok.value, "t") == 0) ? "1" : "0");
@@ -1005,21 +1064,50 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             char mangled2[MAX_IDENTIFIER_LEN];
                             mangle_name(tok.value, mangled2, MAX_IDENTIFIER_LEN);
                             if (symbol_table_has(table, mangled2) && !symbol_table_is_const(table, mangled2)) {
-                                VarType vt = symbol_table_get(table, mangled2);
-                                if (vt == TYPE_INT) {
-                                    pos += snprintf(out + pos, out_size - pos, "(({ long long _t = atoi(%s); %s = %s + 1; _t; }))", mangled2, mangled2, mangled2);
-                                } else if (vt == TYPE_FLOAT) {
-                                    pos += snprintf(out + pos, out_size - pos, "(({ double _t = atof(%s); %s = %s + 1; _t; }))", mangled2, mangled2, mangled2);
-                                } else {
-                                    pos += snprintf(out + pos, out_size - pos, "({ %s = %s+1; %s; })", mangled2, mangled2, mangled2);
+                                /* Rewind output: replace variable conversion with statement expression */
+                                pos = saved_pos;
+                                if (nxt.type == TOKEN_PLUS_PLUS) {
+                                    VarType vt = symbol_table_get(table, mangled2);
+                                    if (vt == TYPE_INT) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "({ long long _t = (long long)atoi(%s); snprintf(%s, sizeof(%s), \"%%lld\", _t + 1); _t; })",
+                                            mangled2, mangled2, mangled2);
+                                    } else if (vt == TYPE_FLOAT) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "({ double _t = atof(%s); snprintf(%s, sizeof(%s), \"%%g\", _t + 1.0); _t; })",
+                                            mangled2, mangled2, mangled2);
+                                    } else {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "({ snprintf(%s, sizeof(%s), \"%%s\", %s); %s; })",
+                                            mangled2, mangled2, mangled2, mangled2);
+                                    }
+                                } else { /* MINUS_MINUS */
+                                    VarType vt = symbol_table_get(table, mangled2);
+                                    if (vt == TYPE_INT) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "({ long long _t = (long long)atoi(%s); snprintf(%s, sizeof(%s), \"%%lld\", _t - 1); _t; })",
+                                            mangled2, mangled2, mangled2);
+                                    } else if (vt == TYPE_FLOAT) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "({ double _t = atof(%s); snprintf(%s, sizeof(%s), \"%%g\", _t - 1.0); _t; })",
+                                            mangled2, mangled2, mangled2);
+                                    } else {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "({ snprintf(%s, sizeof(%s), \"%%s\", %s); %s; })",
+                                            mangled2, mangled2, mangled2, mangled2);
+                                    }
                                 }
                                 continue;
                             } else {
-                                pos += snprintf(out + pos, out_size - pos, "({ %s = %s-1; %s; })", mangled2, mangled2, mangled2);
+                                pos = saved_pos;
+                                pos += snprintf(out + pos, out_size - pos,
+                                    "({ snprintf(%s, sizeof(%s), \"%%s\", %s); %s; })",
+                                    mangled2, mangled2, mangled2, mangled2);
                                 continue;
                             }
                         }
                     }
+                }
                 }
                 break;
             case TOKEN_LPAREN:
@@ -1434,6 +1522,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
     Token first = lexer_peek(lexer);
 
     if (first.type == TOKEN_LPAREN || first.type == TOKEN_MINUS || first.type == TOKEN_BANG ||
+        first.type == TOKEN_PLUS_PLUS || first.type == TOKEN_MINUS_MINUS ||
         has_operator_ahead(lexer)) {
         char expr[MAX_STRING_LEN];
         VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 1, 0);
@@ -3231,7 +3320,7 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 ASTNode *an = create_node(NODE_PARAM, "", aexpr);
                 an->var_type = avt;
                 an->is_expr = 1;
-                if (avt == TYPE_STRING && aexpr[0] != '"' && aexpr[0] != '\0') {
+                if ((avt == TYPE_STRING || avt == TYPE_OBJECT) && aexpr[0] != '"' && aexpr[0] != '\0') {
                     int simple = 1;
                     for (char *p = aexpr; *p; p++) {
                         if (*p==' '||*p=='\t'||*p=='('||*p==')'||*p=='+'||*p=='*'||*p=='-'||*p=='/'||*p=='%'||*p=='='||*p=='!'||*p=='<'||*p=='>'||*p=='&'||*p=='|'||*p=='?') { simple = 0; break; }
@@ -3494,6 +3583,13 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                     ASTNode *an = create_node(NODE_PARAM, "", aexpr);
                     an->var_type = at;
                     an->is_expr = 1;
+                    if ((at == TYPE_STRING || at == TYPE_OBJECT) && aexpr[0] != '"' && aexpr[0] != '\0') {
+                        int simple = 1;
+                        for (char *p = aexpr; *p; p++) {
+                            if (*p==' '||*p=='\t'||*p=='('||*p==')'||*p=='+'||*p=='*'||*p=='-'||*p=='/'||*p=='%'||*p=='='||*p=='!'||*p=='<'||*p=='>'||*p=='&'||*p=='|'||*p=='?') { simple = 0; break; }
+                        }
+                        if (simple) an->is_variable = 1;
+                    }
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                     if (lexer_peek(lexer).type == TOKEN_COMMA) { lexer_next(lexer); continue; }
                     break;
