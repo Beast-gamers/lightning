@@ -229,18 +229,23 @@ let letter = 'A'
 ### Bare `let` (null variable)
 
 Use `let x` without an assignment to declare a `null`-typed variable that can
-hold any type. The first `set x = <value>` locks the type; after that the type
-cannot change (dtype immutability). Bare `let x` allows one type transition on
-first `set`.
+hold any type. A null variable is **not** dtype-locked, so `set` can change its
+dtype to match the assigned value on every assignment:
 
 ```
 let x           # null variable
 write(x)        # prints empty line
 set x = 5       # x becomes int
 write(x)        # 5
-set x = 10      # OK, same type (int)
-set x = "hi"    # error: cannot change type from int to string
+set x = "hi"    # OK - x becomes string
+write(x)        # hi
+set x = true    # OK - x becomes bool
+write(x)        # true
 ```
+
+To prevent dtype changes on a typed variable, declare it with a type
+(`let x = int`) which auto-locks it, or call `x.lock()` after the first
+`set`. Use `x.unlock()` to allow dtype changes again.
 
 ### Explicit Type Declaration
 
@@ -324,9 +329,10 @@ let x = 5
 x.lock()        # x's dtype (int) is now locked
 set x = 10      # OK - same type
 set x = "hi"    # error: Cannot change type of locked variable 'x' from int to string
-x.unlock()      # lock removed
+x.unlock()      # lock removed - dtype can now change freely
 set x = 10      # OK - same type
-set x = "hi"    # error: dtype immutability still applies (int -> string)
+set x = "hi"    # OK - x becomes string
+set x = true    # OK - x becomes bool
 ```
 
 **Rules:**
@@ -1133,7 +1139,7 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 - `let` and `const` declarations are not allowed inside `if` statements, `switch` statements, or loops (`for`, `while`, `do-while`)
 - `let x = int` declares without a value (default 0); `let x = int 42` is **not** allowed — use `set x = 42` afterward
 - `const x = 42` requires a value; `const x = int` or `const x = int 42` are **not** allowed
-- After a variable's type is locked, `set` cannot change it (dtype immutability). Bare `let x` (null) allows one type transition on first `set`.
+- After a variable's type is locked (via `let x = <type>` or `x.lock()`), `set` cannot change it (dtype immutability). Bare `let x` (null) is not locked — `set` can change its dtype freely on every assignment.
 - Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
 - C reserved words (e.g. `return`, `break`, `continue`, `switch`, `case`, `default`, `struct`, `main`, `printf`) **can** be used as variable names — they are mangled internally with a `_res` suffix.
 

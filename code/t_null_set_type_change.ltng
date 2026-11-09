@@ -1,0 +1,15 @@
+# Null variable dtype changes on set (let x -> set x = <value>)
+let x
+write(typeof(x))
+set x = 5
+write(typeof(x))
+write(x)
+set x = "hello"
+write(typeof(x))
+write(x)
+set x = true
+write(typeof(x))
+write(x)
+set x = 3.14
+write(typeof(x))
+write(x)
