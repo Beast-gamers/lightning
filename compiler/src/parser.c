@@ -374,6 +374,16 @@ void symbol_table_add_local(SymbolTable *table, const char *name, VarType type) 
     symbol_table_add_in(table, name, type);
 }
 
+/* Add a variable and auto-lock it if it has a concrete (non-null) type.
+   Used for let/const declarations so that declared variables are immutable
+   by default unless unlock() is called. */
+void symbol_table_add_locked(SymbolTable *table, const char *name, VarType type) {
+    symbol_table_add_in(table, name, type);
+    if (type != TYPE_NULL) {
+        symbol_table_set_locked(table, name, 1);
+    }
+}
+
 /* Update an existing variable in the scope chain (for set) */
 void symbol_table_update(SymbolTable *table, const char *name, VarType type) {
     for (Scope *s = table; s; s = s->parent) {
@@ -2067,7 +2077,7 @@ static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *ma
     obj_build_all(&schema);
     obj_register(mangled, &schema);
 
-    symbol_table_add(table, mangled, TYPE_OBJECT);
+    symbol_table_add_locked(table, mangled, TYPE_OBJECT);
     if (is_const) symbol_table_set_const(table, mangled, 1);
 
     ASTNode *node = create_node(is_node_const ? NODE_CONST : NODE_LET, mangled, schema.default_val);
@@ -2116,7 +2126,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
     if (lexer_peek(lexer).type == TOKEN_NEWLINE ||
         lexer_peek(lexer).type == TOKEN_EOF ||
         lexer_peek(lexer).type == TOKEN_RBRACE) {
-        symbol_table_add(table, mangled, TYPE_NULL);
+        symbol_table_add_locked(table, mangled, TYPE_NULL);
         ASTNode *node = create_node(NODE_LET, mangled, "");
         node->var_type = TYPE_NULL;
         node->is_expr = 0;
@@ -2183,7 +2193,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         if (use_expr) {
             char expr[MAX_STRING_LEN];
             if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr))) {
-                symbol_table_add(table, mangled, TYPE_STRING);
+                symbol_table_add_locked(table, mangled, TYPE_STRING);
                 ASTNode *node = create_node(NODE_LET, mangled, expr);
                 node->var_type = TYPE_STRING;
                 node->is_expr = 1;
@@ -2191,7 +2201,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 return;
             }
             VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
-            symbol_table_add(table, mangled, expr_type);
+            symbol_table_add_locked(table, mangled, expr_type);
             ASTNode *node = create_node(NODE_LET, mangled, expr);
             node->var_type = expr_type;
             node->is_expr = 1;
@@ -2226,7 +2236,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         }
     }
 
-    symbol_table_add(table, mangled, vtype);
+    symbol_table_add_locked(table, mangled, vtype);
 
     resolve_string_interpolation(&value, table, value.line, value.col);
 
@@ -2314,7 +2324,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         if (use_expr) {
             char expr[MAX_STRING_LEN];
             if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr))) {
-                symbol_table_add(table, mangled, TYPE_STRING);
+                symbol_table_add_locked(table, mangled, TYPE_STRING);
                 symbol_table_set_const(table, mangled, 1);
                 ASTNode *node = create_node(NODE_CONST, mangled, expr);
                 node->var_type = TYPE_STRING;
@@ -2323,7 +2333,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
                 return;
             }
             VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
-            symbol_table_add(table, mangled, expr_type);
+            symbol_table_add_locked(table, mangled, expr_type);
             symbol_table_set_const(table, mangled, 1);
             ASTNode *node = create_node(NODE_CONST, mangled, expr);
             node->var_type = expr_type;
@@ -2359,7 +2369,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         }
     }
 
-    symbol_table_add(table, mangled, vtype);
+    symbol_table_add_locked(table, mangled, vtype);
 
     symbol_table_set_const(table, mangled, 1);
 
