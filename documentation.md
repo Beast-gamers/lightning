@@ -138,6 +138,7 @@ let name = string
 let age = int
 let score = float
 let letter = char
+let flag = bool
 
 write("Enter your name:")
 read(name)
@@ -150,16 +151,36 @@ read(score)
 
 write("Enter a letter:")
 read(letter)
+
+write("Enter true/false:")
+read(flag)
+```
+
+You can also read into a null variable declared with bare `let x`. The first `read()`
+locks the type to `string` (since `read()` reads text input):
+
+```
+let x          # null variable
+read(x)        # x becomes string-typed
+write(x)       # prints whatever was typed
+set x = 42     # error: cannot change type from string to int
 ```
 
 ### Read Behavior by Type
 
 | Type | Reads | Example Input |
 |------|-------|---------------|
-| `int` | Integer | `42`, `-10` |
-| `float` | Decimal number | `3.14`, `99.5` |
-| `char` | Single character | `A`, `z` |
-| `string` | A word (until space) | `hello` |
+| `int` | Integer (converted with `atoi`) | `42`, `-10` |
+| `float` | Decimal number (converted with `atof`) | `3.14`, `99.5` |
+| `char` | Single character (first char of input) | `A`, `z` |
+| `string` | Raw input line | `hello` |
+| `bool` | `true`/`t` → true, anything else → false | `true`, `false` |
+| `obj` | Not supported (objects cannot be read from stdin) | — |
+
+Input is read as a full line (until newline). After reading, the value is stored
+according to the variable's declared type. For numeric types, the input is
+converted (`atoi`/`atof`) and stored back as a string buffer, so subsequent
+arithmetic works correctly.
 
 ## Variables
 

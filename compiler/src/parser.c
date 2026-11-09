@@ -1799,6 +1799,12 @@ static void parse_read(Lexer *lexer, SymbolTable *table) {
 
     VarType vtype = symbol_table_get(table, mangled);
 
+    /* If variable is null (bare let), first read locks type to string */
+    if (vtype == TYPE_NULL) {
+        symbol_table_update(table, mangled, TYPE_STRING);
+        vtype = TYPE_STRING;
+    }
+
     Token rparen = lexer_next(lexer);
     if (rparen.type != TOKEN_RPAREN) {
         error_state_add(parser_errors, arg.line, arg.col,

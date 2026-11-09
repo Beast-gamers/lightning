@@ -1,0 +1,33 @@
+# read() example - reading user input of various types
+
+write("Enter your name: ")
+let name = string
+read(name)
+write("Hello, $[name]!")
+
+write("Enter your age: ")
+let age = int
+read(age)
+write("Next year you will be $[age + 1]")
+
+write("Enter a score: ")
+let score = float
+read(score)
+write("Double the score: $[score * 2]")
+
+write("Enter a letter: ")
+let letter = char
+read(letter)
+write("You typed: $[letter]")
+
+write("Continue? (true/false): ")
+let flag = bool
+read(flag)
+write("Flag is: $[flag]")
+
+# Read into a null variable (bare let)
+write("Enter anything: ")
+let anything
+read(anything)
+write("You entered: $[anything]")
+write("Type is: $[typeof(anything)]")
