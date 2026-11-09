@@ -351,6 +351,47 @@ set x = true    # OK - x becomes bool
 - `lock()`/`unlock()` are compile-time operations only — no runtime code is
   generated. The lock state is tracked by the compiler.
 
+### Type Conversion: `int()`, `string()`, `bool()`
+
+Use type conversion functions to convert values between types. These can be
+used in any expression context (`let`, `const`, `set`, `write()`, `if`,
+`switch`, etc.):
+
+```
+# int() - convert a numeric string to a number
+write(int("3.14"))      # 3.14
+write(int("10"))        # 10
+write(int(-5))          # -5
+let s = "42"
+write(int(s))           # 42
+
+# string() - convert a value to a string
+write(string(true))     # true
+write(string(false))    # false
+write(string(42))       # 42
+write(string("hello"))  # hello
+
+# bool() - convert to true/false (true unless null/empty/0/false)
+write(bool("true"))     # true
+write(bool("false"))    # false
+write(bool(0))          # false
+write(bool(42))         # true
+write(bool(""))         # false
+```
+
+**Rules:**
+
+- `int(expr)` — If `expr` is a string containing a number (e.g. `"3.14"`),
+  the quotes are stripped and the numeric value is used. If `expr` is a
+  variable, its string value is used as-is. Result is always a string.
+- `string(expr)` — Converts `true`/`false` to `"true"`/`"false"`, number
+  literals to quoted strings, and passes other values through as-is.
+- `bool(expr)` — Returns `"true"` unless `expr` is null/empty/`0`/`false`,
+  in which case returns `"false"`. Number literals (`0` → false, else →
+  true) and string literals are evaluated at compile time; variables use a
+  runtime check.
+- All three functions produce string results and can be used anywhere a
+  string expression is expected.
 
 ### Object literals and the `obj` dtype
 

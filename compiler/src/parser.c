@@ -237,6 +237,15 @@ static int is_type_keyword(const char *name) {
            strcmp(name, "obj") == 0;
 }
 
+/* Return 1 for type keywords that can be used as conversion functions:
+   int(expr), string(expr), bool(expr). These are function calls, not
+   type declarations, when followed by '('. */
+static int is_type_conversion(const char *name) {
+    return strcmp(name, "int") == 0 ||
+           strcmp(name, "string") == 0 ||
+           strcmp(name, "bool") == 0;
+}
+
 static int is_ltng_reserved(const char *name) {
     return strcmp(name, "let") == 0 ||
            strcmp(name, "const") == 0 ||
@@ -837,6 +846,8 @@ static int part_is_stringy(const char *part) {
     return 0;
 }
 
+static void token_append_source(char *out, int *pos, int out_size, Token tok);
+
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
                                   int stop_on_rparen, int stop_on_comma) {
@@ -933,6 +944,118 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 break;
             case TOKEN_IDENT: {
                 int saved_pos = pos;
+                /* Type conversion functions: int(expr), string(expr), bool(expr) */
+                if ((strcmp(tok.value, "int") == 0 || strcmp(tok.value, "string") == 0 ||
+                     strcmp(tok.value, "bool") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                    lexer_next(lexer); /* consume ( */
+                    char inner[MAX_STRING_LEN];
+                    int ipos = 0;
+                    int depth = 1;
+                    while (lexer->current < lexer->count && depth > 0) {
+                        Token itok = lexer_peek(lexer);
+                        if (itok.type == TOKEN_LPAREN) depth++;
+                        else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
+                        else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
+                        itok = lexer_next(lexer);
+                        token_append_source(inner, &ipos, MAX_STRING_LEN, itok);
+                    }
+                    /* Trim trailing whitespace from inner */
+                    while (ipos > 0 && (inner[ipos-1] == ' ' || inner[ipos-1] == '\t')) ipos--;
+                    inner[ipos] = '\0';
+
+                    if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+                        lexer_next(lexer); /* consume ) */
+                    }
+
+                    /* Helper: check if inner is a simple number literal */
+                    int is_num_lit = 0;
+                    if (ipos >= 1) {
+                        const char *p = inner;
+                        if (*p == '-' || *p == '+') p++;
+                        if (*p != '\0') {
+                            int has_digit = 0;
+                            for (; *p; p++) {
+                                if (isdigit((unsigned char)*p)) has_digit = 1;
+                                else if (*p == '.') { /* ok */ }
+                                else { has_digit = 0; break; }
+                            }
+                            if (has_digit) is_num_lit = 1;
+                        }
+                    }
+
+                    /* Helper: check if inner is a simple quoted string literal */
+                    int is_simple_str_lit = 0;
+                    if (ipos >= 2 && inner[0] == '"') {
+                        int end_quote = -1;
+                        for (int i = 1; i < ipos; i++) {
+                            if (inner[i] == '\\' && i + 1 < ipos) i++;
+                            else if (inner[i] == '"') { end_quote = i; break; }
+                        }
+                        if (end_quote == ipos - 1) is_simple_str_lit = 1;
+                    }
+
+                    if (strcmp(tok.value, "int") == 0) {
+                        /* int(expr): output as a quoted string so codegen uses %s.
+                           String literals pass through as-is; number literals get
+                           quotes added; variables pass through as-is. */
+                        if (is_simple_str_lit) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                        } else if (is_num_lit) {
+                            pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                        }
+                        if (!type_locked) result_type = TYPE_STRING;
+                    } else if (strcmp(tok.value, "string") == 0) {
+                        /* string(expr): convert bool literals and number literals
+                           to quoted strings, else pass through */
+                        if (ipos == 4 && memcmp(inner, "true", 4) == 0) {
+                            pos += snprintf(out + pos, out_size - pos, "\"true\"");
+                        } else if (ipos == 5 && memcmp(inner, "false", 5) == 0) {
+                            pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                        } else if (ipos == 1 && inner[0] == 't') {
+                            pos += snprintf(out + pos, out_size - pos, "\"true\"");
+                        } else if (ipos == 1 && inner[0] == 'f') {
+                            pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                        } else if (is_num_lit) {
+                            pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                        }
+                        if (!type_locked) result_type = TYPE_STRING;
+                    } else if (strcmp(tok.value, "bool") == 0) {
+                        /* bool(expr): true unless null/empty/"0"/"false" */
+                        /* For number literals: 0 → false, else → true */
+                        /* For string literals: "" or "0" or "false" → false, else → true */
+                        /* For variables: runtime check */
+                        if (ipos == 1 && inner[0] == '0') {
+                            pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                        } else if (is_num_lit) {
+                            pos += snprintf(out + pos, out_size - pos, "\"true\"");
+                        } else if (is_simple_str_lit) {
+                            /* Check string literal content */
+                            if (ipos == 2) {
+                                /* empty string "" */
+                                pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                            } else if (ipos == 3 && inner[1] == '0') {
+                                /* "0" */
+                                pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                            } else if (ipos == 7 && memcmp(inner + 1, "false", 5) == 0) {
+                                /* "false" */
+                                pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                            } else {
+                                pos += snprintf(out + pos, out_size - pos, "\"true\"");
+                            }
+                        } else {
+                            /* variable or complex expression: runtime check */
+                            pos += snprintf(out + pos, out_size - pos,
+                                "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?\"true\":\"false\")",
+                                inner, inner, inner);
+                        }
+                        if (!type_locked) result_type = TYPE_STRING;
+                    }
+                    break;
+                }
                 if (is_bool_value(tok.value)) {
                     pos += snprintf(out + pos, out_size - pos, "%s",
                         (strcmp(tok.value, "true") == 0 || strcmp(tok.value, "t") == 0) ? "1" : "0");
@@ -1589,9 +1712,13 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
 
     Token first = lexer_peek(lexer);
 
+    Token second = lexer->tokens[lexer->current + 1];
+    int is_conv_call = (first.type == TOKEN_IDENT && is_type_conversion(first.value) &&
+                        second.type == TOKEN_LPAREN);
+
     if (first.type == TOKEN_LPAREN || first.type == TOKEN_MINUS || first.type == TOKEN_BANG ||
         first.type == TOKEN_PLUS_PLUS || first.type == TOKEN_MINUS_MINUS ||
-        has_operator_ahead(lexer)) {
+        has_operator_ahead(lexer) || is_conv_call) {
         char expr[MAX_STRING_LEN];
         VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 1, 0);
 
@@ -2153,7 +2280,11 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
     VarType vtype;
     Token value;
 
-    if (next.type == TOKEN_IDENT && is_type_keyword(next.value)) {
+    Token next2 = lexer->tokens[lexer->current + 1];
+    int is_type_conv_call = (next.type == TOKEN_IDENT && is_type_conversion(next.value) &&
+                             next2.type == TOKEN_LPAREN);
+
+    if (next.type == TOKEN_IDENT && is_type_keyword(next.value) && !is_type_conv_call) {
         Token type_tok = lexer_next(lexer);
         vtype = type_keyword_to_vartype(type_tok.value);
 
@@ -2176,6 +2307,16 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             skip_to_newline(lexer);
             return;
         }
+    } else if (is_type_conv_call) {
+        /* Type conversion call: let x = int("3.14") */
+        char expr[MAX_STRING_LEN];
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        symbol_table_add_locked(table, mangled, expr_type);
+        ASTNode *node = create_node(NODE_LET, mangled, expr);
+        node->var_type = expr_type;
+        node->is_expr = 1;
+        emit(node);
+        return;
     } else {
         Token peek_first = lexer_peek(lexer);
         int use_expr = has_operator_ahead(lexer) || peek_first.type == TOKEN_LPAREN ||
@@ -2300,12 +2441,26 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     VarType vtype;
     Token value;
 
+    int is_type_conv_call = (next.type == TOKEN_IDENT && is_type_conversion(next.value) &&
+                             lexer_peek(lexer).type == TOKEN_LPAREN);
+
     /* const requires a value assignment: const x = <value>
        Type-only declarations like 'const x = int' are not supported. */
-    if (next.type == TOKEN_IDENT && is_type_keyword(next.value)) {
+    if (next.type == TOKEN_IDENT && is_type_keyword(next.value) && !is_type_conv_call) {
         error_state_add(parser_errors, next.line, next.col,
             "const requires a value assignment, not a type declaration");
         skip_to_newline(lexer);
+        return;
+    } else if (is_type_conv_call) {
+        /* Type conversion call: const x = int("3.14") */
+        char expr[MAX_STRING_LEN];
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        symbol_table_add_locked(table, mangled, expr_type);
+        symbol_table_set_const(table, mangled, 1);
+        ASTNode *node = create_node(NODE_CONST, mangled, expr);
+        node->var_type = expr_type;
+        node->is_expr = 1;
+        emit(node);
         return;
     } else {
         Token peek_first = lexer_peek(lexer);
@@ -2559,7 +2714,11 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
-    if (next.type == TOKEN_IDENT && is_type_keyword(next.value)) {
+    Token next2 = lexer->tokens[lexer->current + 1];
+    int is_type_conv_call = (next.type == TOKEN_IDENT && is_type_conversion(next.value) &&
+                             next2.type == TOKEN_LPAREN);
+
+    if (next.type == TOKEN_IDENT && is_type_keyword(next.value) && !is_type_conv_call) {
         Token type_tok = lexer_next(lexer);
         vtype = type_keyword_to_vartype(type_tok.value);
 
@@ -2626,6 +2785,18 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             skip_to_newline(lexer);
             return;
         }
+    } else if (is_type_conv_call) {
+        /* Type conversion call: set x = int("3.14") */
+        char expr[MAX_STRING_LEN];
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        if (!check_set_type_immutable(table, mangled, expr_type, set_tok.line, set_tok.col, lexer))
+            return;
+        symbol_table_update(table, mangled, expr_type);
+        ASTNode *node = create_node(NODE_SET, mangled, expr);
+        node->var_type = expr_type;
+        node->is_expr = 1;
+        emit(node);
+        return;
     } else {
         Token peek_first = lexer_peek(lexer);
         int use_expr = has_operator_ahead(lexer) || peek_first.type == TOKEN_LPAREN ||
