@@ -692,6 +692,30 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             break;
         }
         case NODE_CALL: {
+            /* base-assign call statement: receiver = func(receiver, args...)
+               Used when the function's first parameter is named "base" and it
+               is called via UFCS (receiver.method(args)). The return value is
+               written back to the receiver variable. */
+            if (node->is_base_assign && node->args && node->args->value[0] != '\0') {
+                const char *recv = node->args->value;
+                pad(out, indent);
+                fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s(_ltng_retbuf()", recv, recv, node->name);
+                for (ASTNode *a = node->args; a; a = a->next) {
+                    if (a->var_type == TYPE_STRING && a->value[0] == '"') {
+                        fprintf(out, ", %s", a->value);
+                    } else if (a->is_variable && a->value[0] != '\0') {
+                        fprintf(out, ", %s", a->value);
+                    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+                        fprintf(out, ", %s", a->value);
+                    } else if (a->value[0] == '\0') {
+                        fprintf(out, ", \"\"");
+                    } else {
+                        fprintf(out, ", _ltng_ad((double)(%s))", a->value);
+                    }
+                }
+                fprintf(out, "));\n");
+                break;
+            }
             /* call statement - invoke and discard result */
             pad(out, indent);
             fprintf(out, "%s(_ltng_retbuf()", node->name);

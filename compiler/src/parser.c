@@ -908,6 +908,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 } else if (is_function_name_scoped(table, tok.value) && lexer_peek(lexer).type == TOKEN_LPAREN) {
                     lexer_next(lexer); /* consume ( */
                     ASTNode *call = parse_call_node(lexer, table, tok.value, tok.line, tok.col, NULL);
+                    if (call->is_base_assign) {
+                        error_state_add(parser_errors, tok.line, tok.col,
+                            "function with 'base' parameter must be called with method syntax (receiver.method(args))");
+                        skip_to_newline(lexer);
+                        pos += snprintf(out + pos, out_size - pos, "0");
+                        break;
+                    }
                     pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf()", call->name);
                     for (ASTNode *a = call->args; a; a = a->next) {
                         if (a->var_type == TYPE_STRING && a->value[0] == '"') {
@@ -935,6 +942,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         lexer_next(lexer); /* ( */
                         ASTNode *recv = make_receiver_arg(table, tok);
                         ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
+                        if (call->is_base_assign) {
+                            error_state_add(parser_errors, mname.line, mname.col,
+                                "method call with 'base' parameter cannot be used as an expression");
+                            skip_to_newline(lexer);
+                            pos += snprintf(out + pos, out_size - pos, "0");
+                            break;
+                        }
                         pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf()", call->name);
                         for (ASTNode *a = call->args; a; a = a->next) {
                             if (a->var_type == TYPE_STRING && a->value[0] == '"') {
@@ -1716,6 +1730,12 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 lexer_next(lexer); /* ( */
                 ASTNode *recv = make_receiver_arg(table, arg);
                 ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
+                if (call->is_base_assign) {
+                    error_state_add(parser_errors, mname.line, mname.col,
+                        "method call with 'base' parameter cannot be used as an expression");
+                    skip_to_newline(lexer);
+                    return;
+                }
                 char cexpr[MAX_STRING_LEN];
                 build_call_cexpr(call, cexpr, sizeof(cexpr));
                 node = create_node(NODE_WRITE, "", cexpr);
@@ -1909,6 +1929,9 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
                 lexer_next(lexer);
                 ASTNode *recv = make_receiver_arg(table, first);
                 ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
+                if (call->is_base_assign) {
+                    lexer->current = saved; return 0;
+                }
                 Token after = lexer_peek(lexer);
                 if (after.type != TOKEN_NEWLINE && after.type != TOKEN_EOF && after.type != TOKEN_RBRACE) {
                     lexer->current = saved; return 0;
@@ -1924,6 +1947,9 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
         if (lexer_peek(lexer).type != TOKEN_LPAREN) { lexer->current = saved; return 0; }
         lexer_next(lexer); /* consume ( */
         ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
+        if (call->is_base_assign) {
+            lexer->current = saved; return 0;
+        }
         Token after = lexer_peek(lexer);
         if (after.type != TOKEN_NEWLINE && after.type != TOKEN_EOF && after.type != TOKEN_RBRACE) {
             lexer->current = saved; return 0;
@@ -3282,6 +3308,10 @@ static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int
     if (lexer_peek(lexer).type != TOKEN_LPAREN) { lexer->current = saved; return 0; }
     lexer_next(lexer); /* consume ( */
     ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
+    if (call->is_base_assign) {
+        lexer->current = saved;
+        return 0;
+    }
     Token after = lexer_peek(lexer);
     if (after.type != TOKEN_COMMA && after.type != TOKEN_RPAREN) {
         lexer->current = saved;
@@ -3309,6 +3339,24 @@ static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int
     return 1;
 }
 
+/* Find a lifted function node by its C (mangled) name. */
+static ASTNode *find_function_node_by_cname(const char *cname) {
+    if (!g_program_ref) return NULL;
+    for (ASTNode *fn = g_program_ref->functions; fn; fn = fn->next) {
+        if (strcmp(fn->name, cname) == 0) return fn;
+    }
+    return NULL;
+}
+
+/* Return 1 if the function's first parameter is named "base".
+   Such functions are "receiver" functions: called via UFCS as
+   receiver.method(args), and the return value is written back to receiver. */
+static int function_first_param_is_base(const char *cname) {
+    ASTNode *fn = find_function_node_by_cname(cname);
+    if (!fn || !fn->params) return 0;
+    return strcmp(fn->params->for_var, "base") == 0;
+}
+
 static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok_val, int line, int col, ASTNode *first_arg) {
     /* assumes fname IDENT consumed, '(' consumed */
     ASTNode *call = create_node(NODE_CALL, "", "");
@@ -3317,6 +3365,9 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
         mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
     }
     strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
+    if (function_first_param_is_base(fm)) {
+        call->is_base_assign = 1;
+    }
     ASTNode *args = NULL, *alast = NULL;
     if (first_arg) { args = alast = first_arg; first_arg->next = NULL; }
     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
@@ -3607,14 +3658,20 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
         }
         if (t2.type == TOKEN_LPAREN && is_function_name_scoped(table, t.value)) {
             /* function call statement: name(args) */
+            char fm[MAX_IDENTIFIER_LEN];
+            if (!resolve_func_name(table, t.value, fm, MAX_IDENTIFIER_LEN)) {
+                mangle_name(t.value, fm, MAX_IDENTIFIER_LEN);
+            }
+            if (function_first_param_is_base(fm)) {
+                error_state_add(parser_errors, t.line, t.col,
+                    "function with 'base' parameter must be called with method syntax (receiver.method(args))");
+                skip_to_newline(lexer);
+                return;
+            }
             lexer->current = saved;
             Token fname = lexer_next(lexer);
             lexer_next(lexer); /* ( */
             ASTNode *call = create_node(NODE_CALL, "", "");
-            char fm[MAX_IDENTIFIER_LEN];
-            if (!resolve_func_name(table, fname.value, fm, MAX_IDENTIFIER_LEN)) {
-                mangle_name(fname.value, fm, MAX_IDENTIFIER_LEN);
-            }
             strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
             /* parse args */
             ASTNode *args = NULL, *alast = NULL;

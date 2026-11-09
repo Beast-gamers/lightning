@@ -1,29 +1,53 @@
 # UFCS / method-style calls
-# A function whose first parameter is "base" (or any name) can be called
-# as: receiver.func(args...) which is equivalent to func(receiver, args...)
+# A function can be called as: receiver.func(args...) which is equivalent
+# to func(receiver, args...). When used as a statement, the return value
+# is discarded.
+#
+# A function whose first parameter is named "base" is special:
+#   * receiver.baseFunc(args) assigns the return value back to receiver.
+#   * It cannot be called as a plain function: baseFunc(receiver, args) is an error.
+#   * It cannot be used in an expression: write(receiver.baseFunc(args)) or
+#     let c = receiver.baseFunc(args) is an error.
 
-function a(base) {
-    return base + 1
+function a(p) {
+    return p + 1
 }
 
 let x = 5
 write(x.a())        # 6  (same as a(x))
 write(a(x))         # 6
+write(x)            # 5 (unchanged - statement call discarded return)
 
-function add(base, n) {
-    return base + n
+function add(recv, n) {
+    return recv + n
 }
 
-write(x.add(10))    # 15 (same as add(x, 10))
-
-let y = x.add(3)
+write(x.add(10))    # 15  (same as add(x, 10))
+let y = x.add(3)    # 8
 write(y)            # 8
-
 write(x.add(1))     # 6
-write(x)            # 5 (unchanged)
+write(x)            # 5 (unchanged - x not modified)
 
-if (x.add(4) == 10) {
+if (x.add(4) == 9) {
     write("ok")
 } else {
     write("bad")
 }
+
+# --- base parameter: return value is assigned to receiver ---
+function inc(base, n) {
+    return base + n
+}
+
+let b = 5
+b.inc(10)           # b = b + 10 = 15
+write(b)            # 15
+b.inc(3)            # b = 15 + 3 = 18
+write(b)            # 18
+
+# --- base parameter: plain call is rejected (compile error) ---
+# inc(b, 5)         # error: must use method syntax
+
+# --- base parameter: expression use is rejected (compile error) ---
+# write(b.inc(2))   # error: cannot be used as an expression
+# let c = b.inc(2)  # error: cannot be used as an expression

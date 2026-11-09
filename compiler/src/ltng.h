@@ -133,6 +133,7 @@ typedef struct ASTNode {
     int is_variable;
     int is_expr;
     int is_default;
+    int is_base_assign; /* UFCS call whose return value is assigned to receiver (base param) */
     char for_var[MAX_IDENTIFIER_LEN];
     char for_start[MAX_STRING_LEN];
     char for_end[MAX_STRING_LEN];
