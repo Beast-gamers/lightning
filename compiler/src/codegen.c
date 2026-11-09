@@ -302,8 +302,13 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                 node->name, node->name, node->value);
         } else {
             pad(out, indent);
-            fprintf(out, "{ long long _e = (%s); snprintf(%s, sizeof(%s), \"%%lld\", _e); }\n",
-                node->value, node->name, node->name);
+            if (strchr(node->value, '.')) {
+                fprintf(out, "{ double _e = (%s); snprintf(%s, sizeof(%s), \"%%g\", _e); }\n",
+                    node->value, node->name, node->name);
+            } else {
+                fprintf(out, "{ long long _e = (%s); snprintf(%s, sizeof(%s), \"%%lld\", _e); }\n",
+                    node->value, node->name, node->name);
+            }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
         codegen_assign_interpolated(out, node->name, node->value, indent);
@@ -314,13 +319,10 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
     } else {
         pad(out, indent);
         fprintf(out, "snprintf(%s, sizeof(%s), \"", node->name, node->name);
-        if (node->var_type == TYPE_FLOAT || node->var_type == TYPE_INT) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%lld", (long long)atoi(node->value));
-            write_c_string(out, buf);
-        } else if (node->var_type == TYPE_BOOL) {
+        if (node->var_type == TYPE_BOOL) {
             write_c_string(out, bool_to_str(node->value));
         } else {
+            /* INT/FLOAT literals are stored as-is, matching `set` (e.g. 3.14 stays "3.14"). */
             write_c_string(out, node->value);
         }
         fprintf(out, "\");\n");
@@ -398,7 +400,11 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
             fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
         } else if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
             pad(out, indent);
-            fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
+            if (strchr(node->value, '.')) {
+                fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
+            } else {
+                fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
+            }
         } else {
             pad(out, indent);
             fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
@@ -447,8 +453,13 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                 node->name, node->name, node->value);
         } else {
             pad(out, indent);
-            fprintf(out, "{ long long _e = (%s); snprintf(%s, sizeof(%s), \"%%lld\", _e); }\n",
-                node->value, node->name, node->name);
+            if (strchr(node->value, '.')) {
+                fprintf(out, "{ double _e = (%s); snprintf(%s, sizeof(%s), \"%%g\", _e); }\n",
+                    node->value, node->name, node->name);
+            } else {
+                fprintf(out, "{ long long _e = (%s); snprintf(%s, sizeof(%s), \"%%lld\", _e); }\n",
+                    node->value, node->name, node->name);
+            }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
         codegen_assign_interpolated(out, node->name, node->value, indent);
@@ -671,7 +682,12 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             } else if (node->var_type == TYPE_FLOAT) {
                 pad(out, indent); fprintf(out, "snprintf(_ret, 256, \"%%g\", (double)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
             } else {
-                pad(out, indent); fprintf(out, "snprintf(_ret, 256, \"%%lld\", (long long)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
+                pad(out, indent);
+                if (strchr(node->value, '.')) {
+                    fprintf(out, "snprintf(_ret, 256, \"%%g\", (double)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
+                } else {
+                    fprintf(out, "snprintf(_ret, 256, \"%%lld\", (long long)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
+                }
             }
             break;
         }

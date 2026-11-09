@@ -12,3 +12,6 @@ compiler/hello
 
 # OS
 .DS_Store
+
+# Audit test harness (regression tests; not part of the language source)
+/.audit_harness/

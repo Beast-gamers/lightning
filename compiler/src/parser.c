@@ -790,6 +790,20 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
 
 static const char *type_name_str(VarType t);
 
+/* Return 1 if a concat part is already a char* expression: a string literal,
+   a simple identifier (all variables are char buffers in generated C), or a
+   statement expression produced by transform_string_multiply (returns char*). */
+static int part_is_stringy(const char *part) {
+    if (part[0] == '"') return 1;
+    if (part[0] == '_' || isalpha((unsigned char)part[0])) {
+        const char *q = part;
+        while (*q && (isalnum((unsigned char)*q) || *q == '_')) q++;
+        if (*q == '\0') return 1;
+    }
+    if (strncmp(part, "({", 2) == 0 && strstr(part, "_ltng_repeat") != NULL) return 1;
+    return 0;
+}
+
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
                                   int stop_on_rparen, int stop_on_comma) {
@@ -1184,7 +1198,6 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 char mangled[MAX_IDENTIFIER_LEN];
                 mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                 if (!symbol_table_has(table, mangled)) {
-                    fprintf(stderr, "[DBG744] type=%d val='%s' line=%d col=%d\n", tok.type, tok.value, tok.line, tok.col);
                     char errmsg[256];
                     snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", tok.value);
                     error_state_add(parser_errors, tok.line, tok.col, errmsg);
@@ -1211,7 +1224,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             result_type = TYPE_STRING;
         }
     }
-    if (has_string_concat || has_string_mult || (result_type == TYPE_STRING && !strstr(out, "atof(") && !strstr(out, "_ltng_") && !strstr(out, "({") && (strstr(out, "+") != NULL || strstr(out, "*") != NULL))) {
+    if (has_string_concat || has_string_mult || (result_type == TYPE_STRING && (strstr(out, "+") != NULL || strstr(out, "*") != NULL))) {
         /* Handle multiplication with higher precedence - split by + at top level first */
         if (strstr(out, "+") != NULL) {
             /* split by + */
@@ -1265,14 +1278,27 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             char fmt[1024] = {0};
             for (int i = 0; i < nparts; i++) strcat(fmt, "%s");
             char result[2048] = {0};
-            snprintf(result, 2047, "({ char _ltc[512]; snprintf(_ltc,512,\"%s\",", fmt);
+            snprintf(result, 2047, "({ char _ltc[512]; snprintf(_ltc,512,\"");
+            for (int i = 0; i < nparts; i++) strcat(result, "%s");
+            strcat(result, "\", ");
             for (int i = 0; i < nparts; i++) {
-                strcat(result, parts[i]);
-                if (i < nparts-1) strcat(result, ",");
+                const char *part = parts[i];
+                if (!part_is_stringy(part)) {
+                    int has_dot = (strchr(part, '.') != NULL);
+                    char conv[560];
+                    snprintf(conv, sizeof(conv), "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
+                             has_dot ? "%g" : "%lld",
+                             has_dot ? "double" : "long long",
+                             part);
+                    strcat(result, conv);
+                } else {
+                    strcat(result, part);
+                }
+                if (i < nparts - 1) strcat(result, ",");
             }
             strcat(result, "); _ltc; })");
-            strncpy(out, result, out_size-1);
-            out[out_size-1] = 0;
+            strncpy(out, result, out_size - 1);
+            out[out_size - 1] = 0;
         } else if (strstr(out, "*") != NULL) {
             transform_string_multiply(out, out_size);
         }
@@ -2687,8 +2713,17 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                 if (ct.type == TOKEN_STRING) {
                     pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "\"%s\"", ct.value);
                 } else if (ct.type == TOKEN_CHAR) {
-                    if (ct.value[0] != '\0') pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "'%s'", ct.value);
-                    else pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "'\0'");
+                    if (ct.value[0] != '\0') {
+                        if (ctype == TYPE_STRING)
+                            pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "\"%s\"", ct.value);
+                        else
+                            pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "'%s'", ct.value);
+                    } else {
+                        if (ctype == TYPE_STRING)
+                            pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "\"\"");
+                        else
+                            pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "'\0'");
+                    }
                 } else if (ct.type == TOKEN_IDENT) {
                     if (is_bool_value(ct.value)) {
                         pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "%s",
