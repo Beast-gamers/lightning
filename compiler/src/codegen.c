@@ -437,8 +437,8 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
 static void codegen_read(FILE *out, ASTNode *node, int indent) {
     pad(out, indent);
     if (node->var_type == TYPE_INT) {
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%lld\", (long long)atoi(_rb)); %s[255]='\\0'; } }\n",
-            node->name, node->name, node->name);
+        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; if(!_ltng_is_num_str(_rb)){ fprintf(stderr, \"Error: expected integer input for '%s'\\n\", %s); exit(1); } snprintf(%s, sizeof(%s), \"%%lld\", (long long)atoi(_rb)); %s[255]='\\0'; } }\n",
+            node->name, node->name, node->name, node->name, node->name);
     } else if (node->var_type == TYPE_FLOAT) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%g\", atof(_rb)); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name);
@@ -449,7 +449,7 @@ static void codegen_read(FILE *out, ASTNode *node, int indent) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%s\", (strcmp(_rb,\"true\")==0||strcmp(_rb,\"t\")==0)?\"true\":\"false\"); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name);
     } else {
-        /* TYPE_STRING, TYPE_OBJECT: store raw input */
+        /* TYPE_STRING: store raw input */
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; strncpy(%s, _rb, 255); %s[255]='\\0'; } }\n",
             node->name, node->name);
     }

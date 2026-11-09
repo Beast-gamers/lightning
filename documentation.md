@@ -182,6 +182,15 @@ according to the variable's declared type. For numeric types, the input is
 converted (`atoi`/`atof`) and stored back as a string buffer, so subsequent
 arithmetic works correctly.
 
+**Important restrictions:**
+
+- Reading into an `obj` variable is a **compile-time error**. Objects cannot be
+  populated from stdin — use `set x = { ... }` instead.
+- Reading into an `int` variable validates that the input is numeric. If the
+  user enters a non-numeric string, the program exits with a runtime error.
+- Reading into a `null` variable (bare `let x`) locks its type to `string` on
+  the first `read()`.
+
 ## Variables
 
 ### Declaration with Type Inference
