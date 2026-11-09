@@ -2,6 +2,12 @@
 
 Lightning is a minimal, beginner-friendly programming language. No semicolons, no complex syntax — just write code and go.
 
+**Status:** The language is under active development. This document describes only
+features that are currently implemented. A missing feature is not a bug; a
+component that exists but behaves incorrectly is.
+
+---
+
 ## Getting Started
 
 ### File Extension
@@ -18,7 +24,7 @@ write("hello world")
 
 ### Compiling & Running
 
-**Option 1: Compile and run in one step**
+**Option 1: Compile and run in one step (via `bolt`)**
 
 ```
 bolt hello.ltng
@@ -37,11 +43,13 @@ ltng hello.ltng
 bolt --debug hello.ltng
 ```
 
+---
+
 ## Syntax
 
 ### Comments
 
-Use `#` to write comments. Comments are ignored by the compiler.
+Use `#` to write comments. Comments run to the end of the line and are ignored by the compiler.
 
 ```
 # this is a comment
@@ -50,12 +58,16 @@ write("hello") # inline comment
 
 ### Statements
 
-Each statement goes on its own line. **Semicolons are not allowed.**
+Each statement goes on its own line. **Semicolons are not allowed** — the compiler rejects them.
 
 ```
 write("hello")
 write("world")
 ```
+
+One statement per line is the convention.
+
+---
 
 ## Output
 
@@ -77,6 +89,7 @@ write("lightning is fast")
 | `\\`     | Backslash |
 | `\"`     | Double quote |
 | `\'`     | Single quote |
+| `\0`     | Null character |
 
 ```
 write("line one\nline two")
@@ -95,25 +108,25 @@ write("Name: $[name], Age: $[age]")
 ```
 
 Output:
+
 ```
 Hello, bolt!
 Name: bolt, Age: 10
 ```
 
-Object fields work inside interpolation too:
+Expressions work inside interpolation too:
+
+```
+write("Result: $[x + 1]")
+write("Type: $[typeof(x)]")
+```
+
+Object fields work inside interpolation:
 
 ```
 let x = { name = "saim", age = 17 }
 write("Hello $[x.name]")     # Hello saim
 write("Age $[x.age]")        # Age 17
-```
-
-You can use `$[typeof(x)]` inside strings to embed type info:
-
-```
-let x = 42
-write("x is $[typeof(x)]")
-# output: x is int
 ```
 
 A literal `$` not followed by `[` is preserved as-is. Use `<...>` to display literal characters inside strings:
@@ -126,6 +139,21 @@ write("<<")                  # <
 write("<<>")                 # <
 write("$[x] and <$[x]>")     # 5 and $[x]
 ```
+
+### Angle Brackets
+
+Text between `<` and `>` inside a string is treated literally (brackets are stripped by the compiler):
+
+```
+write("<raw>")        # raw
+write("<b>bold</b>")  # bold
+write("2 < 3")        # 2 < 3
+write("a<b")          # ab
+write("<<")           # <
+write("<<>")          # <
+```
+
+---
 
 ## Input
 
@@ -158,22 +186,21 @@ read(flag)
 
 You can also read into a null variable declared with bare `let x`. The `read()`
 does **not** lock the null variable's type — it just stores the input value.
-This means you can `read()` into the same null variable multiple times, or use
-`set` to change it afterward:
+This means you can `read()` into the same null variable multiple times:
 
 ```
 let x          # null variable
 read(x)        # x stores the input, type stays null
 write(x)       # prints whatever was typed
 read(x)        # read again - type still null, new value stored
-set x = 42     # OK - null allows any type transition
+set x = 42     # OK - null allows one type transition
 ```
 
 ### Read Behavior by Type
 
 | Type | Reads | Example Input |
 |------|-------|---------------|
-| `int` | Integer (validated - non-numeric input causes runtime error) | `42`, `-10`, `3.14` |
+| `int` | Integer (validated — non-numeric input causes runtime error) | `42`, `-10` |
 | `char` | Single character (first char of input) | `A`, `z` |
 | `string` | Raw input line | `hello` |
 | `bool` | `true`/`t` → true, anything else → false | `true`, `false` |
@@ -183,6 +210,8 @@ Input is read as a full line (until newline). For `int` variables, the input is
 validated — if the user enters a non-numeric string, the program exits with a
 runtime error. Numeric input is converted (`atoi`) and stored back as a string
 buffer.
+
+---
 
 ## Variables
 
@@ -201,7 +230,8 @@ let letter = 'A'
 
 Use `let x` without an assignment to declare a `null`-typed variable that can
 hold any type. The first `set x = <value>` locks the type; after that the type
-cannot change (dtype immutability).
+cannot change (dtype immutability). Bare `let x` allows one type transition on
+first `set`.
 
 ```
 let x           # null variable
@@ -265,8 +295,6 @@ Use `set` to change the value of a variable. After a variable's type is locked
 (e.g. by `let x = 5` or `let x = int`), `set` cannot change the type.
 
 ```
-let x = int 10     # error: cannot assign a value with a type declaration
-
 let x = int        # OK, x = 0 (default)
 set x = 20          # x is now 20 (int)
 set x = float 3.14  # error: cannot change type from int to float
@@ -279,10 +307,18 @@ The variable must already be declared:
 set y = 10          # error: Variable not declared
 ```
 
+You cannot assign to a constant:
+
+```
+const c = 1
+set c = 2           # error: Cannot assign to constant
+```
+
 ### Object literals and the `obj` dtype
 
 Objects group named fields into a single value. Create an object literal with
-`{ ... }` and `field = value` pairs (values are literals: string, int, float, bool, or char).
+`{ ... }` and `field = value` pairs (values are literals: string, int, float,
+bool, or char).
 
 ```
 let x = {
@@ -333,8 +369,6 @@ show(person)   # prints 17, Person
 
 ### Booleans
 
-### Booleans
-
 Use `true`/`t` for true and `false`/`f` for false:
 
 ```
@@ -369,7 +403,7 @@ write(typeof(true))    # bool
 | `typeof(3)` | `"int"` |
 | `typeof(3.14)` | `"float"` |
 | `typeof("hello")` | `"string"` |
-| `typeof('A')` | `"char"` |
+| `typeof('A')` | `"string"` |
 | `typeof(true)` | `"bool"` |
 | `typeof(int)` | `"reserved"` |
 | `typeof(let)` | `"reserved"` |
@@ -405,11 +439,11 @@ are treated as `int` type. A variable declared with `let x = int` can be assigne
 any numeric value via `set x = 3.14`, and `typeof()` always returns `"int"` for
 numbers.
 
-### String concatenation
+### String Concatenation
 
 Strings can be concatenated using the `+` operator:
 
-```ltng
+```
 let s = "hello" + "world"
 write(s)
 write("hello " + "world")
@@ -419,12 +453,13 @@ write("hello " + "world")
 
 Without explicit type, the compiler detects the type automatically:
 
-| Value | Detected Type | C Equivalent |
-|-------|---------------|--------------|
-| `42` | int | `int` |
-| `3.14` | float | `double` |
-| `"hello"` | string | `char[]` |
-| `'A'` | char | `char` |
+| Value | Detected Type |
+|-------|---------------|
+| `42` | int |
+| `3.14` | int |
+| `"hello"` | string |
+| `'A'` | string |
+| `true` | bool |
 
 ### Using Variables
 
@@ -434,7 +469,7 @@ Pass a variable name to `write()` to print its value.
 let age = 25
 let name = "bolt"
 let score = 99.5
-let grade = char 'A'
+let grade = 'A'
 
 write(age)
 write(name)
@@ -447,9 +482,11 @@ Output:
 ```
 25
 bolt
-99.500000
+3.14
 A
 ```
+
+---
 
 ## Objects
 
@@ -476,6 +513,15 @@ write(x.obj)    # object saim 17 xi
 
 The `default` field defines what `write(x)` displays. `obj` is a synthesized view of every value in field order.
 
+Empty objects are allowed:
+
+```
+let e = {}
+write(e)        # object
+write(e.obj)    # (empty)
+```
+
+---
 
 ## Expressions & Operators
 
@@ -495,12 +541,13 @@ write("result: $[x / 2]")
 | `+` | Addition | `2 + 3` | `5` |
 | `-` | Subtraction | `10 - 4` | `6` |
 | `*` | Multiplication | `3 * 7` | `21` |
-| `/` | Division | `10 / 3` | `3` |
+| `/` | Division (integer truncates) | `10 / 3` | `3` |
 | `/` | Division (float) | `10.0 / 3.0` | `3.33333` |
 | `%` | Modulo | `10 % 3` | `1` |
 | `-` | Unary minus | `-5`, `-x` | negated value |
 
-Integer division truncates: `7 / 2` gives `3`. If either operand is a float, the result is a float.
+Integer division truncates: `7 / 2` gives `3`. If either operand is a float,
+the result is a float.
 
 ### Comparison Operators
 
@@ -586,6 +633,68 @@ write(flag + 1)      # 2
 write(letter + 1)    # 66
 ```
 
+### String Multiplication
+
+Use `*` to repeat a string a specified number of times.
+
+```
+let stars = "*" * 5
+write(stars)  # *****
+
+let repeated = "ab" * 3
+write(repeated)  # ababab
+
+let msg = 3 * "ha"
+write(msg)  # hahaha
+```
+
+String multiplication has higher precedence than string concatenation.
+
+String concatenation works in assignments, `write()` statements, `if` conditions, and `switch` statements.
+
+Format specifiers (like `%s`, `%d`, `%f`, etc.) are **not allowed** in string literals. Use string concatenation, string interpolation with `$[variable]`, or other string operations instead.
+
+---
+
+## Increment and Decrement
+
+Use `++` and `--` for pre-increment/decrement and post-increment/decrement. They
+can be used as statements (on their own line) or as expressions inside `write()`,
+`if`, `switch`, and other expression contexts.
+
+```
+let i = 5
+++i        # pre-increment (statement)
+i++        # post-increment (statement)
+--i        # pre-decrement (statement)
+i--        # post-decrement (statement)
+write(i)
+
+# As expressions inside write():
+write(++x)   # returns the new value
+write(x++)   # returns the old value
+write(--x)   # returns the new value
+write(x--)   # returns the old value
+```
+
+`++`/`--` work on `int`, `float`, `string`, `char`, and `bool` variables.
+
+### Compound Assignment Operators
+
+Use compound assignment operators to modify a variable in place.
+
+```
+let x = 10
+set x += 5   # x = x + 5
+set x -= 3   # x = x - 3
+set x *= 2   # x = x * 2
+set x /= 4   # x = x / 4
+set x %= 2   # x = x % 2
+write(x)
+```
+
+---
+
 ## Conditionals
 
 Use `if` to run a block of code only when a condition is true. The condition goes inside parentheses `( )`, and the block is wrapped in `{ }`. Each statement inside goes on its own line.
@@ -665,123 +774,77 @@ if (true) {
 }
 ```
 
+---
 
+## Switch Statement
 
+Use `switch` to compare a value against multiple cases. The condition goes in parentheses `()` and cases are wrapped in `{ }`. Every `case` and `default` must be followed by `{ }`.
 
-## String Operations
-
-### String Concatenation
-
-Use `+` to concatenate strings together.
-
-```
-let greeting = "hello" + " " + "world"
-write(greeting)
-
-let first = "light"
-let last = "ning"
-write(first + last)
-```
-
-String concatenation works in assignments, `write()` statements, `if` conditions, and `switch` statements.
-
-### String Multiplication
-
-Use `*` to repeat a string a specified number of times.
-
-```
-let stars = "*" * 5
-write(stars)  # *****
-
-let repeated = "ab" * 3
-write(repeated)  # ababab
-
-let msg = 3 * "ha"
-write(msg)  # hahaha
+```ltng
+let x = 2
+switch (x) {
+    case 1: {
+        write("one")
+    }
+    case 2: {
+        write("two")
+    }
+    default: {
+        write("other")
+    }
+}
 ```
 
-String multiplication has higher precedence than string concatenation.
+### Full expressions in cases
 
-### Format Specifiers
+Cases can contain full expressions:
 
-Format specifiers (like `%s`, `%d`, `%f`, etc.) are **not allowed** in string literals. Use string concatenation, string interpolation with `$[variable]`, or other string operations instead.
-
-```
-let name = "bolt"
-write("Hello " + name)      # Correct
-# write("Hello %s", name)   # Not allowed - will cause an error
-```
-
-
-## Operators
-
-### Arithmetic Operators
-
-| Operator | Description |
-|----------|-------------|
-| `+` | Addition |
-| `-` | Subtraction |
-| `*` | Multiplication |
-| `/` | Division |
-| `%` | Modulus |
-
-### Increment and Decrement
-
-Use `++` and `--` for pre-increment/decrement and post-increment/decrement. They
-can be used as statements (on their own line) or as expressions inside `write()`,
-`if`, `switch`, and other expression contexts.
-
-```
-let i = 5
-++i        # pre-increment (statement)
-i++        # post-increment (statement)
---i        # pre-decrement (statement)
-i--        # post-decrement (statement)
-write(i)
-
-# As expressions inside write():
-write(++x)   # returns the new value
-write(x++)   # returns the old value
-write(--x)   # returns the new value
-write(x--)   # returns the old value
+```ltng
+let x = 3
+let y = 2
+switch (x) {
+    case y > 1: {
+        write("yes")
+    }
+    default: {
+        write("no")
+    }
+}
 ```
 
-`++`/`--` work on `int`, `float`, `string`, `char`, and `bool` variables.
+### Multiple cases and different types
 
-### Compound Assignment Operators
+```ltng
+let c = 'A'
+switch (c) {
+    case 'A':
+    case 'a': {
+        write("letter A")
+    }
+    default: {
+        write("other")
+    }
+}
 
-Use compound assignment operators to modify a variable in place.
-
+let flag = true
+switch (flag) {
+    case true: {
+        write("true")
+    }
+    case false: {
+        write("false")
+    }
+}
 ```
-let x = 10
-set x += 5   # x = x + 5
-set x -= 3   # x = x - 3
-set x *= 2   # x = x * 2
-set x /= 4   # x = x / 4
-set x %= 2   # x = x % 2
-write(x)
-```
 
-### Comparison Operators
+### Rules
 
-| Operator | Description |
-|----------|-------------|
-| `==` | Equal to |
-| `!=` | Not equal to |
-| `<` | Less than |
-| `>` | Greater than |
-| `<=` | Less than or equal to |
-| `>=` | Greater than or equal to |
+- Switch works with `int`, `char`, and `bool` values
+- `case` values must be constants (literals)
+- `default` is optional and matches if no case matches
+- Multiple `default` cases are not allowed
 
-### Logical Operators
-
-| Operator | Description |
-|----------|-------------|
-| `and` or `&&` | Logical AND |
-| `or` or `\|\|` | Logical OR |
-| `not` or `!` | Logical NOT |
-| `^^` | XOR |
-
+---
 
 ## Loops
 
@@ -869,6 +932,8 @@ while (i < 5) {
 }
 # prints: 1 2 4 5
 ```
+
+---
 
 ## Functions
 
@@ -974,6 +1039,7 @@ write(two())  # 2
 - A nested function must be **defined before it is called** within its enclosing scope (nested functions do not have local forward-reference pre-scanning).
 - Nested functions are **non-capturing**: they can use their own parameters/locals, but they cannot access the enclosing function's locals or parameters.
 
+---
 
 ## CLI Reference
 
@@ -1009,8 +1075,18 @@ bolt --reinstall           # uninstall then install
 Compile a `.ltng` file to a native executable.
 
 ```
-ltng [--debug] <file.ltng> [output]
+ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--debug` | Show compilation log |
+| `--check` | Only check for errors, don't compile |
+| `--emit-c` | Emit C source instead of compiling |
+| `--cc <compiler>` | Use a specific C compiler |
+| `<output>` | Output executable path |
+
+---
 
 ## Rules
 
@@ -1027,67 +1103,18 @@ ltng [--debug] <file.ltng> [output]
 - `const x = 42` requires a value; `const x = int` or `const x = int 42` are **not** allowed
 - After a variable's type is locked, `set` cannot change it (dtype immutability). Bare `let x` (null) allows one type transition on first `set`.
 - Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
+- C reserved words (e.g. `return`, `break`, `continue`, `switch`, `case`, `default`, `struct`, `main`, `printf`) **can** be used as variable names — they are mangled internally with a `_res` suffix.
 
+---
 
-## Switch Statement
+## Current Limitations
 
-Use `switch` to compare a value against multiple cases. The condition goes in parentheses `()` and cases are wrapped in `{ }`.
+The following are **not yet implemented** and are not considered bugs:
 
-```ltng
-let x = 2
-switch (x) {
-    case 1: {
-        write("one")
-    }
-    case 2: {
-        write("two")
-    }
-    default: {
-        write("other")
-    }
-}
-```
-
-### Full expressions in cases
-
-Cases can contain full expressions:
-
-```ltng
-let x = 3
-let y = 2
-switch (x) {
-    case y > 1: {
-        write("yes")
-    }
-    default: {
-        write("no")
-    }
-}
-```
-
-### Multiple cases and different types
-
-```ltng
-let c = 'A'
-switch (c) {
-    case 'A':
-    case 'a':
-        write("letter A")
-    default:
-        write("other")
-}
-
-let flag = true
-switch (flag) {
-    case true:
-        write("true")
-    case false:
-        write("false")
-}
-```
-
-### Rules
-- Switch works with `int`, `char`, and `bool` values
-- `case` values must be constants (literals)
-- `default` is optional and matches if no case matches
-- Multiple `default` cases are not allowed
+- File I/O built-ins beyond `read()` from stdin
+- Arrays / lists / collections
+- Modules / imports
+- String comparison by content
+- Fallthrough in `switch` cases
+- Default function parameter values
+- `else if` without braces after `switch` cases (every `case`/`default` needs `{ }`)
