@@ -24,7 +24,7 @@ write(ex_char)
 
 # Uninitialized (defaults)
 let d_int = int
-let d_float = float
+let d_float = int
 let d_str = string
 let d_char = char
 

@@ -41,7 +41,7 @@ write(typeof(e5))
 
 # --- typeof uninitialized ---
 let u1 = int
-let u2 = float
+let u2 = int
 let u3 = string
 let u4 = char
 let u5 = bool

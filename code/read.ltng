@@ -11,7 +11,7 @@ read(age)
 write("Next year you will be $[age + 1]")
 
 write("Enter a score: ")
-let score = float
+let score = int
 read(score)
 write("Double the score: $[score * 2]")
 

@@ -1,6 +1,6 @@
 # Test 9: read() - just compilation test (can't test stdin)
 let x = int
-let y = float
+let y = int
 let s = string
 let c = char
 let b = bool

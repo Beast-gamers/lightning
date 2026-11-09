@@ -19,7 +19,7 @@ let eb = true
 
 # Uninitialized
 let ui = int
-let uf = float
+let uf = int
 let us = string
 let uc = char
 let ub = bool

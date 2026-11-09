@@ -1,6 +1,6 @@
 # Test read() compilation
 let rint = int
-let rfloat = float
+let rfloat = int
 let rstring = string
 let rchar = char
 let rbool = bool

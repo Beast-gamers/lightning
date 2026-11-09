@@ -121,7 +121,7 @@ write(struct_exp)
 
 # Uninitialized with C keyword var name
 let long_uninit = int
-let struct_uninit = float
+let struct_uninit = int
 write(long_uninit)
 write(struct_uninit)
 

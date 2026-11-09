@@ -13,7 +13,7 @@ write(pi)
 
 # typeof on uninitialized variables
 let xi = int
-let xf = float
+let xf = int
 let xs = string
 let xc = char
 let xb = bool

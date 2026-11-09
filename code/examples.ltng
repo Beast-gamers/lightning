@@ -44,7 +44,7 @@ write(c)
 # 4. Uninitialized Variables (defaults)
 # ============================================
 let empty_int = int
-let empty_float = float
+let empty_float = int
 let empty_string = string
 let empty_char = char
 
@@ -60,7 +60,7 @@ write(empty_string)
 # ============================================
 let user_name = string
 let user_age = int
-let user_score = float
+let user_score = int
 let user_letter = char
 
 write("Enter your name:")

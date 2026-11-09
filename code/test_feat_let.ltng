@@ -16,7 +16,7 @@ let eb = true
 
 # Uninitialized defaults
 let ux = int
-let uy = float
+let uy = int
 let us = string
 let uc = char
 let ub = bool

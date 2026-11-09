@@ -136,7 +136,7 @@ Use `read()` to get input from the user. The variable must already be declared.
 ```
 let name = string
 let age = int
-let score = float
+let score = int
 let letter = char
 let flag = bool
 
@@ -156,40 +156,33 @@ write("Enter true/false:")
 read(flag)
 ```
 
-You can also read into a null variable declared with bare `let x`. The first `read()`
-locks the type to `string` (since `read()` reads text input):
+You can also read into a null variable declared with bare `let x`. The `read()`
+does **not** lock the null variable's type — it just stores the input value.
+This means you can `read()` into the same null variable multiple times, or use
+`set` to change it afterward:
 
 ```
 let x          # null variable
-read(x)        # x becomes string-typed
+read(x)        # x stores the input, type stays null
 write(x)       # prints whatever was typed
-set x = 42     # error: cannot change type from string to int
+read(x)        # read again - type still null, new value stored
+set x = 42     # OK - null allows any type transition
 ```
 
 ### Read Behavior by Type
 
 | Type | Reads | Example Input |
 |------|-------|---------------|
-| `int` | Integer (converted with `atoi`) | `42`, `-10` |
-| `float` | Decimal number (converted with `atof`) | `3.14`, `99.5` |
+| `int` | Integer (validated - non-numeric input causes runtime error) | `42`, `-10`, `3.14` |
 | `char` | Single character (first char of input) | `A`, `z` |
 | `string` | Raw input line | `hello` |
 | `bool` | `true`/`t` → true, anything else → false | `true`, `false` |
-| `obj` | Not supported (objects cannot be read from stdin) | — |
+| `obj` | Not supported (compile-time error) | — |
 
-Input is read as a full line (until newline). After reading, the value is stored
-according to the variable's declared type. For numeric types, the input is
-converted (`atoi`/`atof`) and stored back as a string buffer, so subsequent
-arithmetic works correctly.
-
-**Important restrictions:**
-
-- Reading into an `obj` variable is a **compile-time error**. Objects cannot be
-  populated from stdin — use `set x = { ... }` instead.
-- Reading into an `int` variable validates that the input is numeric. If the
-  user enters a non-numeric string, the program exits with a runtime error.
-- Reading into a `null` variable (bare `let x`) locks its type to `string` on
-  the first `read()`.
+Input is read as a full line (until newline). For `int` variables, the input is
+validated — if the user enters a non-numeric string, the program exits with a
+runtime error. Numeric input is converted (`atoi`) and stored back as a string
+buffer.
 
 ## Variables
 
@@ -399,12 +392,16 @@ write(typeof(v))                 # string
 
 | Keyword | Type | Example Value |
 |---------|------|---------------|
-| `int` | Integer | `42`, `0`, `-10` |
-| `float` | Floating point | `3.14`, `99.5` |
+| `int` | Integer (includes float values) | `42`, `0`, `-10`, `3.14` |
 | `string` | Text | `"hello"` |
 | `char` | Single character | `'A'`, `'z'`, `'0'` |
 | `bool` | Boolean | `true`, `false` |
 | `obj` | Object | `{ name = "saim", age = 17 }` |
+
+The `float` keyword has been removed. All numeric values (integers and floats)
+are treated as `int` type. A variable declared with `let x = int` can be assigned
+any numeric value via `set x = 3.14`, and `typeof()` always returns `"int"` for
+numbers.
 
 ### String concatenation
 

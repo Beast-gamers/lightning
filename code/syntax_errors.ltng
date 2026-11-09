@@ -14,7 +14,7 @@ write"hello")
 let x = int "hello"
 
 # ERROR 5: Type mismatch - float expected but string given
-let y = float "hello"
+let y = int "hello"
 
 # ERROR 6: Type mismatch - char expected but string given
 let z = char "hello"

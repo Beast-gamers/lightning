@@ -34,7 +34,7 @@ write(b5)
 
 # --- Uninitialized defaults ---
 let c1 = int
-let c2 = float
+let c2 = int
 let c3 = string
 let c4 = char
 let c5 = bool
@@ -46,7 +46,7 @@ write(c5)
 
 # --- Uninitialized with explicit negative/float ---
 let d1 = -5
-let d2 = float
+let d2 = int
 set d2 = -3.14
 write(d1)
 write(d2)

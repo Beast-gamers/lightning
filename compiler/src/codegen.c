@@ -45,8 +45,8 @@ static const char *default_for(VarType t) {
 static int is_simple_var_or_keyword(const char *name, SymbolTable *table) {
     if (strcmp(name, "true") == 0 || strcmp(name, "t") == 0 ||
         strcmp(name, "false") == 0 || strcmp(name, "f") == 0) return 1;
-    if (strcmp(name, "int") == 0 || strcmp(name, "float") == 0 ||
-        strcmp(name, "string") == 0 || strcmp(name, "char") == 0 ||
+    if (strcmp(name, "int") == 0 || strcmp(name, "string") == 0 ||
+        strcmp(name, "char") == 0 ||
         strcmp(name, "bool") == 0 || strcmp(name, "obj") == 0 ||
         strcmp(name, "typeof") == 0 ||
         strcmp(name, "let") == 0 || strcmp(name, "const") == 0 ||
@@ -296,11 +296,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
     }
     if (node->is_expr) {
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
-        if (node->var_type == TYPE_FLOAT && !is_add_sn) {
-            pad(out, indent);
-            fprintf(out, "{ double _e = (%s); snprintf(%s, sizeof(%s), \"%%g\", _e); }\n",
-                node->value, node->name, node->name);
-        } else if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+        if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
             fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s);\n",
@@ -319,9 +315,9 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
     } else {
         pad(out, indent);
         fprintf(out, "snprintf(%s, sizeof(%s), \"", node->name, node->name);
-        if (node->var_type == TYPE_FLOAT) {
+        if (node->var_type == TYPE_FLOAT || node->var_type == TYPE_INT) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "%g", atof(node->value));
+            snprintf(buf, sizeof(buf), "%lld", (long long)atoi(node->value));
             write_c_string(out, buf);
         } else if (node->var_type == TYPE_BOOL) {
             write_c_string(out, bool_to_str(node->value));
@@ -373,7 +369,7 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
                     if (strcmp(mv, margname) == 0 || strcmp(table->vars[i].name, argname) == 0) {
                         switch (table->vars[i].type) {
                             case TYPE_INT: type_str = "int"; break;
-                            case TYPE_FLOAT: type_str = "float"; break;
+                            case TYPE_FLOAT: type_str = "int"; break; /* float merged into int */
                             case TYPE_STRING: type_str = "string"; break;
                             case TYPE_CHAR: type_str = "char"; break;
                             case TYPE_BOOL: type_str = "bool"; break;
@@ -405,10 +401,7 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
         if (node->var_type == TYPE_STRING || strstr(node->value, "_ltng_add_sn") == node->value) {
             pad(out, indent);
             fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
-        } else if (node->var_type == TYPE_FLOAT) {
-            pad(out, indent);
-            fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
-        } else if (node->var_type == TYPE_INT) {
+        } else if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
             pad(out, indent);
             fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
         } else {
@@ -436,12 +429,9 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
 
 static void codegen_read(FILE *out, ASTNode *node, int indent) {
     pad(out, indent);
-    if (node->var_type == TYPE_INT) {
+    if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; if(!_ltng_is_num_str(_rb)){ fprintf(stderr, \"Error: expected integer input for '%s'\\n\", %s); exit(1); } snprintf(%s, sizeof(%s), \"%%lld\", (long long)atoi(_rb)); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name, node->name, node->name);
-    } else if (node->var_type == TYPE_FLOAT) {
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%g\", atof(_rb)); %s[255]='\\0'; } }\n",
-            node->name, node->name, node->name);
     } else if (node->var_type == TYPE_CHAR) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%c\", _rb[0]); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name);
@@ -458,11 +448,7 @@ static void codegen_read(FILE *out, ASTNode *node, int indent) {
 static void codegen_set(FILE *out, ASTNode *node, int indent) {
     if (node->is_expr) {
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
-        if (node->var_type == TYPE_FLOAT && !is_add_sn) {
-            pad(out, indent);
-            fprintf(out, "{ double _e = (%s); snprintf(%s, sizeof(%s), \"%%g\", _e); }\n",
-                node->value, node->name, node->name);
-        } else if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+        if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
             fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s);\n",
