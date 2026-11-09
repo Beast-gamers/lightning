@@ -1,0 +1,5 @@
+# Type immutability errors (expect compile errors)
+# A locked variable cannot change dtype.
+let v = 10
+v.lock()
+set v = "string"

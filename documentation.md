@@ -336,8 +336,10 @@ set x = "hi"    # error: dtype immutability still applies (int -> string)
 - The variable must already be declared.
 - The variable's dtype must **not** be `null` when locking or unlocking:
   `let x` (null) followed by `x.lock()` is a compile error.
-- Once locked, `set` cannot change the dtype at all — not even the usual
-  `null -> type` transition that bare `let` variables allow.
+- Once locked, `set` cannot change the dtype at all — `set x = <newtype>`
+  is a compile error.
+- Calling `unlock()` removes the dtype lock entirely, after which `set` can
+  change the variable's dtype freely (e.g. `int` → `string` → `int`).
 - Locking an already-locked variable, or unlocking an already-unlocked one,
   produces a **warning** but compilation still succeeds.
 - `lock()`/`unlock()` are compile-time operations only — no runtime code is

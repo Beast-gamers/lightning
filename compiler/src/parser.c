@@ -2445,7 +2445,7 @@ static int check_set_type_immutable(SymbolTable *table, const char *mangled,
                                      Lexer *lexer) {
     VarType existing = symbol_table_get(table, mangled);
     if (existing != new_type) {
-        /* A locked variable cannot change dtype at all (even null->type). */
+        /* A locked variable cannot change dtype at all. */
         if (symbol_table_get_locked(table, mangled)) {
             char msg[256];
             snprintf(msg, sizeof(msg),
@@ -2455,27 +2455,8 @@ static int check_set_type_immutable(SymbolTable *table, const char *mangled,
             skip_to_newline(lexer);
             return 0;
         }
-        /* Allow TYPE_NULL -> anything */
-        if (existing == TYPE_NULL) {
-            return 1;
-        }
-        /* Allow INT <-> FLOAT (merged into int type) */
-        if ((existing == TYPE_INT && new_type == TYPE_FLOAT) ||
-            (existing == TYPE_FLOAT && new_type == TYPE_INT)) {
-            return 1;
-        }
-        /* Allow CHAR <-> STRING (merged into string type) */
-        if ((existing == TYPE_CHAR && new_type == TYPE_STRING) ||
-            (existing == TYPE_STRING && new_type == TYPE_CHAR)) {
-            return 1;
-        }
-        char msg[256];
-        snprintf(msg, sizeof(msg),
-            "Cannot change type of variable '%s' from %s to %s",
-            mangled, type_name_str(existing), type_name_str(new_type));
-        error_state_add(parser_errors, line, col, msg);
-        skip_to_newline(lexer);
-        return 0;
+        /* An unlocked variable may change its dtype freely via set. */
+        return 1;
     }
     return 1;
 }

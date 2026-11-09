@@ -1,0 +1,8 @@
+# unlock removes dtype immutability entirely
+let x = int
+x.lock()
+x.unlock()
+set x = "hello"
+write(x)
+set x = 42
+write(x)
