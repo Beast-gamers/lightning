@@ -1,32 +1,32 @@
-# Type conversion functions: int(), string(), bool()
-# int() - convert numeric string to number (stored as string)
-# string() - convert value to string
-# bool() - convert to true/false (true unless null/empty/0/false)
+# Type conversion functions: toint(), tostring(), tobool()
+# toint() - convert numeric string to number
+# tostring() - convert value to string
+# tobool() - convert to true/false (true unless null/empty/0/false)
 
-# int() conversion
-write(int("3.14"))
-write(int("10"))
-write(int(-5))
+# toint() conversion
+write(toint("3.14"))
+write(toint("10"))
+write(toint(-5))
 let s = "42"
-write(int(s))
+write(toint(s))
 
-# string() conversion
-write(string(true))
-write(string(false))
-write(string(42))
-write(string("hello"))
+# tostring() conversion
+write(tostring(true))
+write(tostring(false))
+write(tostring(42))
+write(tostring("hello"))
 
-# bool() conversion
-write(bool("true"))
-write(bool("false"))
-write(bool(0))
-write(bool(42))
-write(bool(""))
+# tobool() conversion
+write(tobool("true"))
+write(tobool("false"))
+write(tobool(0))
+write(tobool(42))
+write(tobool(""))
 
 # Combined
-let x = int("100") + int("25")
+let x = toint("100") + toint("25")
 write(x)
-let y = string(x)
+let y = tostring(x)
 write(y)
-let b = bool("1")
+let b = tobool("1")
 write(b)

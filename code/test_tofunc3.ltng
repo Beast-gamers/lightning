@@ -1,0 +1,32 @@
+# Type conversion functions: toint(), tostring(), tobool()
+write(toint("3.14"))
+write(toint("10"))
+write(toint(-5))
+let s = "42"
+write(toint(s))
+
+write(tostring(true))
+write(tostring(false))
+write(tostring(42))
+write(tostring("hello"))
+
+write(tobool("true"))
+write(tobool("false"))
+write(tobool(0))
+write(tobool(42))
+write(tobool(""))
+
+# typeof with type conversion calls
+write(typeof(tobool("t")))
+write(typeof(tobool("f")))
+write(typeof(toint("10")))
+write(typeof(tostring("hello")))
+write(typeof(tobool("1")))
+
+# In interpolation with variables (no nested quotes)
+let tv = "t"
+write("$[tobool(tv)]")
+let iv = "10"
+write("$[toint(iv)]")
+let xv = "x"
+write("$[tostring(xv)]")

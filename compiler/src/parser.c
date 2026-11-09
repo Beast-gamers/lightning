@@ -241,9 +241,9 @@ static int is_type_keyword(const char *name) {
    int(expr), string(expr), bool(expr). These are function calls, not
    type declarations, when followed by '('. */
 static int is_type_conversion(const char *name) {
-    return strcmp(name, "int") == 0 ||
-           strcmp(name, "string") == 0 ||
-           strcmp(name, "bool") == 0;
+    return strcmp(name, "toint") == 0 ||
+           strcmp(name, "tostring") == 0 ||
+           strcmp(name, "tobool") == 0;
 }
 
 static int is_ltng_reserved(const char *name) {
@@ -945,8 +945,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             case TOKEN_IDENT: {
                 int saved_pos = pos;
                 /* Type conversion functions: int(expr), string(expr), bool(expr) */
-                if ((strcmp(tok.value, "int") == 0 || strcmp(tok.value, "string") == 0 ||
-                     strcmp(tok.value, "bool") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                if ((strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tostring") == 0 ||
+                     strcmp(tok.value, "tobool") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
                     lexer_next(lexer); /* consume ( */
                     char inner[MAX_STRING_LEN];
                     int ipos = 0;
@@ -994,7 +994,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         if (end_quote == ipos - 1) is_simple_str_lit = 1;
                     }
 
-                    if (strcmp(tok.value, "int") == 0) {
+                    if (strcmp(tok.value, "toint") == 0) {
                         /* int(expr): output as a quoted string so codegen uses %s.
                            String literals pass through as-is; number literals get
                            quotes added; variables pass through as-is. */
@@ -1006,7 +1006,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%s", inner);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
-                    } else if (strcmp(tok.value, "string") == 0) {
+                    } else if (strcmp(tok.value, "tostring") == 0) {
                         /* string(expr): convert bool literals and number literals
                            to quoted strings, else pass through */
                         if (ipos == 4 && memcmp(inner, "true", 4) == 0) {
@@ -1023,7 +1023,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%s", inner);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
-                    } else if (strcmp(tok.value, "bool") == 0) {
+                    } else if (strcmp(tok.value, "tobool") == 0) {
                         /* bool(expr): true unless null/empty/"0"/"false" */
                         /* For number literals: 0 → false, else → true */
                         /* For string literals: "" or "0" or "false" → false, else → true */
@@ -1575,14 +1575,82 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                                 "Variable '%s' not declared (used in string interpolation)", vname);
                             error_state_add(parser_errors, line, col, errmsg);
                         }
+                        int voff = (int)(vstart - 2 - tok->value);
+                        int vtotal = (int)(sp - (vstart - 2) + 1);
+                        for (int ci = voff; ci < voff + vtotal && rlen < MAX_STRING_LEN - 1; ci++) {
+                            resolved[rlen++] = tok->value[ci];
+                        }
                     } else {
-                        char check[MAX_STRING_LEN];
-                        parse_expression_from_string(vname, table, check, sizeof(check));
-                    }
-                    int voff = (int)(vstart - 2 - tok->value);
-                    int vtotal = (int)(sp - (vstart - 2) + 1);
-                    for (int ci = voff; ci < voff + vtotal && rlen < MAX_STRING_LEN - 1; ci++) {
-                        resolved[rlen++] = tok->value[ci];
+                        /* Check for type conversion calls inside interpolation:
+                           $[toint("10")], $[tostring("x")], $[tobool("t")]
+                           all return string results */
+                        if (strncmp(vname, "toint(", 6) == 0 && vname[strlen(vname) - 1] == ')') {
+                            char inner[MAX_STRING_LEN];
+                            int ilen = (int)strlen(vname) - 7; /* strip "toint(" and ")" */
+                            memcpy(inner, vname + 6, ilen);
+                            inner[ilen] = '\0';
+                            /* Trim whitespace */
+                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
+                            inner[ilen] = '\0';
+                            if (ilen >= 2 && inner[0] == '"' && inner[ilen-1] == '"') {
+                                /* String literal - strip quotes */
+                                char clean[MAX_STRING_LEN];
+                                int cpos = 0;
+                                for (int i = 1; i < ilen - 1 && cpos < MAX_STRING_LEN - 1; i++) {
+                                    if (inner[i] == '\\' && i + 1 < ilen - 1) {
+                                        clean[cpos++] = inner[i];
+                                        clean[cpos++] = inner[++i];
+                                    } else {
+                                        clean[cpos++] = inner[i];
+                                    }
+                                }
+                                clean[cpos] = '\0';
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"%s\"", clean);
+                            } else {
+                                /* Variable or number - pass through as string */
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"%s\"", inner);
+                            }
+                        } else if (strncmp(vname, "tostring(", 9) == 0 && vname[strlen(vname) - 1] == ')') {
+                            char inner[MAX_STRING_LEN];
+                            int ilen = (int)strlen(vname) - 10; /* strip "tostring(" and ")" */
+                            memcpy(inner, vname + 9, ilen);
+                            inner[ilen] = '\0';
+                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
+                            inner[ilen] = '\0';
+                            if (ilen == 4 && memcmp(inner, "true", 4) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
+                            } else if (ilen == 5 && memcmp(inner, "false", 5) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"false\"");
+                            } else {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"%s\"", inner);
+                            }
+                        } else if (strncmp(vname, "tobool(", 7) == 0 && vname[strlen(vname) - 1] == ')') {
+                            char inner[MAX_STRING_LEN];
+                            int ilen = (int)strlen(vname) - 8; /* strip "tobool(" and ")" */
+                            memcpy(inner, vname + 7, ilen);
+                            inner[ilen] = '\0';
+                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
+                            inner[ilen] = '\0';
+                            if (ilen == 1 && inner[0] == '0') {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"false\"");
+                            } else if (ilen >= 1 && inner[0] >= '1' && inner[0] <= '9') {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
+                            } else if (ilen >= 2 && inner[0] == '"') {
+                                if (ilen == 2 || (ilen == 3 && inner[1] == '0') ||
+                                    (ilen == 7 && memcmp(inner + 1, "false", 5) == 0)) {
+                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"false\"");
+                                } else {
+                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
+                                }
+                            } else {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
+                            }
+                        } else {
+                            /* General expression - parse and use result */
+                            char check[MAX_STRING_LEN];
+                            VarType etype = parse_expression_from_string(vname, table, check, sizeof(check));
+                            rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", check);
+                        }
                     }
                 }
             } else {
@@ -1637,6 +1705,38 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         return 0;
     }
 
+    /* Type conversion call inside typeof: typeof(toint(...)), typeof(tostring(...)),
+       typeof(tobool(...)) - all return strings */
+    if (arg.type == TOKEN_IDENT && is_type_conversion(arg.value) &&
+        lexer_peek(lexer).type == TOKEN_LPAREN) {
+        lexer_next(lexer); /* consume ( */
+        int depth = 1;
+        while (lexer->current < lexer->count && depth > 0) {
+            Token itok = lexer_peek(lexer);
+            if (itok.type == TOKEN_LPAREN) depth++;
+            else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
+            else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
+            lexer_next(lexer);
+        }
+        if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+            lexer_next(lexer); /* consume inner ) */
+        }
+        Token close = lexer_next(lexer); /* consume outer ) */
+        if (close.type != TOKEN_RPAREN) {
+            error_state_add(parser_errors, arg.line, arg.col,
+                "Expected ')' after typeof argument");
+            lexer->current = saved_pos;
+            return 0;
+        }
+        result->type = TOKEN_STRING;
+        strncpy(result->value, "string", MAX_STRING_LEN - 1);
+        result->value[MAX_STRING_LEN - 1] = '\0';
+        result->line = typeof_tok.line;
+        result->col = typeof_tok.col;
+        return 1;
+    }
+
+    /* Simple single-token argument followed by ) */
     Token close = lexer_next(lexer);
     if (close.type != TOKEN_RPAREN) {
         error_state_add(parser_errors, arg.line, arg.col,
@@ -1684,6 +1784,28 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         vtype = TYPE_STRING;
     } else if (is_bool_value(arg.value)) {
         vtype = TYPE_BOOL;
+    } else if (arg.type == TOKEN_IDENT && is_type_conversion(arg.value) &&
+               lexer_peek(lexer).type == TOKEN_LPAREN) {
+        /* Type conversion call inside typeof: typeof(int(...)), typeof(string(...)),
+           typeof(bool(...)) - all return strings */
+        lexer_next(lexer); /* consume ( */
+        int depth = 1;
+        while (lexer->current < lexer->count && depth > 0) {
+            Token itok = lexer_peek(lexer);
+            if (itok.type == TOKEN_LPAREN) depth++;
+            else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
+            else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
+            lexer_next(lexer);
+        }
+        if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+            lexer_next(lexer); /* consume ) */
+        }
+        result->type = TOKEN_STRING;
+        strncpy(result->value, "string", MAX_STRING_LEN - 1);
+        result->value[MAX_STRING_LEN - 1] = '\0';
+        result->line = typeof_tok.line;
+        result->col = typeof_tok.col;
+        return 1;
     } else {
         error_state_add(parser_errors, arg.line, arg.col,
             "Expected variable or value inside typeof()");
