@@ -1,0 +1,35 @@
+# typeof with type conversion calls
+write(typeof(toint("5")))
+write(typeof(toint("3.14")))
+write(typeof(tostring("hello")))
+write(typeof(tobool("true")))
+write(typeof(tobool("false")))
+write(typeof(tobool(0)))
+write(typeof(tobool(42)))
+
+# typeof with user-defined functions
+function add(a, b) {
+    return a + b
+}
+write(typeof(add(1, 2)))
+
+function greet(name) {
+    return name
+}
+write(typeof(greet("hello")))
+
+function flag() {
+    return true
+}
+write(typeof(flag()))
+
+# typeof in interpolation with variables (no nested quotes)
+let s5 = "5"
+write("$[typeof(toint(s5))]")
+let st = "t"
+write("$[typeof(tobool(st))]")
+
+# typeof with variables
+let x = 42
+write(typeof(x))
+write(typeof(toint(x)))

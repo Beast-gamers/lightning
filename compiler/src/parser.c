@@ -848,6 +848,12 @@ static int part_is_stringy(const char *part) {
 
 static void token_append_source(char *out, int *pos, int out_size, Token tok);
 
+/* Find a function AST node by its short source name or mangled C name. */
+static ASTNode *find_function_ast_by_name(const char *name);
+
+/* Infer the return type of a user-defined function by scanning its return statements. */
+static VarType infer_function_return_type(const char *fname);
+
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
                                   int stop_on_rparen, int stop_on_comma) {
@@ -1509,49 +1515,78 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                 if (strncmp(vname, "typeof(", 7) == 0 && vname[vlen - 1] == ')') {
                     vname[vlen - 1] = '\0';
                     memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                    int is_nested = (strncmp(vname, "typeof(", 7) == 0);
-                    if (is_nested) {
-                        while (strncmp(vname, "typeof(", 7) == 0) {
-                            int nl = (int)strlen(vname);
-                            if (vname[nl - 1] != ')') break;
-                            vname[nl - 1] = '\0';
-                            memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                        }
-                        char mvname[MAX_IDENTIFIER_LEN];
-                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                        if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                            char errmsg[256];
-                            snprintf(errmsg, sizeof(errmsg),
-                                "Variable '%s' not declared (used in typeof)", vname);
-                            error_state_add(parser_errors, line, col, errmsg);
-                        }
-                        const char *tname = "string";
-                        int tlen = (int)strlen(tname);
-                        if (rlen + tlen < MAX_STRING_LEN) {
-                            memcpy(resolved + rlen, tname, tlen);
-                            rlen += tlen;
-                        }
+                    
+                    /* typeof(toint("5")) → "int", typeof(tostring("x")) → "string",
+                       typeof(tobool("t")) → "bool" */
+                    if (strncmp(vname, "toint(", 6) == 0) {
+                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
+                    } else if (strncmp(vname, "tostring(", 9) == 0) {
+                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
+                    } else if (strncmp(vname, "tobool(", 7) == 0) {
+                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
                     } else {
-                        char mvname[MAX_IDENTIFIER_LEN];
-                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                        if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                            char errmsg[256];
-                            snprintf(errmsg, sizeof(errmsg),
-                                "Variable '%s' not declared (used in typeof)", vname);
-                            error_state_add(parser_errors, line, col, errmsg);
-                        } else {
-                            const char *tname = "unknown";
-                            if (symbol_table_has(table, mvname)) {
-                                tname = var_type_name(symbol_table_get(table, mvname));
-                            } else if (is_bool_value(vname)) {
-                                tname = "bool";
-                            } else if (is_type_keyword(vname)) {
-                                tname = vname;
+                        /* typeof(func(...)) for user-defined functions */
+                        const char *p = vname;
+                        while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+                        if (p > vname && *p == '(') {
+                            char fname[MAX_IDENTIFIER_LEN];
+                            int flen = (int)(p - vname);
+                            if (flen >= MAX_IDENTIFIER_LEN) flen = MAX_IDENTIFIER_LEN - 1;
+                            memcpy(fname, vname, flen);
+                            fname[flen] = '\0';
+                            if (find_function_ast_by_name(fname)) {
+                                VarType ftype = infer_function_return_type(fname);
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", var_type_name(ftype));
+                            } else {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
                             }
-                            int tlen = (int)strlen(tname);
-                            if (rlen + tlen < MAX_STRING_LEN) {
-                                memcpy(resolved + rlen, tname, tlen);
-                                rlen += tlen;
+                        } else {
+                            /* Nested typeof or variable lookup */
+                            int is_nested = (strncmp(vname, "typeof(", 7) == 0);
+                            if (is_nested) {
+                                while (strncmp(vname, "typeof(", 7) == 0) {
+                                    int nl = (int)strlen(vname);
+                                    if (vname[nl - 1] != ')') break;
+                                    vname[nl - 1] = '\0';
+                                    memmove(vname, vname + 7, strlen(vname + 7) + 1);
+                                }
+                                char mvname[MAX_IDENTIFIER_LEN];
+                                mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                                if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
+                                    char errmsg[256];
+                                    snprintf(errmsg, sizeof(errmsg),
+                                        "Variable '%s' not declared (used in typeof)", vname);
+                                    error_state_add(parser_errors, line, col, errmsg);
+                                }
+                                const char *tname = "string";
+                                int tlen = (int)strlen(tname);
+                                if (rlen + tlen < MAX_STRING_LEN) {
+                                    memcpy(resolved + rlen, tname, tlen);
+                                    rlen += tlen;
+                                }
+                            } else {
+                                char mvname[MAX_IDENTIFIER_LEN];
+                                mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                                if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
+                                    char errmsg[256];
+                                    snprintf(errmsg, sizeof(errmsg),
+                                        "Variable '%s' not declared (used in typeof)", vname);
+                                    error_state_add(parser_errors, line, col, errmsg);
+                                } else {
+                                    const char *tname = "unknown";
+                                    if (symbol_table_has(table, mvname)) {
+                                        tname = var_type_name(symbol_table_get(table, mvname));
+                                    } else if (is_bool_value(vname)) {
+                                        tname = "bool";
+                                    } else if (is_type_keyword(vname)) {
+                                        tname = vname;
+                                    }
+                                    int tlen = (int)strlen(tname);
+                                    if (rlen + tlen < MAX_STRING_LEN) {
+                                        memcpy(resolved + rlen, tname, tlen);
+                                        rlen += tlen;
+                                    }
+                                }
                             }
                         }
                     }
@@ -1705,8 +1740,8 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         return 0;
     }
 
-    /* Type conversion call inside typeof: typeof(toint(...)), typeof(tostring(...)),
-       typeof(tobool(...)) - all return strings */
+    /* Type conversion call inside typeof: typeof(toint(...)) → int,
+       typeof(tostring(...)) → string, typeof(tobool(...)) → bool */
     if (arg.type == TOKEN_IDENT && is_type_conversion(arg.value) &&
         lexer_peek(lexer).type == TOKEN_LPAREN) {
         lexer_next(lexer); /* consume ( */
@@ -1728,12 +1763,49 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             lexer->current = saved_pos;
             return 0;
         }
+        VarType cvt;
+        if (strcmp(arg.value, "toint") == 0) cvt = TYPE_INT;
+        else if (strcmp(arg.value, "tostring") == 0) cvt = TYPE_STRING;
+        else cvt = TYPE_BOOL; /* tobool */
         result->type = TOKEN_STRING;
-        strncpy(result->value, "string", MAX_STRING_LEN - 1);
+        strncpy(result->value, var_type_name(cvt), MAX_STRING_LEN - 1);
         result->value[MAX_STRING_LEN - 1] = '\0';
         result->line = typeof_tok.line;
         result->col = typeof_tok.col;
         return 1;
+    }
+
+    /* User-defined function call inside typeof: typeof(add(1, 2)) */
+    if (arg.type == TOKEN_IDENT && lexer_peek(lexer).type == TOKEN_LPAREN) {
+        /* Check if this is a known function */
+        if (find_function_ast_by_name(arg.value)) {
+            lexer_next(lexer); /* consume ( */
+            int depth = 1;
+            while (lexer->current < lexer->count && depth > 0) {
+                Token itok = lexer_peek(lexer);
+                if (itok.type == TOKEN_LPAREN) depth++;
+                else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
+                else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
+                lexer_next(lexer);
+            }
+            if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume inner ) */
+            }
+            Token close = lexer_next(lexer); /* consume outer ) */
+            if (close.type != TOKEN_RPAREN) {
+                error_state_add(parser_errors, arg.line, arg.col,
+                    "Expected ')' after typeof argument");
+                lexer->current = saved_pos;
+                return 0;
+            }
+            VarType ftype = infer_function_return_type(arg.value);
+            result->type = TOKEN_STRING;
+            strncpy(result->value, var_type_name(ftype), MAX_STRING_LEN - 1);
+            result->value[MAX_STRING_LEN - 1] = '\0';
+            result->line = typeof_tok.line;
+            result->col = typeof_tok.col;
+            return 1;
+        }
     }
 
     /* Simple single-token argument followed by ) */
@@ -1894,49 +1966,78 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                         if (strncmp(vname, "typeof(", 7) == 0 && vname[vlen - 1] == ')') {
                             vname[vlen - 1] = '\0';
                             memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                            int is_nested = (strncmp(vname, "typeof(", 7) == 0);
-                            if (is_nested) {
-                                while (strncmp(vname, "typeof(", 7) == 0) {
-                                    int nl = (int)strlen(vname);
-                                    if (vname[nl - 1] != ')') break;
-                                    vname[nl - 1] = '\0';
-                                    memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                                }
-                                char mvname[MAX_IDENTIFIER_LEN];
-                                mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                                if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                    char errmsg[256];
-                                    snprintf(errmsg, sizeof(errmsg),
-                                        "Variable '%s' not declared (used in typeof)", vname);
-                                    error_state_add(parser_errors, arg.line, arg.col, errmsg);
-                                }
-                                const char *tname = "string";
-                                int tlen = (int)strlen(tname);
-                                if (rlen + tlen < MAX_STRING_LEN) {
-                                    memcpy(resolved + rlen, tname, tlen);
-                                    rlen += tlen;
-                                }
+                            
+                            /* typeof(toint("5")) → "int", typeof(tostring("x")) → "string",
+                               typeof(tobool("t")) → "bool" */
+                            if (strncmp(vname, "toint(", 6) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
+                            } else if (strncmp(vname, "tostring(", 9) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
+                            } else if (strncmp(vname, "tobool(", 7) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
                             } else {
-                                char mvname[MAX_IDENTIFIER_LEN];
-                                mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                                if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                    char errmsg[256];
-                                    snprintf(errmsg, sizeof(errmsg),
-                                        "Variable '%s' not declared (used in typeof)", vname);
-                                    error_state_add(parser_errors, arg.line, arg.col, errmsg);
-                                } else {
-                                    const char *tname = "unknown";
-                                    if (symbol_table_has(table, mvname)) {
-                                        tname = var_type_name(symbol_table_get(table, mvname));
-                                    } else if (is_bool_value(vname)) {
-                                        tname = "bool";
-                                    } else if (is_type_keyword(vname)) {
-                                        tname = vname;
+                                /* typeof(func(...)) for user-defined functions */
+                                const char *p = vname;
+                                while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+                                if (p > vname && *p == '(') {
+                                    char fname[MAX_IDENTIFIER_LEN];
+                                    int flen = (int)(p - vname);
+                                    if (flen >= MAX_IDENTIFIER_LEN) flen = MAX_IDENTIFIER_LEN - 1;
+                                    memcpy(fname, vname, flen);
+                                    fname[flen] = '\0';
+                                    if (find_function_ast_by_name(fname)) {
+                                        VarType ftype = infer_function_return_type(fname);
+                                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", var_type_name(ftype));
+                                    } else {
+                                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
                                     }
-                                    int tlen = (int)strlen(tname);
-                                    if (rlen + tlen < MAX_STRING_LEN) {
-                                        memcpy(resolved + rlen, tname, tlen);
-                                        rlen += tlen;
+                                } else {
+                                    /* Nested typeof or variable lookup */
+                                    int is_nested = (strncmp(vname, "typeof(", 7) == 0);
+                                    if (is_nested) {
+                                        while (strncmp(vname, "typeof(", 7) == 0) {
+                                            int nl = (int)strlen(vname);
+                                            if (vname[nl - 1] != ')') break;
+                                            vname[nl - 1] = '\0';
+                                            memmove(vname, vname + 7, strlen(vname + 7) + 1);
+                                        }
+                                        char mvname[MAX_IDENTIFIER_LEN];
+                                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                                        if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
+                                            char errmsg[256];
+                                            snprintf(errmsg, sizeof(errmsg),
+                                                "Variable '%s' not declared (used in typeof)", vname);
+                                            error_state_add(parser_errors, arg.line, arg.col, errmsg);
+                                        }
+                                        const char *tname = "string";
+                                        int tlen = (int)strlen(tname);
+                                        if (rlen + tlen < MAX_STRING_LEN) {
+                                            memcpy(resolved + rlen, tname, tlen);
+                                            rlen += tlen;
+                                        }
+                                    } else {
+                                        char mvname[MAX_IDENTIFIER_LEN];
+                                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                                        if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
+                                            char errmsg[256];
+                                            snprintf(errmsg, sizeof(errmsg),
+                                                "Variable '%s' not declared (used in typeof)", vname);
+                                            error_state_add(parser_errors, arg.line, arg.col, errmsg);
+                                        } else {
+                                            const char *tname = "unknown";
+                                            if (symbol_table_has(table, mvname)) {
+                                                tname = var_type_name(symbol_table_get(table, mvname));
+                                            } else if (is_bool_value(vname)) {
+                                                tname = "bool";
+                                            } else if (is_type_keyword(vname)) {
+                                                tname = vname;
+                                            }
+                                            int tlen = (int)strlen(tname);
+                                            if (rlen + tlen < MAX_STRING_LEN) {
+                                                memcpy(resolved + rlen, tname, tlen);
+                                                rlen += tlen;
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3672,6 +3773,66 @@ static int function_first_param_is_base(const char *cname) {
     ASTNode *fn = find_function_node_by_cname(cname);
     if (!fn || !fn->params) return 0;
     return strcmp(fn->params->for_var, "base") == 0;
+}
+
+/* Find a function AST node by its short source name (fn->for_var) or mangled C name. */
+static ASTNode *find_function_ast_by_name(const char *name) {
+    if (!g_program_ref) return NULL;
+    for (ASTNode *fn = g_program_ref->functions; fn; fn = fn->next) {
+        if (strcmp(fn->for_var, name) == 0 || strcmp(fn->name, name) == 0) return fn;
+    }
+    return NULL;
+}
+
+/* Recursively scan an AST subtree for NODE_RETURN nodes and tally their var_types.
+   Returns the dominant return type, or TYPE_STRING if mixed/none. */
+static VarType analyze_function_returns(ASTNode *node, int *has_return) {
+    if (!node) return TYPE_STRING;
+
+    if (node->type == NODE_RETURN) {
+        *has_return = 1;
+        return node->var_type;
+    }
+
+    VarType result = TYPE_STRING;
+    VarType child;
+    int child_has_return = 0;
+
+    child = analyze_function_returns(node->body, &child_has_return);
+    if (child_has_return) {
+        *has_return = 1;
+        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
+    }
+
+    child = analyze_function_returns(node->orelse, &child_has_return);
+    if (child_has_return) {
+        *has_return = 1;
+        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
+    }
+
+    child = analyze_function_returns(node->cases, &child_has_return);
+    if (child_has_return) {
+        *has_return = 1;
+        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
+    }
+
+    child = analyze_function_returns(node->next, &child_has_return);
+    if (child_has_return) {
+        *has_return = 1;
+        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
+    }
+
+    return result;
+}
+
+/* Infer the return type of a user-defined function by scanning its return statements.
+   Returns TYPE_STRING if the function is not found or has mixed/no returns. */
+static VarType infer_function_return_type(const char *fname) {
+    ASTNode *fn = find_function_ast_by_name(fname);
+    if (!fn) return TYPE_STRING;
+
+    int has_return = 0;
+    return analyze_function_returns(fn->body, &has_return);
 }
 
 static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok_val, int line, int col, ASTNode *first_arg) {

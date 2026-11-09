@@ -383,13 +383,15 @@ write(tobool(""))         # false
 
 - `toint(expr)` — If `expr` is a string containing a number (e.g. `"3.14"`),
   the quotes are stripped and the numeric value is used. If `expr` is a
-  variable, its string value is used as-is. Result is always a string.
+  variable, its string value is used as-is. `typeof(toint(expr))` returns
+  `"int"`.
 - `tostring(expr)` — Converts `true`/`false` to `"true"`/`"false"`, number
   literals to quoted strings, and passes other values through as-is.
+  `typeof(tostring(expr))` returns `"string"`.
 - `tobool(expr)` — Returns `"true"` unless `expr` is null/empty/`0`/`false`,
   in which case returns `"false"`. Number literals (`0` → false, else →
   true) and string literals are evaluated at compile time; variables use a
-  runtime check.
+  runtime check. `typeof(tobool(expr))` returns `"bool"`.
 - All three functions produce string results and can be used anywhere a
   string expression is expected.
 
@@ -475,7 +477,7 @@ write(typeof('A'))     # char
 write(typeof(true))    # bool
 ```
 
-`typeof()` accepts variables, literal values, reserved words, and nested typeof calls, returning:
+`typeof()` accepts variables, literal values, reserved words, type conversion calls, user-defined function calls, and nested typeof calls, returning:
 
 | Input | Returns |
 |-------|---------|
@@ -488,6 +490,10 @@ write(typeof(true))    # bool
 | `typeof(let)` | `"reserved"` |
 | `typeof(x)` | looks up variable type |
 | `typeof(typeof(x))` | `"string"` |
+| `typeof(toint(expr))` | `"int"` |
+| `typeof(tostring(expr))` | `"string"` |
+| `typeof(tobool(expr))` | `"bool"` |
+| `typeof(func(args))` | inferred return type of user-defined function |
 
 It works with let, const, set, and write:
 
@@ -498,6 +504,22 @@ const my_type = typeof(my_pi)    # "float"
 let v = int 10
 set v = typeof(3.14)             # v becomes the string "float"
 write(typeof(v))                 # string
+
+# typeof with type conversion calls
+write(typeof(toint("5")))        # int
+write(typeof(tostring("x")))     # string
+write(typeof(tobool("t")))       # bool
+
+# typeof with user-defined functions (returns inferred type)
+function add(a, b) {
+    return a + b
+}
+write(typeof(add(1, 2)))         # string (a+b via _ltng_add_sn returns string)
+
+function flag() {
+    return true
+}
+write(typeof(flag()))            # bool
 ```
 
 ### Type Keywords
