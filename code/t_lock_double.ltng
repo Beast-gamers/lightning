@@ -1,0 +1,7 @@
+# lock/unlock: double lock/unlock produces warnings but compiles
+let x = 5
+x.lock()
+x.lock()
+x.unlock()
+x.unlock()
+write(x)

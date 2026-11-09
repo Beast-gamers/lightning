@@ -151,6 +151,7 @@ typedef struct {
     char name[MAX_IDENTIFIER_LEN];
     VarType type;
     int is_const;
+    int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
 } VarEntry;
 
 #define MAX_OBJ_FIELDS 32
@@ -234,6 +235,8 @@ void scope_init(Scope *scope, Scope *parent, int disallow_decl);
 void symbol_table_add_local(SymbolTable *table, const char *name, VarType type);
 void symbol_table_update(SymbolTable *table, const char *name, VarType type);
 int symbol_table_has_local(SymbolTable *table, const char *name);
+int symbol_table_get_locked(SymbolTable *table, const char *name);
+void symbol_table_set_locked(SymbolTable *table, const char *name, int locked);
 
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
 const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);

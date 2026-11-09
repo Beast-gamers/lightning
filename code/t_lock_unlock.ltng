@@ -1,0 +1,8 @@
+# lock/unlock: positive flow
+let x = 5
+x.lock()
+set x = 10
+write(x)
+x.unlock()
+set x = 10
+write(x)

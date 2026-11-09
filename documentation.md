@@ -314,6 +314,36 @@ const c = 1
 set c = 2           # error: Cannot assign to constant
 ```
 
+### Dtype Lock: `lock()` and `unlock()`
+
+Use `lock()` to freeze a variable's dtype so it cannot be changed by `set`.
+Use `unlock()` to remove the freeze and restore normal dtype-immutability rules.
+
+```
+let x = 5
+x.lock()        # x's dtype (int) is now locked
+set x = 10      # OK - same type
+set x = "hi"    # error: Cannot change type of locked variable 'x' from int to string
+x.unlock()      # lock removed
+set x = 10      # OK - same type
+set x = "hi"    # error: dtype immutability still applies (int -> string)
+```
+
+**Rules:**
+
+- `lock()` / `unlock()` are called with method syntax: `variable.lock()` /
+  `variable.unlock()` — they take no arguments.
+- The variable must already be declared.
+- The variable's dtype must **not** be `null` when locking or unlocking:
+  `let x` (null) followed by `x.lock()` is a compile error.
+- Once locked, `set` cannot change the dtype at all — not even the usual
+  `null -> type` transition that bare `let` variables allow.
+- Locking an already-locked variable, or unlocking an already-unlocked one,
+  produces a **warning** but compilation still succeeds.
+- `lock()`/`unlock()` are compile-time operations only — no runtime code is
+  generated. The lock state is tracked by the compiler.
+
+
 ### Object literals and the `obj` dtype
 
 Objects group named fields into a single value. Create an object literal with

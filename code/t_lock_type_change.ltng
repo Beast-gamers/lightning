@@ -1,0 +1,4 @@
+# lock/unlock: type change after lock is rejected
+let x = 5
+x.lock()
+set x = "hello"

@@ -360,6 +360,7 @@ static void symbol_table_add_in(SymbolTable *table, const char *name, VarType ty
     strncpy(table->vars[table->count].name, name, MAX_IDENTIFIER_LEN - 1);
     table->vars[table->count].type = type;
     table->vars[table->count].is_const = 0;
+    table->vars[table->count].is_locked = 0;
     table->count++;
 }
 
@@ -437,6 +438,28 @@ int symbol_table_is_const(SymbolTable *table, const char *name) {
         }
     }
     return 0;
+}
+
+int symbol_table_get_locked(SymbolTable *table, const char *name) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                return s->vars[i].is_locked;
+            }
+        }
+    }
+    return 0;
+}
+
+void symbol_table_set_locked(SymbolTable *table, const char *name, int locked) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                s->vars[i].is_locked = locked;
+                return;
+            }
+        }
+    }
 }
 
 static void skip_to_newline(Lexer *lexer) {
@@ -2422,6 +2445,16 @@ static int check_set_type_immutable(SymbolTable *table, const char *mangled,
                                      Lexer *lexer) {
     VarType existing = symbol_table_get(table, mangled);
     if (existing != new_type) {
+        /* A locked variable cannot change dtype at all (even null->type). */
+        if (symbol_table_get_locked(table, mangled)) {
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                "Cannot change type of locked variable '%s' from %s to %s",
+                mangled, type_name_str(existing), type_name_str(new_type));
+            error_state_add(parser_errors, line, col, msg);
+            skip_to_newline(lexer);
+            return 0;
+        }
         /* Allow TYPE_NULL -> anything */
         if (existing == TYPE_NULL) {
             return 1;
@@ -3700,9 +3733,58 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
             return;
         }
         if (t2.type == TOKEN_DOT) {
-            /* method/UFCS call: receiver.method(args) => method(receiver, args) */
+            /* Special: p.lock() / p.unlock() — dtype lock operations.
+               These are compile-time only: no runtime code is generated.
+               The variable's dtype must not be null. */
             lexer_next(lexer); /* consume DOT */
             Token mname = lexer_next(lexer);
+            if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
+                (strcmp(mname.value, "lock") == 0 ||
+                 strcmp(mname.value, "unlock") == 0)) {
+                if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg), "Expected '(' after '%s'", mname.value);
+                    error_state_add(parser_errors, mname.line, mname.col, errmsg);
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume ( */
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg),
+                        "Expected ')' with no arguments for '%s()'", mname.value);
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, errmsg);
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume ) */
+
+                char rm[MAX_IDENTIFIER_LEN];
+                mangle_name(t.value, rm, MAX_IDENTIFIER_LEN);
+                if (!symbol_table_has(table, rm)) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    return;
+                }
+                VarType vt = symbol_table_get(table, rm);
+                if (vt == TYPE_NULL) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg),
+                        "Cannot lock/unlock variable '%s' with null dtype", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    return;
+                }
+                int want_locked = (strcmp(mname.value, "lock") == 0);
+                int already = symbol_table_get_locked(table, rm);
+                if (already == want_locked) {
+                    fprintf(stderr, "warning: variable '%s' is already %s\n",
+                        t.value, want_locked ? "locked" : "unlocked");
+                }
+                symbol_table_set_locked(table, rm, want_locked);
+                return;
+            }
             if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
                 lexer_peek(lexer).type == TOKEN_LPAREN &&
                 is_function_name_scoped(table, mname.value)) {
