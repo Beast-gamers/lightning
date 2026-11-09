@@ -46,7 +46,7 @@ write(c)
 let empty_int = int
 let empty_float = int
 let empty_string = string
-let empty_char = char
+let empty_char = string
 
 write("Default int: ")
 write(empty_int)
@@ -61,7 +61,7 @@ write(empty_string)
 let user_name = string
 let user_age = int
 let user_score = int
-let user_letter = char
+let user_letter = string
 
 write("Enter your name:")
 read(user_name)

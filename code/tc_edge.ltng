@@ -6,7 +6,7 @@
 let z1 = int
 let z2 = int
 let z3 = string
-let z4 = char
+let z4 = string
 let z5 = bool
 write(z1)
 write(z2)

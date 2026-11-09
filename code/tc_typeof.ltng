@@ -43,7 +43,7 @@ write(typeof(e5))
 let u1 = int
 let u2 = int
 let u3 = string
-let u4 = char
+let u4 = string
 let u5 = bool
 write(typeof(u1))
 write(typeof(u2))

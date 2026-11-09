@@ -15,7 +15,7 @@ write(pi)
 let xi = int
 let xf = int
 let xs = string
-let xc = char
+let xc = string
 let xb = bool
 write(typeof(xi))
 write(typeof(xf))

@@ -2,7 +2,7 @@
 let rint = int
 let rfloat = int
 let rstring = string
-let rchar = char
+let rchar = string
 let rbool = bool
 # read(rint)
 # read(rfloat)

@@ -36,7 +36,7 @@ write(b5)
 let c1 = int
 let c2 = int
 let c3 = string
-let c4 = char
+let c4 = string
 let c5 = bool
 write(c1)
 write(c2)

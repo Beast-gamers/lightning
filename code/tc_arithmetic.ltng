@@ -97,11 +97,11 @@ write(bt * 10)
 write(bf * 10)
 write(bt + bf)
 
-# --- Char in arithmetic ---
+# --- String in arithmetic ---
 let ca = 'A'
 let cz = 'Z'
-write(ca + 0)
-write(ca + 1)
-write(ca + 25)
-write(cz - ca)
-write(ca + (cz - ca))
+write(ca)
+write(cz)
+write(ca + " rest")
+write(cz + " end")
+write(ca + cz)

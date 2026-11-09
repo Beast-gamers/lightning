@@ -18,7 +18,7 @@ let eb = true
 let ux = int
 let uy = int
 let us = string
-let uc = char
+let uc = string
 let ub = bool
 
 # Variables to variables

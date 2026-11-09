@@ -282,8 +282,7 @@ set y = 10          # error: Variable not declared
 ### Object literals and the `obj` dtype
 
 Objects group named fields into a single value. Create an object literal with
-`{ ... }` and `field = value` pairs (values are literals: string, int, float,
-bool, or char).
+`{ ... }` and `field = value` pairs (values are literals: string, int, float, bool, or char).
 
 ```
 let x = {
@@ -393,10 +392,13 @@ write(typeof(v))                 # string
 | Keyword | Type | Example Value |
 |---------|------|---------------|
 | `int` | Integer (includes float values) | `42`, `0`, `-10`, `3.14` |
-| `string` | Text | `"hello"` |
-| `char` | Single character | `'A'`, `'z'`, `'0'` |
+| `string` | Text (includes char values) | `"hello"`, `'A'`, `"world"` |
 | `bool` | Boolean | `true`, `false` |
 | `obj` | Object | `{ name = "saim", age = 17 }` |
+
+The `char` and `float` keywords have been removed. All numeric values are treated as `int`,
+and all character values are treated as `string`. A `char` literal like `'A'` is a valid
+string value and can be assigned to `string` variables.
 
 The `float` keyword has been removed. All numeric values (integers and floats)
 are treated as `int` type. A variable declared with `let x = int` can be assigned

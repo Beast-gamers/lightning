@@ -46,7 +46,6 @@ static int is_simple_var_or_keyword(const char *name, SymbolTable *table) {
     if (strcmp(name, "true") == 0 || strcmp(name, "t") == 0 ||
         strcmp(name, "false") == 0 || strcmp(name, "f") == 0) return 1;
     if (strcmp(name, "int") == 0 || strcmp(name, "string") == 0 ||
-        strcmp(name, "char") == 0 ||
         strcmp(name, "bool") == 0 || strcmp(name, "obj") == 0 ||
         strcmp(name, "typeof") == 0 ||
         strcmp(name, "let") == 0 || strcmp(name, "const") == 0 ||
@@ -321,10 +320,6 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             write_c_string(out, buf);
         } else if (node->var_type == TYPE_BOOL) {
             write_c_string(out, bool_to_str(node->value));
-        } else if (node->var_type == TYPE_CHAR) {
-            if (node->value[0] != '\0') {
-                write_c_string(out, node->value);
-            }
         } else {
             write_c_string(out, node->value);
         }
@@ -371,7 +366,7 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
                             case TYPE_INT: type_str = "int"; break;
                             case TYPE_FLOAT: type_str = "int"; break; /* float merged into int */
                             case TYPE_STRING: type_str = "string"; break;
-                            case TYPE_CHAR: type_str = "char"; break;
+                            case TYPE_CHAR: type_str = "string"; break; /* char merged into string */
                             case TYPE_BOOL: type_str = "bool"; break;
                             case TYPE_OBJECT: type_str = "object"; break;
                             case TYPE_NULL: type_str = "null"; break;
@@ -432,14 +427,11 @@ static void codegen_read(FILE *out, ASTNode *node, int indent) {
     if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; if(!_ltng_is_num_str(_rb)){ fprintf(stderr, \"Error: expected integer input for '%s'\\n\", %s); exit(1); } snprintf(%s, sizeof(%s), \"%%lld\", (long long)atoi(_rb)); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name, node->name, node->name);
-    } else if (node->var_type == TYPE_CHAR) {
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%c\", _rb[0]); %s[255]='\\0'; } }\n",
-            node->name, node->name, node->name);
     } else if (node->var_type == TYPE_BOOL) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, sizeof(%s), \"%%s\", (strcmp(_rb,\"true\")==0||strcmp(_rb,\"t\")==0)?\"true\":\"false\"); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name);
     } else {
-        /* TYPE_STRING: store raw input */
+        /* TYPE_STRING, TYPE_CHAR: store raw input */
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; strncpy(%s, _rb, 255); %s[255]='\\0'; } }\n",
             node->name, node->name);
     }

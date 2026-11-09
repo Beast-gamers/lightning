@@ -21,7 +21,7 @@ let eb = true
 let ui = int
 let uf = int
 let us = string
-let uc = char
+let uc = string
 let ub = bool
 
 # Inference from expressions

@@ -26,7 +26,7 @@ write(ex_char)
 let d_int = int
 let d_float = int
 let d_str = string
-let d_char = char
+let d_char = string
 
 write(d_int)
 write(d_float)

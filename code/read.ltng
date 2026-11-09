@@ -16,7 +16,7 @@ read(score)
 write("Double the score: $[score * 2]")
 
 write("Enter a letter: ")
-let letter = char
+let letter = string
 read(letter)
 write("You typed: $[letter]")
 

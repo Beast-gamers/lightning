@@ -65,12 +65,12 @@ write(false)
 write(t)
 write(f)
 
-# Test 9: char to int conversion in expressions
+# Test 9: string literal variables in expressions
 let ca = 'A'
 let cz2 = 'Z'
 write(ca)
 write(cz2)
-write(cz2 - ca)
+write(ca + cz2)
 
 # Test 10: Empty and minimal programs
 # (already tested above)

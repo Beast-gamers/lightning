@@ -2,7 +2,7 @@
 let x = int
 let y = int
 let s = string
-let c = char
+let c = string
 let b = bool
 # read(x)
 # read(y)
