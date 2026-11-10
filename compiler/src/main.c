@@ -173,16 +173,11 @@ int main(int argc, char *argv[]) {
     char cmd[4096];
     snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\"", cc_cmd, output_name, tmp_c);
 
-    int result = system(cmd);
-
-    remove(tmp_c);
-
-    if (result == 0) {
-        chmod(output_name, 0755);
-    }
-
-    if (result != 0) {
-        fprintf(stderr, "Error: C compilation failed\n");
+    /* Run compiler and capture output */
+    FILE *cfp = popen(cmd, "r");
+    if (!cfp) {
+        fprintf(stderr, "Error: Cannot run C compiler\n");
+        remove(tmp_c);
         free(source);
         codegen_free(program);
         free(base);
@@ -190,8 +185,36 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Read compiler output */
+    char compiler_err[4096] = "";
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), cfp)) > 0) {
+        /* Strip carriage returns */
+        for (size_t i = 0; i < n; i++) {
+            if (buf[i] == '\r') memmove(&buf[i], &buf[i+1], n - i - 1);
+        }
+        strncat(compiler_err, buf, sizeof(compiler_err) - strlen(compiler_err) - 1);
+    }
+    int compiler_exit = pclose(cfp);
+
+    remove(tmp_c);
+
     if (debug) {
+        /* Show actual compiler output when --debug is used */
+        if (strlen(compiler_err) > 0) {
+            fprintf(stderr, "C compiler output:\n%s\n", compiler_err);
+        }
         printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
+    } else {
+        /* Hide C compiler errors unless --debug */
+        if (compiler_exit != 0 && strlen(compiler_err) > 0) {
+            fprintf(stderr, "Error: internal error occured\n");
+        } else if (compiler_exit != 0) {
+            fprintf(stderr, "Error: C compilation failed\n");
+        } else {
+            printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
+        }
     }
 
     free(source);
