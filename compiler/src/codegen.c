@@ -74,7 +74,12 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
         } else if (*p == '$' && p[1] == '[') {
             p += 2;
             const char *start = p;
-            while (*p && *p != ']') p++;
+            int ibd = 0;
+            while (*p) {
+                if (*p == '[') ibd++;
+                else if (*p == ']') { if (ibd == 0) break; ibd--; }
+                p++;
+            }
             if (*p == ']') {
                 int len = (int)(p - start);
                 char vname[MAX_IDENTIFIER_LEN];
@@ -119,7 +124,12 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
             } else if (*p == '$' && p[1] == '[') {
                 p += 2;
                 const char *start = p;
-                while (*p && *p != ']') p++;
+                int ibd = 0;
+                while (*p) {
+                    if (*p == '[') ibd++;
+                    else if (*p == ']') { if (ibd == 0) break; ibd--; }
+                    p++;
+                }
                 if (*p == ']') {
                     int len = (int)(p - start);
                     char vname[MAX_IDENTIFIER_LEN];
@@ -177,7 +187,12 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
         } else if (*p == '$' && p[1] == '[') {
             p += 2;
             const char *start = p;
-            while (*p && *p != ']') p++;
+            int ibd = 0;
+            while (*p) {
+                if (*p == '[') ibd++;
+                else if (*p == ']') { if (ibd == 0) break; ibd--; }
+                p++;
+            }
             if (*p == ']') {
                 int len = (int)(p - start);
                 char vname[MAX_IDENTIFIER_LEN];
@@ -222,7 +237,12 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
             } else if (*p == '$' && p[1] == '[') {
                 p += 2;
                 const char *start = p;
-                while (*p && *p != ']') p++;
+                int ibd = 0;
+                while (*p) {
+                    if (*p == '[') ibd++;
+                    else if (*p == ']') { if (ibd == 0) break; ibd--; }
+                    p++;
+                }
                 if (*p == ']') {
                     int len = (int)(p - start);
                     char vname[MAX_IDENTIFIER_LEN];
@@ -299,8 +319,21 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
            int name_len = N; */
         char arrname[MAX_IDENTIFIER_LEN];
         snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+        /* Allocate the rectangular shape (product of dimensions), not just the
+           number of written elements, so ragged literals leave empty slots
+           instead of reading out of bounds. */
+        int slots = node->array_elem_count;
+        if (node->array_dim_count >= 1) {
+            int product = 1;
+            for (int d = 0; d < node->array_dim_count && d < 3; d++) {
+                if (node->array_dims[d] <= 0) { product = 0; break; }
+                product *= node->array_dims[d];
+            }
+            if (product > slots) slots = product;
+        }
+        if (slots < 1) slots = 1;
         pad(out, indent);
-        fprintf(out, "char %s[%d][256] = {", arrname, node->array_elem_count);
+        fprintf(out, "char %s[%d][256] = {", arrname, slots);
         /* Parse pipe-separated values from node->value */
         const char *val = node->value;
         int elem_idx = 0;
@@ -883,6 +916,9 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "#include <ctype.h>\n");
     fprintf(out, "static char *_ltng_concat(char *buf, size_t sz, int n, ...) { va_list ap; va_start(ap,n); buf[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); strncat(buf,s,sz-strlen(buf)-1); } va_end(ap); return buf; }\n");
     fprintf(out, "static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { buf[0]=0; if (n < 0) n = 0; for (long long i=0; i<n && strlen(buf) < sz-1; i++) { strncat(buf, s, sz-strlen(buf)-1); } return buf; }\n");
+    fprintf(out, "static char *_ltng_arr_get(char data[][256], int len, int idx) { if (idx >= 0 && idx < len) return data[idx]; if (idx < 0 && len + idx >= 0) return data[len + idx]; return \"\"; }\n");
+    fprintf(out, "static int _ltng_idx2(int i0, int i1, int d1) { return i0 * d1 + i1; }\n");
+    fprintf(out, "static int _ltng_idx3(int i0, int i1, int i2, int d1, int d2) { return (i0 * d1 + i1) * d2 + i2; }\n");
     fprintf(out, "static char *_ltng_retbuf(void){ static char b[32][256]; static int i; i=(i+1)%%32; b[i][0]=0; return b[i]; }\n");
     fprintf(out, "static char *_ltng_ad(double v){ char *b=_ltng_retbuf(); snprintf(b,256,\"%%g\",v); return b; }\n");
     fprintf(out, "static char *_ltng_as(const char *s){ char *b=_ltng_retbuf(); if(s){ strncpy(b,s,255); b[255]=0; } return b; }\n");

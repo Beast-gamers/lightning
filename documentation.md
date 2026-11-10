@@ -1224,6 +1224,17 @@ const names = ["alice", "bob"]   # const array
 - Indices start at 1: `x[1]` is the first element
 - Negative indices wrap from the end: `x[-1]` is the last, `x[-2]` is second-to-last
 - For an array of 3 elements: `x[-3]` = first, `x[-2]` = second, `x[-1]` = last
+- Multi-dimensional arrays use one bracket pair per dimension: `m[2][1]` is row 2, column 1; `cube[2][1][3]` indexes a 3D array
+- Negative indices wrap per dimension: `m[-1][-1]` is the last element of the last row
+- The number of indices must match the number of dimensions (`m[1]` on a 2D array is an error)
+- Arrays support up to 3 dimensions
+- Indices can be arbitrary integer expressions: `x[i + 1]`, `m[i - 1][j]`, `cube[i][j][k]`
+
+### Elements in expressions
+
+- Array elements are string buffers, like all Lightning values
+- `+` on array elements uses the runtime numeric-or-string add: numeric elements add (`[1,2]` gives `arr[1] + arr[2]` → `3`), anything else concatenates
+- Array access works inside string interpolation: `write("first=$[arr[1]]")`
 
 ### Example
 
@@ -1235,12 +1246,19 @@ write(arr[-3])  # prints 1
 
 let names = ["alice", "bob"]
 write(names[1]) # prints alice
+
+let m = [[1, 2], [3, 4]]
+write(m[2][1])  # prints 3
+write(m[-1][-2]) # prints 3
+
+let cube = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+write(cube[2][1][2]) # prints 6
 ```
 
 ### Limitations
 
-- Multi-dimensional array access (e.g. `m[1][1]`) is parsed but code generation for nested indexing is not yet fully supported. Use flat 1D arrays with manual index calculation for 2D/3D data.
 - Arrays are auto-locked (dtype-immutable) after declaration.
+- Nested literals of unequal length are accepted; the array shape uses the largest size per dimension and missing slots read as empty strings.
 
 ---
 
