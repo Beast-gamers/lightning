@@ -1206,6 +1206,42 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 - Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
 - C reserved words (e.g. `return`, `break`, `continue`, `switch`, `case`, `default`, `struct`, `main`, `printf`) **can** be used as variable names — they are mangled internally with a `_res` suffix.
 
+## Arrays
+
+Lightning supports 1D, 2D, and 3D arrays with 1-based indexing and negative indexing.
+
+### Syntax
+
+```
+let x = [1, 2, 3]              # 1D array
+let m = [[1, 2], [3, 4]]       # 2D array
+let c = [[[1], [2]], [[3], [4]]]  # 3D array
+const names = ["alice", "bob"]   # const array
+```
+
+### Indexing
+
+- Indices start at 1: `x[1]` is the first element
+- Negative indices wrap from the end: `x[-1]` is the last, `x[-2]` is second-to-last
+- For an array of 3 elements: `x[-3]` = first, `x[-2]` = second, `x[-1]` = last
+
+### Example
+
+```
+let arr = [1, 2, 3]
+write(arr[1])   # prints 1
+write(arr[-1])  # prints 3
+write(arr[-3])  # prints 1
+
+let names = ["alice", "bob"]
+write(names[1]) # prints alice
+```
+
+### Limitations
+
+- Multi-dimensional array access (e.g. `m[1][1]`) is parsed but code generation for nested indexing is not yet fully supported. Use flat 1D arrays with manual index calculation for 2D/3D data.
+- Arrays are auto-locked (dtype-immutable) after declaration.
+
 ---
 
 ## Current Limitations
@@ -1213,7 +1249,6 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 The following are **not yet implemented** and are not considered bugs:
 
 - File I/O built-ins beyond `read()` from stdin
-- Arrays / lists / collections
 - Modules / imports
 - String comparison by content
 - Fallthrough in `switch` cases

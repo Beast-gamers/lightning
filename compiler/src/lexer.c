@@ -305,6 +305,14 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
             Token token = {TOKEN_RBRACE, "}", lexer->line, lexer->col};
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
+        } else if (c == '[') {
+            Token token = {TOKEN_LBRACKET, "[", lexer->line, lexer->col};
+            lexer_advance(lexer);
+            lexer_add_token(lexer, token);
+        } else if (c == ']') {
+            Token token = {TOKEN_RBRACKET, "]", lexer->line, lexer->col};
+            lexer_advance(lexer);
+            lexer_add_token(lexer, token);
         } else if (c == ':') {
             Token token = {TOKEN_COLON, ":", lexer->line, lexer->col};
             lexer_advance(lexer);

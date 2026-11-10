@@ -525,6 +525,7 @@ static int has_operator_ahead(Lexer *lexer) {
         }
         if (t.type == TOKEN_LPAREN) depth++;
         if (is_operator(t.type) && depth == 0) return 1;
+        if (t.type == TOKEN_LBRACKET && depth == 0) return 1;
     }
     return 0;
 }
@@ -854,6 +855,192 @@ static ASTNode *find_function_ast_by_name(const char *name);
 /* Infer the return type of a user-defined function by scanning its return statements. */
 static VarType infer_function_return_type(const char *fname);
 
+static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
+    Token first = lexer_peek(lexer);
+
+    if (first.type == TOKEN_LBRACKET) {
+        /* Nested array - at least 2D */
+        lexer_next(lexer); /* consume inner '[' */
+
+        /* Check if it's 3D: [[[...],...],...] */
+        Token second = lexer_peek(lexer);
+
+        if (second.type == TOKEN_LBRACKET) {
+            /* 3D array: [[[...],...],...] */
+            int dim1 = 0, dim2 = 0, dim3 = 0;
+            int elem_count = 0;
+            char values[4096] = "";
+            int vpos = 0;
+            int depth = 1; /* already inside outer [ */
+            int cur_d1 = 0, cur_d2 = 0, cur_d3 = 0;
+            int max_d1 = 0, max_d2 = 0, max_d3 = 0;
+
+            while (lexer->current < lexer->count) {
+                Token t = lexer_peek(lexer);
+                if (t.type == TOKEN_LBRACKET) {
+                    depth++;
+                    lexer_next(lexer);
+                    if (depth == 2) cur_d1++;
+                    else if (depth == 3) cur_d2++;
+                    else if (depth == 4) cur_d3++;
+                    if (cur_d1 > max_d1) max_d1 = cur_d1;
+                    if (cur_d2 > max_d2) max_d2 = cur_d2;
+                    if (cur_d3 > max_d3) max_d3 = cur_d3;
+                } else if (t.type == TOKEN_RBRACKET) {
+                    depth--;
+                    lexer_next(lexer);
+                    if (depth == 0) break; /* outer ] */
+                    if (depth == 2) cur_d2 = 0;
+                    if (depth == 3) cur_d3 = 0;
+                } else if (t.type == TOKEN_COMMA) {
+                    lexer_next(lexer);
+                    if (depth == 4) cur_d3++;
+                } else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) {
+                    break;
+                } else {
+                    /* Element value */
+                    lexer_next(lexer);
+                    char val[MAX_STRING_LEN] = "";
+                    if (t.type == TOKEN_STRING) {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                    } else if (t.type == TOKEN_CHAR) {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                    } else {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                    }
+                    int vlen = (int)strlen(val);
+                    if (vpos + vlen + 1 < (int)sizeof(values) - 1) {
+                        if (vpos > 0) values[vpos++] = '|';
+                        memcpy(values + vpos, val, vlen);
+                        vpos += vlen;
+                    }
+                    values[vpos] = ' ';
+                    elem_count++;
+                    cur_d3++;
+                    if (cur_d3 > max_d3) max_d3 = cur_d3;
+                }
+            }
+
+            node->array_dim_count = 3;
+            node->array_dims[0] = max_d1;
+            node->array_dims[1] = max_d2;
+            node->array_dims[2] = max_d3;
+            node->array_elem_count = elem_count;
+            strncpy(node->value, values, MAX_STRING_LEN - 1);
+            node->value[MAX_STRING_LEN - 1] = ' ';
+        } else {
+            /* 2D array: [[a,b,c],[d,e,f],...] */
+            int dim1 = 0, max_dim2 = 0;
+            int elem_count = 0;
+            char values[4096] = "";
+            int vpos = 0;
+            int depth = 1; /* already inside outer [ */
+            int cur_col = 0;
+
+            while (lexer->current < lexer->count) {
+                Token t = lexer_peek(lexer);
+                if (t.type == TOKEN_LBRACKET) {
+                    depth++;
+                    lexer_next(lexer);
+                    if (depth == 2) {
+                        dim1++;
+                        cur_col = 0;
+                    }
+                } else if (t.type == TOKEN_RBRACKET) {
+                    depth--;
+                    lexer_next(lexer);
+                    if (depth == 1) break; /* outer ] */
+                    if (depth == 2) {
+                        if (cur_col > max_dim2) max_dim2 = cur_col;
+                        cur_col = 0;
+                    }
+                } else if (t.type == TOKEN_COMMA) {
+                    lexer_next(lexer);
+                    if (depth == 3) cur_col++;
+                } else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) {
+                    break;
+                } else {
+                    /* Element value */
+                    lexer_next(lexer);
+                    char val[MAX_STRING_LEN] = "";
+                    if (t.type == TOKEN_STRING) {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                    } else if (t.type == TOKEN_CHAR) {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                    } else {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                    }
+                    int vlen = (int)strlen(val);
+                    if (vpos + vlen + 1 < (int)sizeof(values) - 1) {
+                        if (vpos > 0) values[vpos++] = '|';
+                        memcpy(values + vpos, val, vlen);
+                        vpos += vlen;
+                    }
+                    values[vpos] = ' ';
+                    elem_count++;
+                    cur_col++;
+                }
+            }
+
+            node->array_dim_count = 2;
+            node->array_dims[0] = dim1;
+            node->array_dims[1] = max_dim2 > 0 ? max_dim2 : (dim1 > 0 ? 1 : 0);
+            node->array_dims[2] = 0;
+            node->array_elem_count = elem_count;
+            strncpy(node->value, values, MAX_STRING_LEN - 1);
+            node->value[MAX_STRING_LEN - 1] = ' ';
+        }
+    } else {
+        /* 1D array: [a,b,c,...] */
+        int dim1 = 0;
+        int elem_count = 0;
+        char values[4096] = "";
+        int vpos = 0;
+
+        while (lexer->current < lexer->count) {
+            Token t = lexer_peek(lexer);
+            if (t.type == TOKEN_RBRACKET) {
+                lexer_next(lexer);
+                break;
+            } else if (t.type == TOKEN_COMMA) {
+                lexer_next(lexer);
+            } else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) {
+                break;
+            } else {
+                /* Element value */
+                lexer_next(lexer);
+                char val[MAX_STRING_LEN] = "";
+                if (t.type == TOKEN_STRING) {
+                        snprintf(val, sizeof(val), "%s", t.value);
+                } else if (t.type == TOKEN_CHAR) {
+                    snprintf(val, sizeof(val), "'%s'", t.value);
+                } else {
+                    snprintf(val, sizeof(val), "%s", t.value);
+                }
+                int vlen = (int)strlen(val);
+                if (vpos + vlen + 1 < (int)sizeof(values) - 1) {
+                    if (vpos > 0) values[vpos++] = '|';
+                    memcpy(values + vpos, val, vlen);
+                    vpos += vlen;
+                }
+                values[vpos] = ' ';
+                elem_count++;
+                dim1++;
+            }
+        }
+
+        node->array_dim_count = 1;
+        node->array_dims[0] = dim1;
+        node->array_dims[1] = 0;
+        node->array_dims[2] = 0;
+        node->array_elem_count = elem_count;
+        strncpy(node->value, values, MAX_STRING_LEN - 1);
+        node->value[MAX_STRING_LEN - 1] = ' ';
+    }
+
+    return 1;
+}
+
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
                                   int stop_on_rparen, int stop_on_comma) {
@@ -870,7 +1057,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
         if (tok.type == TOKEN_NEWLINE || tok.type == TOKEN_EOF) break;
         if (tok.type == TOKEN_LBRACE) break;
         if (tok.type == TOKEN_RBRACE && paren_depth == 0) break;
-        if (tok.type == TOKEN_RPAREN && paren_depth == 0 && stop_on_rparen) break;
+        if ((tok.type == TOKEN_RPAREN || tok.type == TOKEN_RBRACKET) && paren_depth == 0 && stop_on_rparen) break;
         if (tok.type == TOKEN_COMMA && stop_on_comma) break;
         if (tok.type == TOKEN_FROM || tok.type == TOKEN_TO || tok.type == TOKEN_STEP) break;
 
@@ -1234,6 +1421,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 pos += snprintf(out + pos, out_size - pos,
                                     "(%s[0]=='t'?1:0)", mangled);
                                 break;
+                            case TYPE_ARRAY:
+                                /* Array access code will output the full reference */
+                                break;
                             default:
                                 pos += snprintf(out + pos, out_size - pos, "atoi(%s)", mangled);
                                 break;
@@ -1291,6 +1481,48 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 continue;
                             }
                         }
+                    }
+                }
+                /* Array access: x[1], m[1][1], t[1][1][1] (1-based, negative wraps) */
+                {
+                    Token nxt = lexer_peek(lexer);
+                    while (nxt.type == TOKEN_LBRACKET) {
+                        lexer_next(lexer); /* consume [ */
+                        char index_expr[MAX_STRING_LEN];
+                        VarType index_type = collect_expression(lexer, table, index_expr, sizeof(index_expr), 1, 0);
+                        Token rbracket = lexer_peek(lexer);
+                        if (rbracket.type != TOKEN_RBRACKET) {
+                            error_state_add(parser_errors, rbracket.line, rbracket.col,
+                                "Expected ']' after array index");
+                            skip_to_newline(lexer);
+                            pos += snprintf(out + pos, out_size - pos, "0");
+                            break;
+                        }
+                        lexer_next(lexer); /* consume ] */
+
+                        char mangled[MAX_IDENTIFIER_LEN];
+                        mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
+                        VarType vt = symbol_table_get(table, mangled);
+
+                        if (vt == TYPE_ARRAY) {
+                            /* Array access: convert 1-based index to 0-based,
+                               handle negative indices */
+                            char arrname[MAX_IDENTIFIER_LEN];
+                            snprintf(arrname, sizeof(arrname), "%s_data", mangled);
+                            char lenname[MAX_IDENTIFIER_LEN];
+                            snprintf(lenname, sizeof(lenname), "%s_len", mangled);
+                            pos += snprintf(out + pos, out_size - pos,
+                                "({ int __idx = (%s); __idx > 0 ? %s[__idx - 1] : %s[%s + __idx]; })",
+                                index_expr, arrname, arrname, lenname);
+                            result_type = TYPE_STRING;
+                        } else {
+                            char errmsg[256];
+                            snprintf(errmsg, sizeof(errmsg), "Variable '%s' is not an array", tok.value);
+                            error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                            pos += snprintf(out + pos, out_size - pos, "0");
+                        }
+
+                        nxt = lexer_peek(lexer);
                     }
                 }
                 }
@@ -1450,6 +1682,10 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             for (int i = 0; i < nparts; i++) {
                 transform_string_multiply(parts[i], 512);
             }
+            /* If no actual concatenation (single part), skip wrapping */
+            if (nparts <= 1) {
+                /* No concatenation needed, keep original expression */
+            } else {
             /* concatenate */
             char fmt[1024] = {0};
             for (int i = 0; i < nparts; i++) strcat(fmt, "%s");
@@ -1475,6 +1711,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             strcat(result, "); _ltc; })");
             strncpy(out, result, out_size - 1);
             out[out_size - 1] = 0;
+            }
         } else if (strstr(out, "*") != NULL) {
             transform_string_multiply(out, out_size);
         }
@@ -2499,6 +2736,29 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
+    /* array literal: let x = [1,2,3] or [[1,2],[3,4]] */
+    if (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+        lexer_next(lexer); /* consume [ */
+        ASTNode *arr = create_node(NODE_ARRAY_LIT, mangled, "");
+        if (!parse_array_literal(lexer, table, arr)) {
+            error_state_add(parser_errors, let_tok.line, let_tok.col,
+                "Invalid array literal");
+            skip_to_newline(lexer);
+            return;
+        }
+        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+        ASTNode *node = create_node(NODE_LET, mangled, arr->value);
+        node->var_type = TYPE_ARRAY;
+        node->array_dim_count = arr->array_dim_count;
+        node->array_dims[0] = arr->array_dims[0];
+        node->array_dims[1] = arr->array_dims[1];
+        node->array_dims[2] = arr->array_dims[2];
+        node->array_elem_count = arr->array_elem_count;
+        node->is_expr = 0;
+        emit(node);
+        return;
+    }
+
     Token next = lexer_peek(lexer);
     VarType vtype;
     Token value;
@@ -2657,6 +2917,30 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     if (lexer_peek(lexer).type == TOKEN_LBRACE) {
         lexer_next(lexer); /* consume { */
         parse_object_literal(lexer, table, mangled, 0, 0);
+        return;
+    }
+
+    /* array literal: const x = [1,2,3] or [[1,2],[3,4]] */
+    if (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+        lexer_next(lexer); /* consume [ */
+        ASTNode *arr = create_node(NODE_ARRAY_LIT, mangled, "");
+        if (!parse_array_literal(lexer, table, arr)) {
+            error_state_add(parser_errors, const_tok.line, const_tok.col,
+                "Invalid array literal");
+            skip_to_newline(lexer);
+            return;
+        }
+        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+        symbol_table_set_const(table, mangled, 1);
+        ASTNode *node = create_node(NODE_CONST, mangled, arr->value);
+        node->var_type = TYPE_ARRAY;
+        node->array_dim_count = arr->array_dim_count;
+        node->array_dims[0] = arr->array_dims[0];
+        node->array_dims[1] = arr->array_dims[1];
+        node->array_dims[2] = arr->array_dims[2];
+        node->array_elem_count = arr->array_elem_count;
+        node->is_expr = 0;
+        emit(node);
         return;
     }
 

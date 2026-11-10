@@ -72,7 +72,9 @@ typedef enum {
     TOKEN_DOT,
     TOKEN_COLON,
     TOKEN_LBRACE,
-    TOKEN_RBRACE
+    TOKEN_RBRACE,
+    TOKEN_LBRACKET,
+    TOKEN_RBRACKET
 } TokenType;
 
 typedef struct {
@@ -100,7 +102,8 @@ typedef enum {
     TYPE_CHAR,
     TYPE_BOOL,
     TYPE_OBJECT,
-    TYPE_NULL
+    TYPE_NULL,
+    TYPE_ARRAY
 } VarType;
 
 typedef enum {
@@ -122,7 +125,9 @@ typedef enum {
     NODE_RETURN,
     NODE_CALL,
     NODE_PARAM,
-    NODE_PROGRAM
+    NODE_PROGRAM,
+    NODE_ARRAY_LIT,
+    NODE_ARRAY_ACCESS
 } NodeType;
 
 typedef struct ASTNode {
@@ -145,6 +150,13 @@ typedef struct ASTNode {
     struct ASTNode *params;  /* function parameters (NODE_PARAM/name chain) */
     struct ASTNode *args;    /* call arguments (expression nodes chain) */
     struct ASTNode *next;
+    /* Array support */
+    int array_dim_count;     /* 1, 2, or 3 dimensions */
+    int array_dims[3];       /* size of each dimension */
+    int array_elem_count;    /* total number of elements */
+    struct ASTNode *index1;  /* first index expression */
+    struct ASTNode *index2;  /* second index expression */
+    struct ASTNode *index3;  /* third index expression */
 } ASTNode;
 
 typedef struct {

@@ -293,6 +293,41 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         }
         return;
     }
+    if (node->var_type == TYPE_ARRAY) {
+        /* Generate C array declaration for array literals:
+           char name_data[N][256] = {{"v1"},{"v2"},...};
+           int name_len = N; */
+        char arrname[MAX_IDENTIFIER_LEN];
+        snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+        pad(out, indent);
+        fprintf(out, "char %s[%d][256] = {", arrname, node->array_elem_count);
+        /* Parse pipe-separated values from node->value */
+        const char *val = node->value;
+        int elem_idx = 0;
+        while (*val && elem_idx < node->array_elem_count) {
+            /* Skip leading | */
+            if (*val == '|') val++;
+            /* Find end of value */
+            const char *end = val;
+            while (*end && *end != '|') end++;
+            int vlen = (int)(end - val);
+            /* Emit string literal */
+            fprintf(out, "\"");
+            for (int i = 0; i < vlen; i++) {
+                if (val[i] == '"') fputc('\\', out);
+                if (val[i] == '\\') fputc('\\', out);
+                fputc(val[i], out);
+            }
+            fprintf(out, "\"");
+            val = end;
+            elem_idx++;
+            if (elem_idx < node->array_elem_count) fprintf(out, ",");
+        }
+        fprintf(out, "};\n");
+        pad(out, indent);
+        fprintf(out, "int %s_len = %d;\n", node->name, node->array_elem_count);
+        return;
+    }
     if (node->is_expr) {
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
@@ -942,6 +977,11 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "int main(void) {\n");
 
     for (int i = 0; i < table->count; i++) {
+        if (table->vars[i].type == TYPE_ARRAY) {
+            /* Array variables are declared in codegen_assign with their full
+               array declaration. Skip here to avoid duplicate declaration. */
+            continue;
+        }
         if (table->vars[i].type == TYPE_OBJECT) {
             ObjSchema *sc = obj_lookup(table->vars[i].name);
             const char *dv = sc ? sc->default_val : "";

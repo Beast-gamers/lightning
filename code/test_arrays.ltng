@@ -1,0 +1,23 @@
+# Test 1D array with numeric elements
+let arr = [1, 2, 3]
+write(arr[1])
+write(arr[2])
+write(arr[3])
+
+# Test negative indexing
+write(arr[-1])
+write(arr[-2])
+write(arr[-3])
+
+# Test string array
+let names = ["alice", "bob", "charlie"]
+write(names[1])
+write(names[2])
+write(names[3])
+write(names[-1])
+
+# Test const array
+const c = [10, 20, 30]
+write(c[1])
+write(c[2])
+write(c[3])
