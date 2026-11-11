@@ -57,23 +57,7 @@ static void lexer_read_string(Lexer *lexer, Token *token) {
 
     while (lexer->pos < lexer->source_len && lexer_peek_char(lexer) != '"' && lexer_peek_char(lexer) != '\n') {
         char c = lexer_advance(lexer);
-        if (c == '<') {
-            token->value[i++] = '<';
-            int found_gt = 0;
-            for (int scan = lexer->pos; scan < lexer->source_len && lexer->source[scan] != '\n'; scan++) {
-                if (lexer->source[scan] == '>') { found_gt = 1; break; }
-            }
-            if (found_gt) {
-                while (lexer->pos < lexer->source_len && lexer_peek_char(lexer) != '>' && lexer_peek_char(lexer) != '\n') {
-                    c = lexer_advance(lexer);
-                    token->value[i++] = c;
-                }
-                if (lexer->pos < lexer->source_len && lexer_peek_char(lexer) == '>') {
-                    token->value[i++] = '>';
-                    lexer_advance(lexer);
-                }
-            }
-        } else if (c == '\\' && lexer->pos < lexer->source_len) {
+        if (c == '\\' && lexer->pos < lexer->source_len) {
             c = lexer_advance(lexer);
             switch (c) {
                 case 'n': token->value[i++] = '\n'; break;
@@ -81,6 +65,8 @@ static void lexer_read_string(Lexer *lexer, Token *token) {
                 case '\\': token->value[i++] = '\\'; break;
                 case '"': token->value[i++] = '"'; break;
                 case '\'': token->value[i++] = '\''; break;
+                case '<': token->value[i++] = '<'; break;
+                case '>': token->value[i++] = '>'; break;
                 case '0': token->value[i++] = '\0'; break;
                 default: token->value[i++] = c; break;
             }

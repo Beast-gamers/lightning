@@ -286,7 +286,6 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
 static int has_interpolation(const char *str) {
     for (const char *p = str; *p; p++) {
         if (*p == '$' && p[1] == '[') return 1;
-        if (*p == '<' && p[1] != '\0') return 1;
     }
     return 0;
 }
