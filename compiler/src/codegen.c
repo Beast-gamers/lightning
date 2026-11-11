@@ -787,6 +787,15 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             }
             break;
         }
+        case NODE_EXIT: {
+            pad(out, indent);
+            if (node->var_type == TYPE_FLOAT) {
+                fprintf(out, "exit((int)(%s));\n", node->value[0] ? node->value : "0");
+            } else {
+                fprintf(out, "exit((long long)(%s));\n", node->value[0] ? node->value : "0");
+            }
+            break;
+        }
         case NODE_CALL: {
             /* base-assign call statement: receiver = func(receiver, args...)
                Used when the function's first parameter is named "base" and it

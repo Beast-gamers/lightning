@@ -215,6 +215,8 @@ static void lexer_read_identifier(Lexer *lexer, Token *token) {
         token->type = TOKEN_FUNCTION;
     } else if (strcmp(token->value, "return") == 0) {
         token->type = TOKEN_RETURN;
+    } else if (strcmp(token->value, "exit") == 0) {
+        token->type = TOKEN_EXIT;
     } else if (strcmp(token->value, "and") == 0) {
         token->type = TOKEN_AMP_AMP;
     } else if (strcmp(token->value, "or") == 0) {

@@ -253,6 +253,7 @@ static int is_ltng_reserved(const char *name) {
            strcmp(name, "set") == 0 ||
            strcmp(name, "write") == 0 ||
            strcmp(name, "read") == 0 ||
+           strcmp(name, "exit") == 0 ||
            strcmp(name, "typeof") == 0 ||
            strcmp(name, "while") == 0 ||
            strcmp(name, "do") == 0 ||
@@ -4559,6 +4560,30 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
     emit(node);
 }
 
+static void parse_exit(Lexer *lexer, SymbolTable *table) {
+    Token kw = lexer_next(lexer);
+    char expr[MAX_STRING_LEN];
+    expr[0] = '\0';
+    Token next = lexer_peek(lexer);
+    if (next.type == TOKEN_NEWLINE || next.type == TOKEN_EOF || next.type == TOKEN_RBRACE) {
+        error_state_add(parser_errors, kw.line, kw.col,
+            "Expected integer expression after 'exit'");
+        skip_to_newline(lexer);
+        return;
+    }
+    VarType etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+    if (etype != TYPE_INT && etype != TYPE_FLOAT) {
+        error_state_add(parser_errors, kw.line, kw.col,
+            "Expected integer expression after 'exit'");
+        skip_to_newline(lexer);
+        return;
+    }
+    ASTNode *node = create_node(NODE_EXIT, "", expr);
+    node->var_type = etype;
+    node->is_expr = 1;
+    emit(node);
+}
+
 static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_cname) {
     Token kw = lexer_next(lexer);
     Token name = lexer_next(lexer);
@@ -4909,6 +4934,8 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
         parse_const(lexer, table);
     } else if (token.type == TOKEN_SET) {
         parse_set(lexer, table);
+    } else if (token.type == TOKEN_EXIT) {
+        parse_exit(lexer, table);
     } else if (token.type == TOKEN_RETURN) {
         parse_return(lexer, table);
     } else if (token.type == TOKEN_FUNCTION) {
