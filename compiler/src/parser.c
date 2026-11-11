@@ -258,6 +258,7 @@ static int is_ltng_reserved(const char *name) {
            strcmp(name, "for") == 0 ||
            strcmp(name, "if") == 0 ||
            strcmp(name, "else") == 0 ||
+           strcmp(name, "null") == 0 ||
            is_type_keyword(name) ||
            is_bool_value(name);
 }
