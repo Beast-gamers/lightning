@@ -141,3 +141,46 @@ let empty_arr = array
 write(typeof(empty_arr))
 let another_arr = array
 write(typeof(another_arr))
+
+# Test push
+let pa = [1, 2, 3]
+pa.push(4)
+write(pa[1])
+write(pa[2])
+write(pa[3])
+write(pa[4])
+
+# Test pop
+write(pa.pop())
+write(pa[4])
+
+# Test push string
+let pn = ["alice", "bob"]
+pn.push("charlie")
+write(pn[1])
+write(pn[2])
+write(pn[3])
+
+# Test pop returns value
+write(pn.pop())
+write(pn[3])
+
+# Test push with expression
+let px = 10
+let pa2 = [1, 2]
+pa2.push(px + 5)
+write(pa2[3])
+
+# Test pop with index
+let pa3 = [10, 20, 30, 40, 50]
+write(pa3.pop(2))
+write(pa3[2])
+write(pa3[4])
+
+# Test pop with negative index
+write(pa3.pop(-1))
+write(pa3[4])
+
+# Test push/pop inside write
+write(pa.push(100))
+write(pa.pop())

@@ -128,7 +128,9 @@ typedef enum {
     NODE_PARAM,
     NODE_PROGRAM,
     NODE_ARRAY_LIT,
-    NODE_ARRAY_ACCESS
+    NODE_ARRAY_ACCESS,
+    NODE_ARRAY_PUSH,
+    NODE_ARRAY_POP
 } NodeType;
 
 typedef struct ASTNode {
@@ -184,6 +186,7 @@ typedef struct {
 } ObjSchema;
 
 #define MAX_FUNCBINDS 64
+#define ARRAY_PUSH_RESERVE 16
 typedef struct {
     char src[MAX_IDENTIFIER_LEN];   /* source name as written */
     char cname[MAX_IDENTIFIER_LEN]; /* lifted/global C (mangled) name */

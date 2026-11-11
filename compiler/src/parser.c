@@ -1408,7 +1408,92 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     "(%s[0]=='t'?1:0)", mangled);
                                 break;
                             case TYPE_ARRAY:
-                                /* Array access code will output the full reference */
+                                /* Check for .push() / .pop() method calls on array variables */
+                                {
+                                    Token nxt = lexer_peek(lexer);
+                                    if (nxt.type == TOKEN_DOT) {
+                                        int saved_dot = lexer->current;
+                                        lexer_next(lexer); /* consume . */
+                                        Token mname = lexer_next(lexer);
+                                        if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
+                                            (strcmp(mname.value, "push") == 0 ||
+                                             strcmp(mname.value, "pop") == 0)) {
+                                            if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                                                char errmsg[256];
+                                                snprintf(errmsg, sizeof(errmsg),
+                                                    "Expected '(' after '%s'", mname.value);
+                                                error_state_add(parser_errors, mname.line, mname.col,
+                                                    errmsg);
+                                                skip_to_newline(lexer);
+                                                pos += snprintf(out + pos, out_size - pos, "0");
+                                                break;
+                                            }
+                                            lexer_next(lexer); /* consume ( */
+
+                                            char arrname[MAX_IDENTIFIER_LEN];
+                                            snprintf(arrname, sizeof(arrname), "%s_data", mangled);
+                                            char lenname[MAX_IDENTIFIER_LEN];
+                                            snprintf(lenname, sizeof(lenname), "%s_len", mangled);
+
+                                            if (strcmp(mname.value, "push") == 0) {
+                                                /* push(value) */
+                                                char arg_expr[MAX_STRING_LEN];
+                                                collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after push argument");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                pos += snprintf(out + pos, out_size - pos,
+                                                    "({ snprintf(%s[%s], 256, \"%%s\", %s); %s++; %s; })",
+                                                    arrname, lenname, arg_expr, lenname, arg_expr);
+                                                result_type = TYPE_STRING;
+                                            } else {
+                                                /* pop() or pop(index) */
+                                                if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                                                    /* pop() - no args */
+                                                    lexer_next(lexer); /* consume ) */
+                                                    char expr[MAX_STRING_LEN];
+                                                    snprintf(expr, sizeof(expr),
+                                                        "({ %s--; %s[%s]; })",
+                                                        lenname, arrname, lenname);
+                                                    ASTNode *node = create_node(NODE_ARRAY_POP, "", expr);
+                                                    node->var_type = TYPE_STRING;
+                                                    node->is_expr = 1;
+                                                    emit(node);
+                                                    result_type = TYPE_STRING;
+                                                } else {
+                                                    /* pop(index) */
+                                                    char idx_expr[MAX_STRING_LEN];
+                                                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                                                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                            lexer_peek(lexer).col, "Expected ')' after pop index");
+                                                        skip_to_newline(lexer);
+                                                        pos += snprintf(out + pos, out_size - pos, "0");
+                                                        break;
+                                                    }
+                                                    lexer_next(lexer); /* consume ) */
+                                                    char expr[MAX_STRING_LEN];
+                                                    snprintf(expr, sizeof(expr),
+                                                        "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s[__pop_idx]); memmove(&%s[__pop_idx], &%s[__pop_idx + 1], (%s - __pop_idx - 1) * 256); %s--; __pop_val; })",
+                                                        idx_expr, lenname, arrname, arrname, arrname, lenname, lenname);
+                                                    ASTNode *node = create_node(NODE_ARRAY_POP, "", expr);
+                                                    node->var_type = TYPE_STRING;
+                                                    node->is_expr = 1;
+                                                    emit(node);
+                                                    result_type = TYPE_STRING;
+                                                }
+                                            }
+                                            continue; /* skip postfix/array-access handling */
+                                        }
+                                        /* Not push/pop - rewind to the dot */
+                                        lexer->current = saved_dot;
+                                    }
+                                }
                                 break;
                             default:
                                 pos += snprintf(out + pos, out_size - pos, "atoi(%s)", mangled);
@@ -2222,6 +2307,115 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
     }
 
     Token first = lexer_peek(lexer);
+
+    /* Check for x.push(y) / x.pop() / x.pop(i) as write argument */
+    if (first.type == TOKEN_IDENT && lexer->current + 3 < lexer->count) {
+        Token second_tok = lexer->tokens[lexer->current + 1];
+        Token third_tok = lexer->tokens[lexer->current + 2];
+        Token fourth_tok = lexer->tokens[lexer->current + 3];
+        if (second_tok.type == TOKEN_DOT &&
+            (third_tok.type == TOKEN_IDENT || token_is_name(third_tok)) &&
+            (strcmp(third_tok.value, "push") == 0 || strcmp(third_tok.value, "pop") == 0) &&
+            fourth_tok.type == TOKEN_LPAREN) {
+            char rm[MAX_IDENTIFIER_LEN];
+            mangle_name(first.value, rm, MAX_IDENTIFIER_LEN);
+            if (!symbol_table_has(table, rm)) {
+                char errmsg[256];
+                snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", first.value);
+                error_state_add(parser_errors, first.line, first.col, errmsg);
+                skip_to_newline(lexer);
+                return;
+            }
+            VarType vt = symbol_table_get(table, rm);
+            if (vt != TYPE_ARRAY) {
+                char errmsg[256];
+                snprintf(errmsg, sizeof(errmsg), "Variable '%s' is not an array", first.value);
+                error_state_add(parser_errors, first.line, first.col, errmsg);
+                skip_to_newline(lexer);
+                return;
+            }
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", rm);
+            char lenname[MAX_IDENTIFIER_LEN];
+            snprintf(lenname, sizeof(lenname), "%s_len", rm);
+            /* current points to arr; consume arr, ., method, ( */
+            lexer_next(lexer); /* consume arr (already peeked as first) */
+            lexer_next(lexer); /* consume . */
+            lexer_next(lexer); /* consume push/pop */
+            lexer_next(lexer); /* consume ( */
+            if (strcmp(third_tok.value, "push") == 0) {
+                char arg_expr[MAX_STRING_LEN];
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after push argument");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume pop's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                const char *fmt;
+                if (arg_type == TYPE_STRING) {
+                    fmt = "%s";
+                } else if (arg_type == TYPE_INT) {
+                    fmt = "%lld";
+                } else if (arg_type == TYPE_FLOAT) {
+                    fmt = "%g";
+                } else {
+                    fmt = "%s";
+                }
+                snprintf(expr, sizeof(expr),
+                    "({ snprintf(%s[%s], 256, \"%s\", %s); %s++; %s[%s-1]; })",
+                    arrname, lenname, fmt, arg_expr, lenname, arrname, lenname);
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else {
+                /* pop() or pop(index) */
+                if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                    /* pop() - no args */
+                    lexer_next(lexer); /* consume pop's ) */
+                    lexer_next(lexer); /* consume write's ) */
+                    char expr[MAX_STRING_LEN];
+                    snprintf(expr, sizeof(expr),
+                        "({ %s--; %s[%s]; })",
+                        lenname, arrname, lenname);
+                    ASTNode *node = create_node(NODE_WRITE, "", expr);
+                    node->is_variable = 0;
+                    node->is_expr = 1;
+                    node->var_type = TYPE_STRING;
+                    emit(node);
+                    return;
+                } else {
+                    /* pop(index) */
+                    char idx_expr[MAX_STRING_LEN];
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ')' after pop index");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume pop index's ) */
+                    lexer_next(lexer); /* consume write's ) */
+                    char expr[MAX_STRING_LEN];
+                    snprintf(expr, sizeof(expr),
+                        "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s[__pop_idx]); memmove(&%s[__pop_idx], &%s[__pop_idx + 1], (%s - __pop_idx - 1) * 256); %s--; __pop_val; })",
+                        idx_expr, lenname, arrname, arrname, arrname, lenname, lenname);
+                    ASTNode *node = create_node(NODE_WRITE, "", expr);
+                    node->is_variable = 0;
+                    node->is_expr = 1;
+                    node->var_type = TYPE_STRING;
+                    emit(node);
+                    return;
+                }
+            }
+        }
+    }
 
     Token second = lexer->tokens[lexer->current + 1];
     int is_conv_call = (first.type == TOKEN_IDENT && is_type_conversion(first.value) &&
@@ -4605,6 +4799,76 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 }
                 symbol_table_set_locked(table, rm, want_locked);
                 return;
+            }
+            /* Special: x.push(y) / x.pop() / x.pop(i) - array methods.
+               These generate AST nodes handled by codegen. */
+            if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
+                (strcmp(mname.value, "push") == 0 ||
+                 strcmp(mname.value, "pop") == 0)) {
+                lexer_next(lexer); /* consume ( */
+
+                char rm[MAX_IDENTIFIER_LEN];
+                mangle_name(t.value, rm, MAX_IDENTIFIER_LEN);
+                if (!symbol_table_has(table, rm)) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    skip_to_newline(lexer);
+                    return;
+                }
+                VarType vt = symbol_table_get(table, rm);
+                if (vt != TYPE_ARRAY) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' is not an array", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    skip_to_newline(lexer);
+                    return;
+                }
+
+                if (strcmp(mname.value, "push") == 0) {
+                    /* push(value) */
+                    char arg_expr[MAX_STRING_LEN];
+                    VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ')' after push argument");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume ) */
+                    ASTNode *node = create_node(NODE_ARRAY_PUSH, rm, arg_expr);
+                    node->var_type = arg_type;
+                    node->is_expr = 1;
+                    emit(node);
+                    return;
+                } else {
+                    /* pop() or pop(index) */
+                    if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                        /* pop() - no args */
+                        lexer_next(lexer); /* consume ) */
+                        ASTNode *node = create_node(NODE_ARRAY_POP, rm, "");
+                        node->var_type = TYPE_STRING;
+                        node->is_expr = 1;
+                        emit(node);
+                        return;
+                    } else {
+                        /* pop(index) */
+                        char idx_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ')' after pop index");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        ASTNode *node = create_node(NODE_ARRAY_POP, rm, idx_expr);
+                        node->var_type = TYPE_STRING;
+                        node->is_expr = 1;
+                        emit(node);
+                        return;
+                    }
+                }
             }
             if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
                 lexer_peek(lexer).type == TOKEN_LPAREN &&

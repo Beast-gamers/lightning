@@ -331,6 +331,8 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             }
             if (product > slots) slots = product;
         }
+        /* Add reserve capacity for push() operations */
+        slots += ARRAY_PUSH_RESERVE;
         if (slots < 1) slots = 1;
         pad(out, indent);
         fprintf(out, "char %s[%d][256] = {", arrname, slots);
@@ -715,6 +717,33 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             break;
         case NODE_WRITE:
             codegen_write(out, node, table, indent);
+            break;
+        case NODE_ARRAY_PUSH:
+            pad(out, indent);
+            if (node->var_type == TYPE_STRING) {
+                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%s\", %s); %s_len++;\n",
+                    node->name, node->name, node->value, node->name);
+            } else if (node->var_type == TYPE_INT) {
+                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%lld\", (long long)(%s)); %s_len++;\n",
+                    node->name, node->name, node->value, node->name);
+            } else if (node->var_type == TYPE_FLOAT) {
+                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%g\", (double)(%s)); %s_len++;\n",
+                    node->name, node->name, node->value, node->name);
+            } else {
+                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%s\", %s); %s_len++;\n",
+                    node->name, node->name, node->value, node->name);
+            }
+            break;
+        case NODE_ARRAY_POP:
+            pad(out, indent);
+            if (node->value[0] == '\0') {
+                /* pop() - no args */
+                fprintf(out, "%s_len--;\n", node->name);
+            } else {
+                /* pop(index) */
+                fprintf(out, "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s_len); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s_data[__pop_idx]); memmove(&%s_data[__pop_idx], &%s_data[__pop_idx + 1], (%s_len - __pop_idx - 1) * 256); %s_len--; __pop_val; })",
+                    node->value, node->name, node->name, node->name, node->name, node->name, node->name);
+            }
             break;
         case NODE_READ:
             codegen_read(out, node, indent);
