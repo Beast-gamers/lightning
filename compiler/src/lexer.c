@@ -10,6 +10,12 @@ void lexer_init(Lexer *lexer, char *source) {
     lexer->col = 1;
     lexer->count = 0;
     lexer->current = 0;
+    lexer->token_capacity = MAX_TOKENS;
+    lexer->tokens = malloc(MAX_TOKENS * sizeof(Token));
+    if (!lexer->tokens) {
+        fprintf(stderr, "Error: Cannot allocate token buffer\n");
+        exit(1);
+    }
 }
 
 static char lexer_peek_char(Lexer *lexer) {
@@ -259,11 +265,17 @@ static void lexer_read_number(Lexer *lexer, Token *token) {
 }
 
 static void lexer_add_token(Lexer *lexer, Token token) {
-    if (lexer->count >= MAX_TOKENS) {
-        if (lexer_errors) {
-            error_state_add(lexer_errors, lexer->line, lexer->col, "Too many tokens");
+    if (lexer->count >= lexer->token_capacity) {
+        int new_cap = lexer->token_capacity * 2;
+        Token *new_tokens = realloc(lexer->tokens, new_cap * sizeof(Token));
+        if (!new_tokens) {
+            if (lexer_errors) {
+                error_state_add(lexer_errors, lexer->line, lexer->col, "Out of memory");
+            }
+            return;
         }
-        return;
+        lexer->tokens = new_tokens;
+        lexer->token_capacity = new_cap;
     }
     lexer->tokens[lexer->count++] = token;
 }
@@ -474,4 +486,14 @@ Token lexer_peek(Lexer *lexer) {
         return eof;
     }
     return lexer->tokens[lexer->current];
+}
+
+void lexer_free(Lexer *lexer) {
+    if (lexer && lexer->tokens) {
+        free(lexer->tokens);
+        lexer->tokens = NULL;
+        lexer->token_capacity = 0;
+        lexer->count = 0;
+        lexer->current = 0;
+    }
 }

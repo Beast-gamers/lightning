@@ -7,7 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#define MAX_TOKENS 1024
+#define MAX_TOKENS 1024  /* initial token capacity */
 #define MAX_STRING_LEN 4096
 #define MAX_IDENTIFIER_LEN 256
 #define MAX_VARS 256
@@ -85,7 +85,8 @@ typedef struct {
 } Token;
 
 typedef struct {
-    Token tokens[MAX_TOKENS];
+    Token *tokens;           /* dynamically allocated token array */
+    int token_capacity;      /* current capacity of tokens array */
     int count;
     int current;
     char *source;
@@ -229,6 +230,7 @@ int error_state_has_errors(ErrorState *state);
 
 void lexer_init(Lexer *lexer, char *source);
 void lexer_tokenize(Lexer *lexer, ErrorState *errors);
+void lexer_free(Lexer *lexer);
 Token lexer_next(Lexer *lexer);
 Token lexer_peek(Lexer *lexer);
 
