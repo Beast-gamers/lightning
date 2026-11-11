@@ -135,3 +135,9 @@ write(t9[-1][-1][-1][-1][-1][-1][-1][-1][-1])
 let t10 = [[[[[[[[[[1]]]]]]]]]
 write(t10[1][1][1][1][1][1][1][1][1][1])
 write(t10[-1][-1][-1][-1][-1][-1][-1][-1][-1][-1])
+
+# Test array type declaration
+let empty_arr = array
+write(typeof(empty_arr))
+let another_arr = array
+write(typeof(another_arr))

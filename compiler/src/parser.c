@@ -234,7 +234,8 @@ static int is_type_keyword(const char *name) {
     return strcmp(name, "int") == 0 ||
            strcmp(name, "string") == 0 ||
            strcmp(name, "bool") == 0 ||
-           strcmp(name, "obj") == 0;
+           strcmp(name, "obj") == 0 ||
+           strcmp(name, "array") == 0;
 }
 
 /* Return 1 for type keywords that can be used as conversion functions:
@@ -344,6 +345,7 @@ static VarType type_keyword_to_vartype(const char *name) {
     if (strcmp(name, "string") == 0) return TYPE_STRING;
     if (strcmp(name, "bool") == 0) return TYPE_BOOL;
     if (strcmp(name, "obj") == 0) return TYPE_OBJECT;
+    if (strcmp(name, "array") == 0) return TYPE_ARRAY;
     return TYPE_STRING;
 }
 
@@ -1798,6 +1800,7 @@ static const char *var_type_name(VarType t) {
         case TYPE_CHAR: return "string"; /* char merged into string */
         case TYPE_BOOL: return "bool";
         case TYPE_OBJECT: return "object";
+        case TYPE_ARRAY: return "array";
         case TYPE_NULL: return "null";
     }
     return "string";
@@ -2866,6 +2869,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 case TYPE_CHAR: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
                 case TYPE_BOOL: value.type = TOKEN_INT_LIT; strcpy(value.value, "false"); break;
                 case TYPE_OBJECT: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
+                case TYPE_ARRAY: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
             }
             value.line = let_tok.line;
             value.col = equals.col;
@@ -3192,6 +3196,7 @@ static const char *type_name_str(VarType t) {
         case TYPE_CHAR: return "string"; /* char merged into string */
         case TYPE_BOOL: return "bool";
         case TYPE_OBJECT: return "object";
+        case TYPE_ARRAY: return "array";
         case TYPE_NULL: return "null";
     }
     return "unknown";
