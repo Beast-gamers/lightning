@@ -171,7 +171,7 @@ int main(int argc, char *argv[]) {
     }
 
     char cmd[4096];
-    snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\"", cc_cmd, output_name, tmp_c);
+    snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\" 2>&1", cc_cmd, output_name, tmp_c);
 
     /* Run compiler and capture output */
     FILE *cfp = popen(cmd, "r");
