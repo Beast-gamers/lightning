@@ -151,8 +151,8 @@ typedef struct ASTNode {
     struct ASTNode *args;    /* call arguments (expression nodes chain) */
     struct ASTNode *next;
     /* Array support */
-    int array_dim_count;     /* 1, 2, or 3 dimensions */
-    int array_dims[3];       /* size of each dimension */
+    int array_dim_count;     /* number of dimensions (0 if not an array) */
+    int *array_dims;         /* dynamically allocated size of each dimension */
     int array_elem_count;    /* total number of elements */
     struct ASTNode *index1;  /* first index expression */
     struct ASTNode *index2;  /* second index expression */
@@ -164,8 +164,8 @@ typedef struct {
     VarType type;
     int is_const;
     int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
-    int array_dim_count;  /* number of array dimensions (1..3), 0 if not an array */
-    int array_dims[3];    /* size of each array dimension */
+    int array_dim_count;  /* number of array dimensions (0 if not an array) */
+    int *array_dims;      /* dynamically allocated size of each array dimension */
 } VarEntry;
 
 #define MAX_OBJ_FIELDS 32
@@ -252,9 +252,9 @@ int symbol_table_has_local(SymbolTable *table, const char *name);
 int symbol_table_get_locked(SymbolTable *table, const char *name);
 void symbol_table_set_locked(SymbolTable *table, const char *name, int locked);
 void symbol_table_set_array_dims(SymbolTable *table, const char *name,
-                                 int dim_count, const int dims[3]);
+                                 int dim_count, const int *dims);
 int symbol_table_get_array_dims(SymbolTable *table, const char *name,
-                                int dims[3], int *dim_count);
+                                int **dims, int *dim_count);
 
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
 const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);

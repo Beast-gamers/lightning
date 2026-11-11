@@ -323,9 +323,9 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
            number of written elements, so ragged literals leave empty slots
            instead of reading out of bounds. */
         int slots = node->array_elem_count;
-        if (node->array_dim_count >= 1) {
+        if (node->array_dim_count >= 1 && node->array_dims != NULL) {
             int product = 1;
-            for (int d = 0; d < node->array_dim_count && d < 3; d++) {
+            for (int d = 0; d < node->array_dim_count; d++) {
                 if (node->array_dims[d] <= 0) { product = 0; break; }
                 product *= node->array_dims[d];
             }

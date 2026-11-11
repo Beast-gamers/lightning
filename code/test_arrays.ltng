@@ -72,3 +72,24 @@ write("sum: " + arr[3])
 write("first=$[names[1]] last=$[names[-1]]")
 write("m22=$[m[2][2]] cube222=$[cube[2][2][2]]")
 write(names2d[1][1] + "/" + names2d[2][2])
+
+# Test 4D array
+let t4 = [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [[[9, 10], [11, 12]], [[13, 14], [15, 16]]]]
+write(t4[1][1][1][1])
+write(t4[1][1][1][2])
+write(t4[1][1][2][1])
+write(t4[1][1][2][2])
+write(t4[1][2][1][1])
+write(t4[1][2][2][2])
+write(t4[2][1][1][1])
+write(t4[2][2][2][2])
+write(t4[-1][-1][-1][-1])
+write(t4[-1][-1][-1][-2])
+
+# Test 4D expression indices
+let d0 = 2
+let d1 = 1
+let d2 = 2
+let d3 = 1
+write(t4[d0][d1][d2][d3])
+write(t4[-d0][-d1][-d2][-d3])

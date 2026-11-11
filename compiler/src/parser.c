@@ -370,6 +370,8 @@ static void symbol_table_add_in(SymbolTable *table, const char *name, VarType ty
     table->vars[table->count].type = type;
     table->vars[table->count].is_const = 0;
     table->vars[table->count].is_locked = 0;
+    table->vars[table->count].array_dim_count = 0;
+    table->vars[table->count].array_dims = NULL;
     table->count++;
 }
 
@@ -482,13 +484,19 @@ void symbol_table_set_locked(SymbolTable *table, const char *name, int locked) {
 }
 
 void symbol_table_set_array_dims(SymbolTable *table, const char *name,
-                                 int dim_count, const int dims[3]) {
+                                 int dim_count, const int *dims) {
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0) {
                 s->vars[i].array_dim_count = dim_count;
-                for (int d = 0; d < 3; d++) {
-                    s->vars[i].array_dims[d] = (d < dim_count) ? dims[d] : 0;
+                free(s->vars[i].array_dims);
+                if (dim_count > 0 && dims != NULL) {
+                    s->vars[i].array_dims = malloc(dim_count * sizeof(int));
+                    for (int d = 0; d < dim_count; d++) {
+                        s->vars[i].array_dims[d] = dims[d];
+                    }
+                } else {
+                    s->vars[i].array_dims = NULL;
                 }
                 return;
             }
@@ -497,16 +505,14 @@ void symbol_table_set_array_dims(SymbolTable *table, const char *name,
 }
 
 int symbol_table_get_array_dims(SymbolTable *table, const char *name,
-                                int dims[3], int *dim_count) {
+                                int **dims, int *dim_count) {
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0) {
                 if (s->vars[i].type != TYPE_ARRAY || s->vars[i].array_dim_count <= 0) {
                     return 0;
                 }
-                for (int d = 0; d < 3; d++) {
-                    dims[d] = (d < s->vars[i].array_dim_count) ? s->vars[i].array_dims[d] : 0;
-                }
+                *dims = s->vars[i].array_dims;
                 *dim_count = s->vars[i].array_dim_count;
                 return 1;
             }
@@ -897,19 +903,20 @@ static VarType infer_function_return_type(const char *fname);
 
 static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
     /* The caller has already consumed the opening '['. Parse the remaining
-       elements/nested arrays until the matching ']'. Arrays may have up to
-       three dimensions and are stored as a flat, row-major list of values. */
+       elements/nested arrays until the matching ']'. Arrays are stored as a
+       flat, row-major list of values. Arrays may have any number of dimensions. */
     int depth = 1;                 /* nesting level, outer '[' already consumed */
     int max_depth = 1;             /* deepest nesting level seen */
     int elem_count = 0;
     char values[4096] = "";
     int vpos = 0;
 
-    int elem_counts[4] = {0, 0, 0, 0};       /* values in current group at each depth */
-    int max_elem_counts[4] = {0, 0, 0, 0};   /* max values in a group at each depth */
-    int child_counts[4] = {0, 0, 0, 0};      /* direct child groups in current group */
-    int max_child_counts[4] = {0, 0, 0, 0};  /* max direct child groups in a group */
-    int too_many_dims = 0;
+    /* Dynamically sized counters, grown as needed for arbitrary depth. */
+    int cap_depth = 16;
+    int *elem_counts = calloc(cap_depth, sizeof(int));
+    int *max_elem_counts = calloc(cap_depth, sizeof(int));
+    int *child_counts = calloc(cap_depth, sizeof(int));
+    int *max_child_counts = calloc(cap_depth, sizeof(int));
 
     while (lexer->current < lexer->count) {
         Token t = lexer_peek(lexer);
@@ -918,17 +925,21 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
 
         if (t.type == TOKEN_LBRACKET) {
             lexer_next(lexer);
-            if (depth >= 3) {
-                if (!too_many_dims) {
-                    error_state_add(parser_errors, t.line, t.col,
-                        "Arrays support at most 3 dimensions");
-                    too_many_dims = 1;
-                }
-                /* Still track nesting so the matching ']' is consumed. */
-                depth++;
-                continue;
-            }
             /* Starting a child group of the current group. */
+            if (depth >= cap_depth) {
+                int new_cap = cap_depth * 2;
+                elem_counts = realloc(elem_counts, new_cap * sizeof(int));
+                max_elem_counts = realloc(max_elem_counts, new_cap * sizeof(int));
+                child_counts = realloc(child_counts, new_cap * sizeof(int));
+                max_child_counts = realloc(max_child_counts, new_cap * sizeof(int));
+                for (int d = cap_depth; d < new_cap; d++) {
+                    elem_counts[d] = 0;
+                    max_elem_counts[d] = 0;
+                    child_counts[d] = 0;
+                    max_child_counts[d] = 0;
+                }
+                cap_depth = new_cap;
+            }
             child_counts[depth]++;
             if (child_counts[depth] > max_child_counts[depth]) {
                 max_child_counts[depth] = child_counts[depth];
@@ -946,10 +957,8 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
                 depth = 0;
                 break; /* matching outer ']' */
             }
-            if (depth <= 3) {
-                if (elem_counts[depth] > max_elem_counts[depth]) {
-                    max_elem_counts[depth] = elem_counts[depth];
-                }
+            if (elem_counts[depth] > max_elem_counts[depth]) {
+                max_elem_counts[depth] = elem_counts[depth];
             }
             depth--;
             continue;
@@ -976,36 +985,35 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
         }
         values[vpos] = '\0';
         elem_count++;
-        if (depth <= 3) {
-            elem_counts[depth]++;
-            if (elem_counts[depth] > max_elem_counts[depth]) {
-                max_elem_counts[depth] = elem_counts[depth];
-            }
+        elem_counts[depth]++;
+        if (elem_counts[depth] > max_elem_counts[depth]) {
+            max_elem_counts[depth] = elem_counts[depth];
         }
     }
 
-    if (too_many_dims) return 0;
-
+    /* Compute dimensions:
+       For depth d (1-indexed, d < max_depth): dims[d-1] = max_child_counts[d]
+       For depth == max_depth: dims[max_depth-1] = max_elem_counts[max_depth] */
     int dim_count = max_depth;
     if (dim_count < 1) dim_count = 1;
-    if (dim_count > 3) dim_count = 3;
 
-    int dims[3] = {0, 0, 0};
+    int *dims = malloc(dim_count * sizeof(int));
     if (dim_count == 1) {
         dims[0] = elem_count;
-    } else if (dim_count == 2) {
-        dims[0] = max_child_counts[1];
-        dims[1] = max_elem_counts[2];
     } else {
-        dims[0] = max_child_counts[1];
-        dims[1] = max_child_counts[2];
-        dims[2] = max_elem_counts[3];
+        for (int d = 1; d < dim_count; d++) {
+            dims[d - 1] = max_child_counts[d];
+        }
+        dims[dim_count - 1] = max_elem_counts[dim_count];
     }
 
+    free(elem_counts);
+    free(max_elem_counts);
+    free(child_counts);
+    free(max_child_counts);
+
     node->array_dim_count = dim_count;
-    node->array_dims[0] = dims[0];
-    node->array_dims[1] = dims[1];
-    node->array_dims[2] = dims[2];
+    node->array_dims = dims;
     node->array_elem_count = elem_count;
     strncpy(node->value, values, MAX_STRING_LEN - 1);
     node->value[MAX_STRING_LEN - 1] = '\0';
@@ -1471,8 +1479,15 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             int index_count = 0;
                             int index_error = 0;
 
-                            while (nxt.type == TOKEN_LBRACKET && index_count < 3) {
+                            while (nxt.type == TOKEN_LBRACKET) {
                                 lexer_next(lexer); /* consume [ */
+                                if (index_count >= 32) {
+                                    error_state_add(parser_errors, nxt.line, nxt.col,
+                                        "Too many array dimensions (max 32)");
+                                    skip_to_newline(lexer);
+                                    index_error = 1;
+                                    break;
+                                }
                                 collect_expression(lexer, table, index_exprs[index_count],
                                                    sizeof(index_exprs[index_count]), 1, 0);
                                 Token rbracket = lexer_peek(lexer);
@@ -1488,22 +1503,16 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 nxt = lexer_peek(lexer);
                             }
 
-                            if (nxt.type == TOKEN_LBRACKET) {
-                                error_state_add(parser_errors, nxt.line, nxt.col,
-                                    "Arrays support at most 3 dimensions");
-                                skip_to_newline(lexer);
-                                index_error = 1;
-                            }
-
                             if (!index_error && index_count > 0) {
-                                int dims[3] = {0, 0, 0};
+                                int *dims = NULL;
                                 int dim_count = 0;
                                 int have_dims = symbol_table_get_array_dims(
-                                    table, mangled, dims, &dim_count);
+                                    table, mangled, &dims, &dim_count);
 
                                 if (!have_dims) {
                                     /* Unknown/legacy arrays behave like 1D. */
                                     dim_count = 1;
+                                    dims = malloc(sizeof(int));
                                     dims[0] = 0;
                                 }
 
@@ -1526,17 +1535,11 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ",
                                             d, index_exprs[d], d, d, d, d, dims[d]);
                                     }
-                                    pos += snprintf(out + pos, out_size - pos,
-                                        "int __idx = ");
-                                    if (index_count == 1) {
-                                        pos += snprintf(out + pos, out_size - pos, "__i0");
-                                    } else if (index_count == 2) {
+                                    /* Compute linear index: __idx = __i0; __idx = __idx * d1 + __i1; ... */
+                                    pos += snprintf(out + pos, out_size - pos, "int __idx = __i0");
+                                    for (int d = 1; d < index_count; d++) {
                                         pos += snprintf(out + pos, out_size - pos,
-                                            "_ltng_idx2(__i0, __i1, %d)", dims[1]);
-                                    } else {
-                                        pos += snprintf(out + pos, out_size - pos,
-                                            "_ltng_idx3(__i0, __i1, __i2, %d, %d)",
-                                            dims[1], dims[2]);
+                                            "; __idx = __idx * %d + __i%d", dims[d], d);
                                     }
                                     pos += snprintf(out + pos, out_size - pos,
                                         "; _ltng_arr_get(%s, %s, __idx); })",
@@ -1544,6 +1547,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     result_type = TYPE_STRING;
                                     array_access_used = 1;
                                 }
+                                if (!have_dims) free(dims);
                             } else if (!index_error) {
                                 pos += snprintf(out + pos, out_size - pos, "0");
                             }
@@ -2829,9 +2833,10 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         ASTNode *node = create_node(NODE_LET, mangled, arr->value);
         node->var_type = TYPE_ARRAY;
         node->array_dim_count = arr->array_dim_count;
-        node->array_dims[0] = arr->array_dims[0];
-        node->array_dims[1] = arr->array_dims[1];
-        node->array_dims[2] = arr->array_dims[2];
+        node->array_dims = malloc(arr->array_dim_count * sizeof(int));
+        for (int d = 0; d < arr->array_dim_count; d++) {
+            node->array_dims[d] = arr->array_dims[d];
+        }
         node->array_elem_count = arr->array_elem_count;
         node->is_expr = 0;
         emit(node);
@@ -3015,9 +3020,10 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         ASTNode *node = create_node(NODE_CONST, mangled, arr->value);
         node->var_type = TYPE_ARRAY;
         node->array_dim_count = arr->array_dim_count;
-        node->array_dims[0] = arr->array_dims[0];
-        node->array_dims[1] = arr->array_dims[1];
-        node->array_dims[2] = arr->array_dims[2];
+        node->array_dims = malloc(arr->array_dim_count * sizeof(int));
+        for (int d = 0; d < arr->array_dim_count; d++) {
+            node->array_dims[d] = arr->array_dims[d];
+        }
         node->array_elem_count = arr->array_elem_count;
         node->is_expr = 0;
         emit(node);
