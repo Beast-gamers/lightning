@@ -1,0 +1,3 @@
+# Phase 2 negative: duplicate declaration in same scope
+let x = 1
+let x = 2

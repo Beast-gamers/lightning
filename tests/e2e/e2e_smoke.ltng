@@ -1,0 +1,6 @@
+# End-to-end smoke
+let msg = "e2e"
+write(msg)
+for (i from 1 to 3) {
+    write(i)
+}

@@ -1,0 +1,5 @@
+# Semantic smoke: declarations and usage
+let x = 10
+const y = 20
+set x = x + y
+write(x)

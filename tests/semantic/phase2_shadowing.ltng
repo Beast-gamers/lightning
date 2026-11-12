@@ -1,0 +1,24 @@
+# Phase 2: variable shadowing
+let x = 1
+write(x)
+if (true) {
+    let x = 2
+    write(x)
+    if (true) {
+        let x = 3
+        write(x)
+    }
+    write(x)
+}
+write(x)
+
+function shadow_fn() {
+    let y = 10
+    if (true) {
+        let y = 20
+        write(y)
+    }
+    write(y)
+    return y
+}
+write(shadow_fn())

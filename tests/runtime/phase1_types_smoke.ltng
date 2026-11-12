@@ -1,0 +1,21 @@
+# Phase 1 type system smoke
+let i = 10
+let fl = 3.5
+let s = "hi"
+let b = true
+write(typeof(i))
+write(typeof(fl))
+write(typeof(s))
+write(typeof(b))
+
+# numeric promotion / mixed
+let m = 5 + 2.5
+write(m)
+let m2 = 3.5 * 2
+write(m2)
+
+# conversions
+write(tofloat(3))
+write(toint("3.14"))
+write(tochar(65))
+write(tostring(12))

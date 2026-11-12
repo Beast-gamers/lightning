@@ -1,0 +1,3 @@
+# Codegen smoke: should emit valid C and compile/run
+let x = 1
+write(x)

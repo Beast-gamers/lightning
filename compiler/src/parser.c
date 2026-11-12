@@ -227,24 +227,28 @@ static VarType detect_type(const char *value) {
     }
 
     if (!has_digit) return TYPE_STRING;
-    return TYPE_INT; /* float values merged into int type */
+    return has_dot ? TYPE_FLOAT : TYPE_INT;
 }
 
 static int is_type_keyword(const char *name) {
     return strcmp(name, "int") == 0 ||
+           strcmp(name, "float") == 0 ||
            strcmp(name, "string") == 0 ||
+           strcmp(name, "char") == 0 ||
            strcmp(name, "bool") == 0 ||
            strcmp(name, "obj") == 0 ||
            strcmp(name, "array") == 0;
 }
 
 /* Return 1 for type keywords that can be used as conversion functions:
-   int(expr), string(expr), bool(expr). These are function calls, not
-   type declarations, when followed by '('. */
+   int(expr), string(expr), bool(expr), tofloat(expr), tochar(expr). These are
+   function calls, not type declarations, when followed by '('. */
 static int is_type_conversion(const char *name) {
     return strcmp(name, "toint") == 0 ||
            strcmp(name, "tostring") == 0 ||
-           strcmp(name, "tobool") == 0;
+           strcmp(name, "tobool") == 0 ||
+           strcmp(name, "tofloat") == 0 ||
+           strcmp(name, "tochar") == 0;
 }
 
 static int is_ltng_reserved(const char *name) {
@@ -343,7 +347,9 @@ void mangle_name(const char *in, char *out, int out_size) {
 
 static VarType type_keyword_to_vartype(const char *name) {
     if (strcmp(name, "int") == 0) return TYPE_INT;
+    if (strcmp(name, "float") == 0) return TYPE_FLOAT;
     if (strcmp(name, "string") == 0) return TYPE_STRING;
+    if (strcmp(name, "char") == 0) return TYPE_CHAR;
     if (strcmp(name, "bool") == 0) return TYPE_BOOL;
     if (strcmp(name, "obj") == 0) return TYPE_OBJECT;
     if (strcmp(name, "array") == 0) return TYPE_ARRAY;
@@ -357,7 +363,9 @@ void scope_init(Scope *scope, Scope *parent, int disallow_decl) {
     scope->disallow_decl = disallow_decl || (parent ? parent->disallow_decl : 0);
 }
 
-static void symbol_table_add_in(SymbolTable *table, const char *name, VarType type) {
+static int g_scope_var_uid = 0;
+
+static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType type, int unique_cname) {
     for (int i = 0; i < table->count; i++) {
         if (strcmp(table->vars[i].name, name) == 0) {
             table->vars[i].type = type;
@@ -370,13 +378,36 @@ static void symbol_table_add_in(SymbolTable *table, const char *name, VarType ty
         }
         return;
     }
-    strncpy(table->vars[table->count].name, name, MAX_IDENTIFIER_LEN - 1);
-    table->vars[table->count].type = type;
-    table->vars[table->count].is_const = 0;
-    table->vars[table->count].is_locked = 0;
-    table->vars[table->count].array_dim_count = 0;
-    table->vars[table->count].array_dims = NULL;
+    VarEntry *ve = &table->vars[table->count];
+    strncpy(ve->name, name, MAX_IDENTIFIER_LEN - 1);
+    ve->name[MAX_IDENTIFIER_LEN - 1] = '\0';
+    if (unique_cname) {
+        snprintf(ve->cname, MAX_IDENTIFIER_LEN, "_v%d_%s", g_scope_var_uid++, name);
+    } else {
+        strncpy(ve->cname, name, MAX_IDENTIFIER_LEN - 1);
+        ve->cname[MAX_IDENTIFIER_LEN - 1] = '\0';
+    }
+    ve->type = type;
+    ve->is_const = 0;
+    ve->is_locked = 0;
+    ve->array_dim_count = 0;
+    ve->array_dims = NULL;
     table->count++;
+}
+
+static int symbol_table_has_in_parents(SymbolTable *table, const char *name) {
+    for (Scope *s = table ? table->parent : NULL; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) return 1;
+        }
+    }
+    return 0;
+}
+
+static void symbol_table_add_in(SymbolTable *table, const char *name, VarType type) {
+    /* Use unique C names only for declarations that shadow an outer variable. */
+    int unique = (table && table->parent != NULL && symbol_table_has_in_parents(table, name));
+    symbol_table_add_in_ex(table, name, type, unique);
 }
 
 /* Add/update in current scope */
@@ -387,6 +418,11 @@ static void symbol_table_add(SymbolTable *table, const char *name, VarType type)
 /* Add in current scope only (no update search up) */
 void symbol_table_add_local(SymbolTable *table, const char *name, VarType type) {
     symbol_table_add_in(table, name, type);
+}
+
+/* Add a function parameter (C name must match parameter variable name) */
+void symbol_table_add_param(SymbolTable *table, const char *name, VarType type) {
+    symbol_table_add_in_ex(table, name, type, 0);
 }
 
 /* Add a variable and auto-lock it if it has a concrete (non-null) type.
@@ -421,6 +457,17 @@ VarType symbol_table_get(SymbolTable *table, const char *name) {
         }
     }
     return TYPE_STRING;
+}
+
+const char *symbol_table_get_cname(SymbolTable *table, const char *name) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                return s->vars[i].cname[0] ? s->vars[i].cname : s->vars[i].name;
+            }
+        }
+    }
+    return name;
 }
 
 int symbol_table_has(SymbolTable *table, const char *name) {
@@ -1102,7 +1149,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 break;
             case TOKEN_FLOAT_LIT:
                 pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
-                if (!type_locked) result_type = TYPE_INT;
+                if (!type_locked) result_type = TYPE_FLOAT;
                 break;
             case TOKEN_STRING:
                 if (arithmetic_used) {
@@ -1123,9 +1170,10 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 break;
             case TOKEN_IDENT: {
                 int saved_pos = pos;
-                /* Type conversion functions: int(expr), string(expr), bool(expr) */
+                /* Type conversion functions: toint/tofloat/tostring/tobool/tochar */
                 if ((strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tostring") == 0 ||
-                     strcmp(tok.value, "tobool") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                     strcmp(tok.value, "tobool") == 0 || strcmp(tok.value, "tofloat") == 0 ||
+                     strcmp(tok.value, "tochar") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
                     lexer_next(lexer); /* consume ( */
                     char inner[MAX_STRING_LEN];
                     int ipos = 0;
@@ -1148,6 +1196,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
 
                     /* Helper: check if inner is a simple number literal */
                     int is_num_lit = 0;
+                    int num_has_dot = 0;
                     if (ipos >= 1) {
                         const char *p = inner;
                         if (*p == '-' || *p == '+') p++;
@@ -1155,7 +1204,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             int has_digit = 0;
                             for (; *p; p++) {
                                 if (isdigit((unsigned char)*p)) has_digit = 1;
-                                else if (*p == '.') { /* ok */ }
+                                else if (*p == '.') { num_has_dot = 1; }
                                 else { has_digit = 0; break; }
                             }
                             if (has_digit) is_num_lit = 1;
@@ -1174,15 +1223,21 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     }
 
                     if (strcmp(tok.value, "toint") == 0) {
-                        /* int(expr): output as a quoted string so codegen uses %s.
-                           String literals pass through as-is; number literals get
-                           quotes added; variables pass through as-is. */
+                        /* toint(expr): preserve existing Lightning behavior */
                         if (is_simple_str_lit) {
                             pos += snprintf(out + pos, out_size - pos, "%s", inner);
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                        }
+                        if (!type_locked) result_type = TYPE_STRING;
+                    } else if (strcmp(tok.value, "tofloat") == 0) {
+                        /* tofloat(expr): convert to float string/value representation */
+                        if (is_num_lit) {
+                            pos += snprintf(out + pos, out_size - pos, "\"%g\"", (double)atof(inner));
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, "_ltng_from_double(_ltng_retbuf(), (double)atof(%s))", inner);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tostring") == 0) {
@@ -1204,32 +1259,55 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tobool") == 0) {
                         /* bool(expr): true unless null/empty/"0"/"false" */
-                        /* For number literals: 0 → false, else → true */
-                        /* For string literals: "" or "0" or "false" → false, else → true */
-                        /* For variables: runtime check */
                         if (ipos == 1 && inner[0] == '0') {
                             pos += snprintf(out + pos, out_size - pos, "\"false\"");
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"true\"");
                         } else if (is_simple_str_lit) {
-                            /* Check string literal content */
                             if (ipos == 2) {
-                                /* empty string "" */
                                 pos += snprintf(out + pos, out_size - pos, "\"false\"");
                             } else if (ipos == 3 && inner[1] == '0') {
-                                /* "0" */
                                 pos += snprintf(out + pos, out_size - pos, "\"false\"");
                             } else if (ipos == 7 && memcmp(inner + 1, "false", 5) == 0) {
-                                /* "false" */
                                 pos += snprintf(out + pos, out_size - pos, "\"false\"");
                             } else {
                                 pos += snprintf(out + pos, out_size - pos, "\"true\"");
                             }
                         } else {
-                            /* variable or complex expression: runtime check */
                             pos += snprintf(out + pos, out_size - pos,
                                 "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?\"true\":\"false\")",
                                 inner, inner, inner);
+                        }
+                        if (!type_locked) result_type = TYPE_STRING;
+                    } else if (strcmp(tok.value, "tochar") == 0) {
+                        /* tochar(expr): convert to single-character string */
+                        if (is_simple_str_lit && ipos >= 3) {
+                            /* take first character of string literal */
+                            char ch = inner[1];
+                            if (ch == '\\' && ipos >= 4) {
+                                /* keep escape sequence as-is inside string literal */
+                                char esc[8] = {0};
+                                esc[0] = inner[1]; esc[1] = inner[2];
+                                pos += snprintf(out + pos, out_size - pos, "\"%s\"", esc);
+                            } else {
+                                pos += snprintf(out + pos, out_size - pos, "\"%c\"", ch);
+                            }
+                        } else if (is_num_lit) {
+                            int iv = (int)atoll(inner);
+                            if (iv >= 0 && iv <= 127) {
+                                if (iv == '\\' || iv == '"' || iv == '\n' || iv == '\t') {
+                                    pos += snprintf(out + pos, out_size - pos, "_ltng_ad((double)(%d))", iv);
+                                } else {
+                                    pos += snprintf(out + pos, out_size - pos, "\"%c\"", iv);
+                                }
+                            } else {
+                                pos += snprintf(out + pos, out_size - pos, "\"%c\"", (unsigned char)iv);
+                            }
+                        } else {
+                            /* runtime: if numeric string use char code, else first char */
+                            pos += snprintf(out + pos, out_size - pos,
+                                "_ltng_as((_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0})))",
+                                inner, inner, inner, inner);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     }
@@ -1395,27 +1473,30 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         pos += snprintf(out + pos, out_size - pos, "0");
                     } else {
                         VarType vtype = symbol_table_get(table, mangled);
+                        const char *cname = symbol_table_get_cname(table, mangled);
                         /* in a string-building context, use the raw buffer
                            (array variables are handled by the index logic below) */
                         if (result_type == TYPE_STRING && !type_locked && vtype != TYPE_ARRAY) {
-                            pos += snprintf(out + pos, out_size - pos, "%s", mangled);
+                            pos += snprintf(out + pos, out_size - pos, "%s", cname);
                         } else switch (vtype) {
                             case TYPE_INT:
-                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", mangled);
+                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", cname);
                                 break;
                             case TYPE_FLOAT:
-                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", mangled);
-                                if (!type_locked) result_type = TYPE_INT;
+                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cname);
+                                if (!type_locked) {
+                                    if (result_type == TYPE_INT) result_type = TYPE_FLOAT;
+                                }
                                 break;
                             case TYPE_CHAR:
                             case TYPE_STRING:
                             case TYPE_OBJECT:
-                                pos += snprintf(out + pos, out_size - pos, "%s", mangled);
+                                pos += snprintf(out + pos, out_size - pos, "%s", cname);
                                 if (!type_locked) result_type = TYPE_STRING;
                                 break;
                             case TYPE_BOOL:
                                 pos += snprintf(out + pos, out_size - pos,
-                                    "(%s[0]=='t'?1:0)", mangled);
+                                    "(%s[0]=='t'?1:0)", cname);
                                 break;
                             case TYPE_ARRAY:
                                 /* Check for .push() / .pop() method calls on array variables */
@@ -1441,9 +1522,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             lexer_next(lexer); /* consume ( */
 
                                             char arrname[MAX_IDENTIFIER_LEN];
-                                            snprintf(arrname, sizeof(arrname), "%s_data", mangled);
+                                            snprintf(arrname, sizeof(arrname), "%s_data", cname);
                                             char lenname[MAX_IDENTIFIER_LEN];
-                                            snprintf(lenname, sizeof(lenname), "%s_len", mangled);
+                                            snprintf(lenname, sizeof(lenname), "%s_len", cname);
 
                                             if (strcmp(mname.value, "push") == 0) {
                                                 /* push(value) */
@@ -1506,7 +1587,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 }
                                 break;
                             default:
-                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", mangled);
+                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", cname);
                                 break;
                         }
                     }
@@ -1890,9 +1971,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
 static const char *var_type_name(VarType t) {
     switch (t) {
         case TYPE_INT: return "int";
-        case TYPE_FLOAT: return "int"; /* float merged into int */
+        case TYPE_FLOAT: return "float";
         case TYPE_STRING: return "string";
-        case TYPE_CHAR: return "string"; /* char merged into string */
+        case TYPE_CHAR: return "char";
         case TYPE_BOOL: return "bool";
         case TYPE_OBJECT: return "object";
         case TYPE_ARRAY: return "array";
@@ -1927,12 +2008,17 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                     vname[vlen - 1] = '\0';
                     memmove(vname, vname + 7, strlen(vname + 7) + 1);
                     
-                    /* typeof(toint("5")) → "int", typeof(tostring("x")) → "string",
+                    /* typeof(toint("5")) → "int", typeof(tofloat("5")) → "float",
+                       typeof(tostring("x")) → "string", typeof(tochar("x")) → "char",
                        typeof(tobool("t")) → "bool" */
                     if (strncmp(vname, "toint(", 6) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
+                    } else if (strncmp(vname, "tofloat(", 8) == 0) {
+                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "float");
                     } else if (strncmp(vname, "tostring(", 9) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
+                    } else if (strncmp(vname, "tochar(", 7) == 0) {
+                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "char");
                     } else if (strncmp(vname, "tobool(", 7) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
                     } else {
@@ -2177,7 +2263,9 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         }
         VarType cvt;
         if (strcmp(arg.value, "toint") == 0) cvt = TYPE_INT;
+        else if (strcmp(arg.value, "tofloat") == 0) cvt = TYPE_FLOAT;
         else if (strcmp(arg.value, "tostring") == 0) cvt = TYPE_STRING;
+        else if (strcmp(arg.value, "tochar") == 0) cvt = TYPE_CHAR;
         else cvt = TYPE_BOOL; /* tobool */
         result->type = TOKEN_STRING;
         strncpy(result->value, var_type_name(cvt), MAX_STRING_LEN - 1);
@@ -2677,7 +2765,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     skip_to_newline(lexer);
                     return;
                 }
-                node = create_node(NODE_WRITE, mwname, "");
+                const char *cwname = symbol_table_get_cname(table, mwname);
+                node = create_node(NODE_WRITE, cwname, "");
                 node->is_variable = 1;
                 node->var_type = symbol_table_get(table, mwname);
             }
@@ -2690,7 +2779,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 skip_to_newline(lexer);
                 return;
             }
-            node = create_node(NODE_WRITE, mwname, "");
+            const char *cwname = symbol_table_get_cname(table, mwname);
+            node = create_node(NODE_WRITE, cwname, "");
             node->is_variable = 1;
             node->var_type = symbol_table_get(table, mwname);
         }
@@ -2874,11 +2964,10 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
 }
 
 
-static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, int is_const, int is_node_const) {
-    /* assumes '{' consumed? caller should consume '{' */
+static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, int is_const, int is_assignment) {
+    /* assumes '{' consumed. is_assignment: 1 when used in set (not a new declaration). */
     ObjSchema schema;
     memset(&schema, 0, sizeof(schema));
-    strncpy(schema.var, mangled, MAX_IDENTIFIER_LEN - 1);
 
     /* skip leading newlines */
     while (lexer_peek(lexer).type == TOKEN_NEWLINE) lexer_next(lexer);
@@ -2953,13 +3042,22 @@ static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *ma
 
     if (lexer_peek(lexer).type == TOKEN_RBRACE) lexer_next(lexer);
 
+    const char *cname = symbol_table_get_cname(table, mangled);
+    strncpy(schema.var, cname, MAX_IDENTIFIER_LEN - 1);
+    schema.var[MAX_IDENTIFIER_LEN - 1] = '\0';
     obj_build_all(&schema);
-    obj_register(mangled, &schema);
+    obj_register(cname, &schema);
 
-    symbol_table_add_locked(table, mangled, TYPE_OBJECT);
-    if (is_const) symbol_table_set_const(table, mangled, 1);
+    if (!is_assignment) {
+        symbol_table_add_locked(table, mangled, TYPE_OBJECT);
+        if (is_const) symbol_table_set_const(table, mangled, 1);
+        cname = symbol_table_get_cname(table, mangled);
+    } else {
+        symbol_table_update(table, mangled, TYPE_OBJECT);
+        cname = symbol_table_get_cname(table, mangled);
+    }
 
-    ASTNode *node = create_node(is_node_const ? NODE_CONST : NODE_LET, mangled, schema.default_val);
+    ASTNode *node = create_node((!is_assignment && is_const) ? NODE_CONST : (is_assignment ? NODE_SET : NODE_LET), cname, schema.default_val);
     node->var_type = TYPE_OBJECT;
     node->is_expr = 0;
     emit(node);
@@ -2969,12 +3067,7 @@ static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *ma
 static void parse_let(Lexer *lexer, SymbolTable *table) {
     Token let_tok = lexer_next(lexer);
 
-    if (table && table->disallow_decl) {
-        error_state_add(parser_errors, let_tok.line, let_tok.col,
-            "'let' declarations are not allowed inside if statements, switch statements, or loops");
-        skip_to_newline(lexer);
-        return;
-    }
+    /* Phase 2: declarations are allowed in control-flow and nested blocks */
 
     Token name = lexer_next(lexer);
     if (!token_is_name(name)) {
@@ -2994,9 +3087,9 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
     char mangled[MAX_IDENTIFIER_LEN];
     mangle_name(name.value, mangled, MAX_IDENTIFIER_LEN);
 
-    if (symbol_table_has(table, mangled)) {
+    if (symbol_table_has_local(table, mangled)) {
         error_state_add(parser_errors, name.line, name.col,
-            "Variable already declared");
+            "Variable already declared in this scope");
         skip_to_newline(lexer);
         return;
     }
@@ -3006,7 +3099,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         lexer_peek(lexer).type == TOKEN_EOF ||
         lexer_peek(lexer).type == TOKEN_RBRACE) {
         symbol_table_add_locked(table, mangled, TYPE_NULL);
-        ASTNode *node = create_node(NODE_LET, mangled, "");
+        const char *cname = symbol_table_get_cname(table, mangled);
+        ASTNode *node = create_node(NODE_LET, cname, "");
         node->var_type = TYPE_NULL;
         node->is_expr = 0;
         emit(node);
@@ -3040,7 +3134,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         }
         symbol_table_add_locked(table, mangled, TYPE_ARRAY);
         symbol_table_set_array_dims(table, mangled, arr->array_dim_count, arr->array_dims);
-        ASTNode *node = create_node(NODE_LET, mangled, arr->value);
+        const char *cname = symbol_table_get_cname(table, mangled);
+        ASTNode *node = create_node(NODE_LET, cname, arr->value);
         node->var_type = TYPE_ARRAY;
         node->array_dim_count = arr->array_dim_count;
         node->array_dims = malloc(arr->array_dim_count * sizeof(int));
@@ -3090,7 +3185,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         char expr[MAX_STRING_LEN];
         VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
         symbol_table_add_locked(table, mangled, expr_type);
-        ASTNode *node = create_node(NODE_LET, mangled, expr);
+        const char *cname = symbol_table_get_cname(table, mangled);
+        ASTNode *node = create_node(NODE_LET, cname, expr);
         node->var_type = expr_type;
         node->is_expr = 1;
         emit(node);
@@ -3120,7 +3216,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1)) {
                     symbol_table_add_locked(table, mangled, TYPE_STRING);
-                    ASTNode *node = create_node(NODE_LET, mangled, expr);
+                    const char *cname = symbol_table_get_cname(table, mangled);
+                    ASTNode *node = create_node(NODE_LET, cname, expr);
                     node->var_type = TYPE_STRING;
                     node->is_expr = 1;
                     emit(node);
@@ -3129,7 +3226,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             }
             VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
             symbol_table_add_locked(table, mangled, expr_type);
-            ASTNode *node = create_node(NODE_LET, mangled, expr);
+            const char *cname = symbol_table_get_cname(table, mangled);
+            ASTNode *node = create_node(NODE_LET, cname, expr);
             node->var_type = expr_type;
             node->is_expr = 1;
             emit(node);
@@ -3164,10 +3262,11 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
     }
 
     symbol_table_add_locked(table, mangled, vtype);
+    const char *cname = symbol_table_get_cname(table, mangled);
 
     resolve_string_interpolation(&value, table, value.line, value.col);
 
-    ASTNode *node = create_node(NODE_LET, mangled, value.value);
+    ASTNode *node = create_node(NODE_LET, cname, value.value);
     node->var_type = vtype;
 
     emit(node);
@@ -3176,12 +3275,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
 static void parse_const(Lexer *lexer, SymbolTable *table) {
     Token const_tok = lexer_next(lexer);
 
-    if (table && table->disallow_decl) {
-        error_state_add(parser_errors, const_tok.line, const_tok.col,
-            "'const' declarations are not allowed inside if statements, switch statements, or loops");
-        skip_to_newline(lexer);
-        return;
-    }
+    /* Phase 2: declarations are allowed in control-flow and nested blocks */
 
     Token name = lexer_next(lexer);
     if (!token_is_name(name)) {
@@ -3201,9 +3295,9 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     char mangled[MAX_IDENTIFIER_LEN];
     mangle_name(name.value, mangled, MAX_IDENTIFIER_LEN);
 
-    if (symbol_table_has(table, mangled)) {
+    if (symbol_table_has_local(table, mangled)) {
         error_state_add(parser_errors, name.line, name.col,
-            "Variable already declared");
+            "Variable already declared in this scope");
         skip_to_newline(lexer);
         return;
     }
@@ -3219,7 +3313,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     /* object literal */
     if (lexer_peek(lexer).type == TOKEN_LBRACE) {
         lexer_next(lexer); /* consume { */
-        parse_object_literal(lexer, table, mangled, 0, 0);
+        parse_object_literal(lexer, table, mangled, 1, 0);
         return;
     }
 
@@ -3347,10 +3441,11 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     symbol_table_add_locked(table, mangled, vtype);
 
     symbol_table_set_const(table, mangled, 1);
+    const char *cname = symbol_table_get_cname(table, mangled);
 
     resolve_string_interpolation(&value, table, value.line, value.col);
 
-    ASTNode *node = create_node(NODE_CONST, mangled, value.value);
+    ASTNode *node = create_node(NODE_CONST, cname, value.value);
     node->var_type = vtype;
 
     emit(node);
@@ -3413,9 +3508,9 @@ static void token_append_source(char *out, int *pos, int out_size, Token tok) {
 static const char *type_name_str(VarType t) {
     switch (t) {
         case TYPE_INT: return "int";
-        case TYPE_FLOAT: return "int"; /* float merged into int */
+        case TYPE_FLOAT: return "float";
         case TYPE_STRING: return "string";
-        case TYPE_CHAR: return "string"; /* char merged into string */
+        case TYPE_CHAR: return "char";
         case TYPE_BOOL: return "bool";
         case TYPE_OBJECT: return "object";
         case TYPE_ARRAY: return "array";
@@ -3425,13 +3520,25 @@ static const char *type_name_str(VarType t) {
 }
 
 /* Enforce dtype immutability: a variable cannot change its declared type.
-   TYPE_NULL is the exception: a null variable can be assigned any type. */
+   TYPE_NULL is the exception: a null variable can be assigned any type.
+   Numeric types (int/float) are compatible for assignment to preserve
+   backward-compatible behavior with numeric promotion/coercion. */
 static int check_set_type_immutable(SymbolTable *table, const char *mangled,
                                      VarType new_type, int line, int col,
                                      Lexer *lexer) {
     VarType existing = symbol_table_get(table, mangled);
     if (existing != new_type) {
-        /* A locked variable cannot change dtype at all. */
+        /* Allow numeric compatibility (int <-> float) */
+        if ((existing == TYPE_INT || existing == TYPE_FLOAT) &&
+            (new_type == TYPE_INT || new_type == TYPE_FLOAT)) {
+            return 1;
+        }
+        /* char and string are closely related in this runtime */
+        if ((existing == TYPE_CHAR || existing == TYPE_STRING) &&
+            (new_type == TYPE_CHAR || new_type == TYPE_STRING)) {
+            return 1;
+        }
+        /* A locked variable cannot change dtype arbitrarily. */
         if (symbol_table_get_locked(table, mangled)) {
             char msg[256];
             snprintf(msg, sizeof(msg),
@@ -3482,6 +3589,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
+    const char *cname = symbol_table_get_cname(table, mangled);
     Token op_tok = lexer_next(lexer);
     if (op_tok.type == TOKEN_LBRACKET) {
         /* Array element assignment: set x[i] = expr, set x[i][j] = expr, etc. */
@@ -3568,7 +3676,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         ipos += snprintf(idx_code + ipos, sizeof(idx_code) - ipos, "; __idx; })");
         if (!have_dims) free(dims);
 
-        ASTNode *node = create_node(NODE_ARRAY_SET, mangled, rhs_expr);
+        ASTNode *node = create_node(NODE_ARRAY_SET, cname, rhs_expr);
         strncpy(node->array_index, idx_code, MAX_STRING_LEN - 1);
         node->array_index[MAX_STRING_LEN - 1] = '\0';
         node->var_type = rhs_type;
@@ -3603,7 +3711,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         if (!check_set_type_immutable(table, mangled, etype, set_tok.line, set_tok.col, lexer))
             return;
         symbol_table_update(table, mangled, etype);
-        ASTNode *node = create_node(NODE_SET, mangled, expr_out);
+        ASTNode *node = create_node(NODE_SET, cname, expr_out);
         node->var_type = etype;
         node->is_expr = 1;
         emit(node);
@@ -3624,7 +3732,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         lexer_next(lexer); /* consume { */
         if (!check_set_type_immutable(table, mangled, TYPE_OBJECT, set_tok.line, set_tok.col, lexer))
             return;
-        parse_object_literal(lexer, table, mangled, 0, 0);
+        parse_object_literal(lexer, table, mangled, 0, 1);
         return;
     }
 
@@ -3658,7 +3766,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
                         return;
                     symbol_table_update(table, mangled, vtype);
-                    ASTNode *node = create_node(NODE_SET, mangled, expr);
+                    ASTNode *node = create_node(NODE_SET, cname, expr);
                     node->var_type = vtype;
                     node->is_expr = 1;
                     emit(node);
@@ -3674,7 +3782,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
                 return;
             symbol_table_update(table, mangled, vtype);
-            ASTNode *node = create_node(NODE_SET, mangled, expr);
+            ASTNode *node = create_node(NODE_SET, cname, expr);
             node->var_type = vtype;
             node->is_expr = 1;
             emit(node);
@@ -3713,7 +3821,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         if (!check_set_type_immutable(table, mangled, expr_type, set_tok.line, set_tok.col, lexer))
             return;
         symbol_table_update(table, mangled, expr_type);
-        ASTNode *node = create_node(NODE_SET, mangled, expr);
+        ASTNode *node = create_node(NODE_SET, cname, expr);
         node->var_type = expr_type;
         node->is_expr = 1;
         emit(node);
@@ -3746,7 +3854,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
                         return;
                     symbol_table_update(table, mangled, vtype);
-                    ASTNode *node = create_node(NODE_SET, mangled, expr);
+                    ASTNode *node = create_node(NODE_SET, cname, expr);
                     node->var_type = vtype;
                     node->is_expr = 1;
                     emit(node);
@@ -3758,7 +3866,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
                 return;
             symbol_table_update(table, mangled, vtype);
-            ASTNode *node = create_node(NODE_SET, mangled, expr);
+            ASTNode *node = create_node(NODE_SET, cname, expr);
             node->var_type = vtype;
             node->is_expr = 1;
             emit(node);
@@ -3798,7 +3906,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
 
     resolve_string_interpolation(&value, table, value.line, value.col);
 
-    ASTNode *node = create_node(NODE_SET, mangled, value.value);
+    ASTNode *node = create_node(NODE_SET, cname, value.value);
     node->var_type = vtype;
 
     emit(node);
@@ -4019,7 +4127,8 @@ static void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
         } else {
             symbol_table_update(table, mangled, etype);
         }
-        ASTNode *node = create_node(NODE_SET, mangled, expr_out);
+        const char *cname = symbol_table_get_cname(table, mangled);
+        ASTNode *node = create_node(NODE_SET, cname, expr_out);
         node->var_type = etype;
         node->is_expr = 1;
         emit(node);
@@ -4040,7 +4149,8 @@ static void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
         } else {
             symbol_table_update(table, mangled, etype);
         }
-        ASTNode *node = create_node(NODE_SET, mangled, expr_out);
+        const char *cname = symbol_table_get_cname(table, mangled);
+        ASTNode *node = create_node(NODE_SET, cname, expr_out);
         node->var_type = etype;
         node->is_expr = 1;
         emit(node);
@@ -4061,7 +4171,8 @@ static void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
             char expr_out[MAX_STRING_LEN];
             VarType etype = parse_expression_from_string(full_expr, table, expr_out, sizeof(expr_out));
             symbol_table_update(table, mangled, etype);
-            ASTNode *node = create_node(NODE_SET, mangled, expr_out);
+            const char *cname = symbol_table_get_cname(table, mangled);
+            ASTNode *node = create_node(NODE_SET, cname, expr_out);
             node->var_type = etype;
             node->is_expr = 1;
             emit(node);
@@ -4078,7 +4189,8 @@ static void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
             char expr_out[MAX_STRING_LEN];
             VarType etype = parse_expression_from_string(full_expr, table, expr_out, sizeof(expr_out));
             symbol_table_update(table, mangled, etype);
-            ASTNode *node = create_node(NODE_SET, mangled, expr_out);
+            const char *cname = symbol_table_get_cname(table, mangled);
+            ASTNode *node = create_node(NODE_SET, cname, expr_out);
             node->var_type = etype;
             node->is_expr = 1;
             emit(node);
@@ -4302,8 +4414,9 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
     }
     scope_init(loop_scope, table, 0);
     symbol_table_add_local(loop_scope, mangled, var_type);
+    const char *cname = symbol_table_get_cname(loop_scope, mangled);
 
-    ASTNode *node = create_node(NODE_FOR, mangled, "");
+    ASTNode *node = create_node(NODE_FOR, cname, "");
     node->var_type = var_type;
     strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
     node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
@@ -4666,7 +4779,11 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             lexer->current = saved;
             if (after.type == TOKEN_NEWLINE || after.type == TOKEN_EOF || after.type == TOKEN_RBRACE) {
                 lexer_next(lexer);
-                mangle_name(id.value, expr, sizeof(expr));
+                char m[MAX_IDENTIFIER_LEN];
+                mangle_name(id.value, m, sizeof(m));
+                const char *cname = symbol_table_get_cname(table, m);
+                strncpy(expr, cname, sizeof(expr) - 1);
+                expr[sizeof(expr) - 1] = '\0';
                 etype = TYPE_STRING;
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
@@ -4814,7 +4931,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
             }
             char pm[MAX_IDENTIFIER_LEN];
             mangle_name(p.value, pm, MAX_IDENTIFIER_LEN);
-            symbol_table_add_local(func_scope, pm, TYPE_FLOAT);
+            symbol_table_add_param(func_scope, pm, TYPE_FLOAT);
             ASTNode *pn = create_node(NODE_PARAM, pm, "");
             pn->var_type = TYPE_FLOAT;
             strncpy(pn->for_var, p.value, MAX_IDENTIFIER_LEN - 1);
@@ -5092,13 +5209,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
     } else if (token.type == TOKEN_RETURN) {
         parse_return(lexer, table);
     } else if (token.type == TOKEN_FUNCTION) {
-        /* nested function definition - lifted to top level */
-        if (table && table->disallow_decl) {
-            error_state_add(parser_errors, token.line, token.col,
-                "Nested function declarations are not allowed inside control blocks");
-            skip_to_newline(lexer);
-            return;
-        }
+        /* nested function definition - lifted to top level (allowed in blocks; scope rules apply) */
         if (!g_in_function) {
             /* shouldn't happen from parse_statement at top level, but be safe */
             ASTNode *fn = parse_function(lexer, table, g_enclosing_cname);

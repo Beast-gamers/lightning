@@ -1,0 +1,3 @@
+# Phase 2 negative: cannot assign to const
+const x = 5
+set x = 6

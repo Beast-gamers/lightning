@@ -205,7 +205,9 @@ int main(int argc, char *argv[]) {
         if (strlen(compiler_err) > 0) {
             fprintf(stderr, "C compiler output:\n%s\n", compiler_err);
         }
-        printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
+        if (compiler_exit == 0) {
+            printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
+        }
     } else {
         /* Hide C compiler errors unless --debug */
         if (compiler_exit != 0 && strlen(compiler_err) > 0) {
@@ -215,10 +217,12 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    int rc = (compiler_exit == 0) ? 0 : 1;
+
     free(source);
     codegen_free(program);
     free(base);
     free(output_name);
 
-    return 0;
+    return rc;
 }

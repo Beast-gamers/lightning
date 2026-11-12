@@ -291,7 +291,16 @@ static int has_interpolation(const char *str) {
 }
 
 static void codegen_assign(FILE *out, ASTNode *node, int indent) {
+    int declare_here = 1;
+    if (codegen_table && symbol_table_has_local(codegen_table, node->name)) {
+        /* Global-scope variables are pre-declared in main preamble */
+        declare_here = 0;
+    }
         if (node->var_type == TYPE_OBJECT) {
+        if (declare_here) {
+            pad(out, indent);
+            fprintf(out, "char %s[256] = \"\";\n", node->name);
+        }
         ObjSchema *sc = obj_lookup(node->name);
         if (sc) {
             pad(out, indent);
@@ -301,6 +310,11 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             for (int i = 0; i < sc->count; i++) {
                 char fv[MAX_IDENTIFIER_LEN*2+8];
                 obj_resolve_field(node->name, sc->fields[i].name, fv, sizeof(fv));
+                if (declare_here) {
+                    int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
+                    pad(out, indent);
+                    fprintf(out, "char %s[%d] = \"\";\n", fv, bsz);
+                }
                 pad(out, indent);
                 fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", \"", fv, fv);
                 { const char *v=sc->fields[i].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
@@ -363,6 +377,10 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         return;
     }
     if (node->is_expr) {
+        if (declare_here) {
+            pad(out, indent);
+            fprintf(out, "char %s[256] = \"\";\n", node->name);
+        }
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
@@ -380,12 +398,24 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
+        if (declare_here) {
+            pad(out, indent);
+            fprintf(out, "char %s[256] = \"\";\n", node->name);
+        }
         codegen_assign_interpolated(out, node->name, node->value, indent);
     } else if ((node->var_type == TYPE_CHAR || node->var_type == TYPE_STRING) &&
                node->value[0] == '\0') {
+        if (declare_here) {
+            pad(out, indent);
+            fprintf(out, "char %s[256] = \"\";\n", node->name);
+        }
         pad(out, indent);
         fprintf(out, "%s[0] = '\\0';\n", node->name);
     } else {
+        if (declare_here) {
+            pad(out, indent);
+            fprintf(out, "char %s[256] = \"\";\n", node->name);
+        }
         pad(out, indent);
         fprintf(out, "snprintf(%s, sizeof(%s), \"", node->name, node->name);
         if (node->var_type == TYPE_BOOL) {
@@ -522,6 +552,27 @@ static void codegen_read(FILE *out, ASTNode *node, int indent) {
 }
 
 static void codegen_set(FILE *out, ASTNode *node, int indent) {
+    if (node->var_type == TYPE_OBJECT && !node->is_expr) {
+        ObjSchema *sc = obj_lookup(node->name);
+        if (sc) {
+            pad(out, indent);
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", \"", node->name, node->name);
+            { const char *v=sc->default_val; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
+            fprintf(out, "\");\n");
+            for (int i = 0; i < sc->count; i++) {
+                char fv[MAX_IDENTIFIER_LEN*2+8];
+                obj_resolve_field(node->name, sc->fields[i].name, fv, sizeof(fv));
+                pad(out, indent);
+                fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", \"", fv, fv);
+                { const char *v=sc->fields[i].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
+                fprintf(out, "\");\n");
+            }
+        } else {
+            pad(out, indent);
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", \"\");\n", node->name, node->name);
+        }
+        return;
+    }
     if (node->is_expr) {
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
@@ -1035,39 +1086,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                     }
                 }
             }
-            /* declare locals from body */
-            {
-                ASTNode *q[4096]; int qs=0, qe=0;
-                for (ASTNode *n = fn->body; n; n = n->next) if (qe < 4096) q[qe++] = n;
-                char decls[512][MAX_IDENTIFIER_LEN*2+8]; int dcount = 0;
-                while (qs < qe) {
-                    ASTNode *n = q[qs++];
-                    if (!n) continue;
-                    if (n->type == NODE_LET || n->type == NODE_CONST) {
-                        int dup = 0;
-                        for (ASTNode *p = fn->params; p; p = p->next) if (strcmp(p->name, n->name)==0) dup=1;
-                        for (int k=0;k<dcount;k++) if (strcmp(decls[k], n->name)==0) dup=1;
-                        if (!dup && dcount < 512) { strncpy(decls[dcount], n->name, MAX_IDENTIFIER_LEN*2+7); decls[dcount][MAX_IDENTIFIER_LEN*2+7]=0; dcount++; }
-                        if (n->var_type == TYPE_OBJECT) {
-                            ObjSchema *sc = obj_lookup(n->name);
-                            if (sc) {
-                                for (int fi = 0; fi < sc->count && dcount < 512; fi++) {
-                                    char fv[MAX_IDENTIFIER_LEN*2+8];
-                                    obj_resolve_field(n->name, sc->fields[fi].name, fv, sizeof(fv));
-                                    int d2 = 0;
-                                    for (int k=0;k<dcount;k++) if (strcmp(decls[k], fv)==0) d2=1;
-                                    if (!d2) { strncpy(decls[dcount], fv, MAX_IDENTIFIER_LEN*2+7); decls[dcount][MAX_IDENTIFIER_LEN*2+7]=0; dcount++; }
-                                }
-                            }
-                        }
-                    }
-                    for (ASTNode *c = n->body; c; c = c->next) if (qe < 4096) q[qe++] = c;
-                    for (ASTNode *c = n->orelse; c; c = c->next) if (qe < 4096) q[qe++] = c;
-                    for (ASTNode *c = n->cases; c; c = c->next) if (qe < 4096) q[qe++] = c;
-                }
-                for (int k=0;k<dcount;k++)
-                    fprintf(out, "    char %s[256] = \"\";\n", decls[k]);
-            }
+            /* Locals are declared inline at let/const emission to support block scopes/shadowing. */
             if (fn->body) emit_block(out, fn->body, table, 1);
             fprintf(out, "    return _ret;\n");
             fprintf(out, "}\n\n");

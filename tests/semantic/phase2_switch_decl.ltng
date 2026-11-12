@@ -1,0 +1,17 @@
+# Phase 2: declarations in switch cases
+let x = 2
+switch (x) {
+    case 1: {
+        let a = 10
+        write(a)
+    }
+    case 2: {
+        let b = 20
+        write(b)
+    }
+    default: {
+        let c = 30
+        write(c)
+    }
+}
+write("done")

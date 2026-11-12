@@ -1,0 +1,9 @@
+# Parser smoke: statements and expressions
+let a = 1
+let b = 2
+let c = a + b * 3
+if (c > 5) {
+    write("ok")
+} else {
+    write("bad")
+}

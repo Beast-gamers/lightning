@@ -1,0 +1,13 @@
+# Phase 2: nested blocks and scopes
+let a = 1
+if (true) {
+    let b = 2
+    if (true) {
+        let c = 3
+        write(a)
+        write(b)
+        write(c)
+    }
+    write(b)
+}
+write(a)

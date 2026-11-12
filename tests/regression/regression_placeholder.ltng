@@ -1,0 +1,2 @@
+# Placeholder regression test (Phase 0 infrastructure)
+write("regression-ok")

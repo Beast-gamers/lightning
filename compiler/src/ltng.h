@@ -167,7 +167,8 @@ typedef struct ASTNode {
 } ASTNode;
 
 typedef struct {
-    char name[MAX_IDENTIFIER_LEN];
+    char name[MAX_IDENTIFIER_LEN];   /* lookup key (mangled source name) */
+    char cname[MAX_IDENTIFIER_LEN];  /* emitted C identifier */
     VarType type;
     int is_const;
     int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
@@ -253,9 +254,11 @@ VarType parse_expression_from_string(const char *expr, SymbolTable *table,
 ErrorState *codegen_get_errors(void);
 int symbol_table_has(SymbolTable *table, const char *name);
 VarType symbol_table_get(SymbolTable *table, const char *name);
+const char *symbol_table_get_cname(SymbolTable *table, const char *name);
 int symbol_table_is_const(SymbolTable *table, const char *name);
 void scope_init(Scope *scope, Scope *parent, int disallow_decl);
 void symbol_table_add_local(SymbolTable *table, const char *name, VarType type);
+void symbol_table_add_param(SymbolTable *table, const char *name, VarType type);
 void symbol_table_update(SymbolTable *table, const char *name, VarType type);
 int symbol_table_has_local(SymbolTable *table, const char *name);
 int symbol_table_get_locked(SymbolTable *table, const char *name);

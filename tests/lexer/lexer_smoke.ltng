@@ -1,0 +1,10 @@
+# Lexer smoke: tokens, literals, escapes, comments
+write("lexer ok")
+let n = 42
+let pi = 3.14
+let ch = 'A'
+let s = "tab\tand\nline"
+write(n)
+write(pi)
+write(ch)
+# end comment

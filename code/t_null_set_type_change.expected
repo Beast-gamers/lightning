@@ -5,5 +5,5 @@ string
 hello
 bool
 true
-int
+float
 3.14

@@ -1,0 +1,7 @@
+# Runtime smoke
+function inc(v) {
+    return v + 1
+}
+let r = inc(4)
+write(r)
+write("runtime")

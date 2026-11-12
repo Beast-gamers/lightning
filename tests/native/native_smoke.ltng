@@ -1,0 +1,3 @@
+# Native executable smoke
+write("native")
+exit(0)

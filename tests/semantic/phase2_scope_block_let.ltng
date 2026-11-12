@@ -1,0 +1,27 @@
+# Phase 2: declarations allowed in control blocks
+if (true) {
+    let a = 10
+    write(a)
+}
+if (false) {
+    let b = 99
+    write(b)
+} else {
+    let c = 20
+    write(c)
+}
+let i = 0
+while (i < 1) {
+    let w = 30
+    write(w)
+    set i = i + 1
+}
+do {
+    let d = 40
+    write(d)
+} while (false)
+for (j from 1 to 1) {
+    let fj = 50
+    write(fj)
+}
+write("ok")
