@@ -132,7 +132,8 @@ typedef enum {
     NODE_ARRAY_LIT,
     NODE_ARRAY_ACCESS,
     NODE_ARRAY_PUSH,
-    NODE_ARRAY_POP
+    NODE_ARRAY_POP,
+    NODE_ARRAY_SET
 } NodeType;
 
 typedef struct ASTNode {
@@ -159,6 +160,7 @@ typedef struct ASTNode {
     int array_dim_count;     /* number of dimensions (0 if not an array) */
     int *array_dims;         /* dynamically allocated size of each dimension */
     int array_elem_count;    /* total number of elements */
+    char array_index[MAX_STRING_LEN]; /* for array element set: C index expression */
     struct ASTNode *index1;  /* first index expression */
     struct ASTNode *index2;  /* second index expression */
     struct ASTNode *index3;  /* third index expression */

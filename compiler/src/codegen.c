@@ -461,7 +461,6 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
 }
 
 static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
-    (void)table;
     if (node->is_expr) {
         /* expression result (string or computed) */
         if (node->var_type == TYPE_STRING || strstr(node->value, "_ltng_add_sn") == node->value) {
@@ -481,7 +480,17 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
         return;
     }
     if (node->is_variable) {
-        (void)table;
+        /* Check if variable is an array - print elements joined by ", " */
+        if (table) {
+            for (int i = 0; i < table->count; i++) {
+                if (strcmp(table->vars[i].name, node->name) == 0 && table->vars[i].type == TYPE_ARRAY) {
+                    pad(out, indent);
+                    fprintf(out, "{ for (int __wi = 0; __wi < %s_len; __wi++) { if (__wi) printf(\", \"); printf(\"%%s\", %s_data[__wi]); } printf(\"\\n\"); }\n",
+                        node->name, node->name);
+                    return;
+                }
+            }
+        }
         pad(out, indent);
         fprintf(out, "printf(\"%%s\\n\", %s);\n", node->name);
         return;
@@ -735,13 +744,31 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             break;
         case NODE_ARRAY_POP:
             pad(out, indent);
-            if (node->value[0] == '\0') {
+            if (node->value[0] == '\0' || strncmp(node->value, "({ int", 7) != 0) {
                 /* pop() - no args */
                 fprintf(out, "%s_len--;\n", node->name);
             } else {
                 /* pop(index) */
                 fprintf(out, "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s_len); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s_data[__pop_idx]); memmove(&%s_data[__pop_idx], &%s_data[__pop_idx + 1], (%s_len - __pop_idx - 1) * 256); %s_len--; __pop_val; })",
                     node->value, node->name, node->name, node->name, node->name, node->name, node->name);
+            }
+            break;
+        case NODE_ARRAY_SET:
+            pad(out, indent);
+            if (node->is_expr) {
+                if (node->var_type == TYPE_INT) {
+                    fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%lld\", (long long)(%s)); }\n",
+                        node->array_index, node->name, node->value);
+                } else if (node->var_type == TYPE_FLOAT) {
+                    fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%g\", (double)(%s)); }\n",
+                        node->array_index, node->name, node->value);
+                } else {
+                    fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%s\", %s); }\n",
+                        node->array_index, node->name, node->value);
+                }
+            } else {
+                fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%s\", \"%s\"); }\n",
+                    node->array_index, node->name, node->value);
             }
             break;
         case NODE_READ:
