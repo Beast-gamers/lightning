@@ -90,10 +90,14 @@ write("lightning is fast")
 | `\"`     | Double quote |
 | `\'`     | Single quote |
 | `\0`     | Null character |
+| `\<`     | Less-than sign `<` |
+| `\>`     | Greater-than sign `>` |
 
 ```
 write("line one\nline two")
 write("tab\there")
+write("price \< 100")
+write("tag \>end\>")
 ```
 
 ### String Interpolation
@@ -129,28 +133,10 @@ write("Hello $[x.name]")     # Hello saim
 write("Age $[x.age]")        # Age 17
 ```
 
-A literal `$` not followed by `[` is preserved as-is. Use `<...>` to display literal characters inside strings:
+A literal `$` not followed by `[` is preserved as-is:
 
 ```
 write("cost is $5")          # cost is $5
-write("<$[x]>")              # $[x]
-write("<">")                 # "
-write("<<")                  # <
-write("<<>")                 # <
-write("$[x] and <$[x]>")     # 5 and $[x]
-```
-
-### Angle Brackets
-
-Text between `<` and `>` inside a string is treated literally (brackets are stripped by the compiler):
-
-```
-write("<raw>")        # raw
-write("<b>bold</b>")  # bold
-write("2 < 3")        # 2 < 3
-write("a<b")          # ab
-write("<<")           # <
-write("<<>")          # <
 ```
 
 ---
@@ -1034,6 +1020,23 @@ while (i < 5) {
 # prints: 1 2 4 5
 ```
 
+### Exit
+
+Use `exit` to terminate the program instantly with an integer exit code. The argument must be an integer expression (a literal, variable, or arithmetic expression). Floats are cast to int.
+
+```
+exit 0
+exit 1
+exit 42
+
+let code = 7
+exit code
+
+exit x + 5
+```
+
+The generated program calls C's `exit()` function immediately — no further statements run.
+
 ---
 
 ## Functions
@@ -1203,7 +1206,7 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 - `let x = int` declares without a value (default 0); `let x = int 42` is **not** allowed — use `set x = 42` afterward
 - `const x = 42` requires a value; `const x = int` or `const x = int 42` are **not** allowed
 - After a variable's type is locked (via `let x = <type>` or `x.lock()`), `set` cannot change it (dtype immutability). Bare `let x` (null) is not locked — `set` can change its dtype freely on every assignment.
-- Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
+- Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `exit`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
 - C reserved words (e.g. `return`, `break`, `continue`, `switch`, `case`, `default`, `struct`, `main`, `printf`) **can** be used as variable names — they are mangled internally with a `_res` suffix.
 
 ## Arrays
@@ -1227,7 +1230,7 @@ const names = ["alice", "bob"]   # const array
 - Multi-dimensional arrays use one bracket pair per dimension: `m[2][1]` is row 2, column 1; `cube[2][1][3]` indexes a 3D array
 - Negative indices wrap per dimension: `m[-1][-1]` is the last element of the last row
 - The number of indices must match the number of dimensions (`m[1]` on a 2D array is an error)
-- Arrays support up to 3 dimensions
+- Arrays support arbitrary dimensions (1D, 2D, 3D, and beyond)
 - Indices can be arbitrary integer expressions: `x[i + 1]`, `m[i - 1][j]`, `cube[i][j][k]`
 
 ### Elements in expressions
@@ -1259,6 +1262,44 @@ write(cube[2][1][2]) # prints 6
 
 - Arrays are auto-locked (dtype-immutable) after declaration.
 - Nested literals of unequal length are accepted; the array shape uses the largest size per dimension and missing slots read as empty strings.
+
+### Array Methods: `push()` and `pop()`
+
+Arrays support `push()` and `pop()` methods for adding and removing elements.
+
+**`push(value)`** — Appends a value to the end of the array. The array automatically grows to accommodate new elements (extra slots are reserved at declaration time).
+
+```
+let arr = [1, 2, 3]
+arr.push(4)
+write(arr[4])   # prints 4
+```
+
+**`pop()`** — Removes and returns the last element of the array.
+
+```
+let arr = [1, 2, 3]
+write(arr.pop())   # prints 3
+write(arr[3])      # prints empty (element removed)
+```
+
+**`pop(index)`** — Removes and returns the element at the given index (1-based). Negative indices count from the end. All elements after the removed one shift down.
+
+```
+let arr = [10, 20, 30, 40, 50]
+write(arr.pop(2))   # prints 20
+write(arr[2])       # prints 30 (elements shifted)
+write(arr[4])       # prints 50
+
+write(arr.pop(-1))  # prints 50 (last element)
+```
+
+`push()` and `pop()` work as standalone statements or inside `write()`:
+
+```
+write(arr.push(99))   # prints 99 (the pushed value)
+write(arr.pop())      # prints the popped value
+```
 
 ---
 
