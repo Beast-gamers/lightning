@@ -212,8 +212,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error: internal error occured\n");
         } else if (compiler_exit != 0) {
             fprintf(stderr, "Error: C compilation failed\n");
-        } else {
-            printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
         }
     }
 

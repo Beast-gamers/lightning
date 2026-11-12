@@ -352,11 +352,13 @@ ret=$?
 
 if [ -n "$check" ]; then
     rm -f "$tmpbin"
+    if [ -n "$debug" ]; then echo "Removed temp binary: $tmpbin"; fi
     exit $ret
 fi
 
 if [ $ret -ne 0 ]; then
     rm -f "$tmpbin"
+    if [ -n "$debug" ]; then echo "Removed temp binary: $tmpbin"; fi
     exit $ret
 fi
 
@@ -364,5 +366,6 @@ fi
 ret=$?
 
 rm -f "$tmpbin"
+if [ -n "$debug" ]; then echo "Removed temp binary: $tmpbin"; fi
 
 exit $ret
