@@ -1431,8 +1431,10 @@ Lightning parses source, emits an intermediate representation (IR), generates C,
 - On successful check/emit/compile (when `--debug` is not used), this IR file is removed.
 - With `--debug`, the compiler creates `debug/<source basename>/` next to the source file containing:
   - `source.ltng` (input source)
-  - `intermediete.ltng_ir` (IR dump)
-  - `emitted.c` (generated C, when available for the selected operation)
+  - `intermediete.ltng_ir` (IR dump, when parsing succeeds)
+  - `emitted.c` (generated C, when available)
+  - `logs.txt` (compiler logs, including Lightning/C compiler output, warnings/errors, and success messages)
+  - On successful native compilation: a copied compiled binary plus `<source basename>.o` (object file) and `<source basename>.s` (assembly file)
 
 ## Current Limitations
 

@@ -163,8 +163,8 @@
 
 ### Additional compiler pipeline update (post-Phase 3)
 
-- **Implemented:** IR stage added after parsing/before C code generation (`compiler/src/ir.c`, integrated in `compiler/src/main.c`, build updated). Generates `<source basename>.ltng_ir` and cleans it up on successful non-debug operations; `--debug` preserves artifacts in `debug/<source basename>/` (`source.ltng`, `intermediete.ltng_ir`, `emitted.c` when available).
-- **Verification:** targeted manual checks for normal compile, `--check`, `--emit-c`, and `--debug`; full suite `PASS=111 FAIL=0 SKIP=0`.
+- **Implemented:** IR stage added after parsing/before C code generation (`compiler/src/ir.c`, integrated in `compiler/src/main.c`, build updated). Generates `<source basename>.ltng_ir` and cleans it up on successful non-debug operations; `--debug` preserves artifacts in `debug/<source basename>/` (`source.ltng`, `intermediete.ltng_ir`, `emitted.c` when available), captures `logs.txt`, and on successful native compilation produces a copied binary plus object (`.o`) and assembly (`.s`) files.
+- **Verification:** targeted manual checks for normal compile, `--check`, `--emit-c`, and `--debug` (including debug artifacts/logs/binary/obj/asm); full suite `PASS=111 FAIL=0 SKIP=0`.
 
 ## Phases 4–13
 
