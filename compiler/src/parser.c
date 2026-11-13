@@ -5,6 +5,7 @@ static int g_break_depth = 0;
 static ASTNode *g_list = NULL;
 static int g_stmt_line = 0;
 static int g_stmt_col = 0;
+static int g_expr_sl=0,g_expr_sc=0,g_expr_el=0,g_expr_ec=0;
 
 #define MAX_FUNCS 128
 typedef struct { char name[MAX_IDENTIFIER_LEN]; int param_count; } FuncInfo;
@@ -1015,7 +1016,8 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
 
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
-                                  int stop_on_rparen, int stop_on_comma) {
+                                  int stop_on_rparen, int stop_on_comma,
+                                  int *out_sl, int *out_sc, int *out_el, int *out_ec) {
     int pos = 0;
     VarType result_type = TYPE_INT;
     int paren_depth = 0;
@@ -1024,6 +1026,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     int has_string_concat = 0;
     int has_string_mult = 0;
     int array_access_used = 0;
+    int sl=0, sc=0, el=0, ec=0, have_span=0;
 
     while (lexer->current < lexer->count) {
         Token tok = lexer_peek(lexer);
@@ -1035,6 +1038,11 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
         if (tok.type == TOKEN_FROM || tok.type == TOKEN_TO || tok.type == TOKEN_STEP) break;
 
         tok = lexer_next(lexer);
+        if (!have_span) { sl = tok.line; sc = tok.col; have_span = 1; }
+        el = tok.line;
+        ec = tok.col + (int)strlen(tok.value);
+        if (tok.type == TOKEN_STRING) ec = tok.col + (int)strlen(tok.value) + 2;
+        else if (tok.type == TOKEN_CHAR) ec = tok.col + (int)strlen(tok.value) + 2;
 
         switch (tok.type) {
             case TOKEN_PLUS_PLUS:
@@ -1512,7 +1520,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             if (strcmp(mname.value, "push") == 0) {
                                                 /* push(value) */
                                                 char arg_expr[MAX_STRING_LEN];
-                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line,
                                                         lexer_peek(lexer).col, "Expected ')' after push argument");
@@ -1547,7 +1555,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                                 } else {
                                                     /* pop(index) */
                                                     char idx_expr[MAX_STRING_LEN];
-                                                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                                                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                         error_state_add(parser_errors, lexer_peek(lexer).line,
                                                             lexer_peek(lexer).col, "Expected ')' after pop index");
@@ -1564,7 +1572,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             } else if (strcmp(mname.value, "insert") == 0) {
                                                 /* insert(index, value) */
                                                 char idx_expr[MAX_STRING_LEN];
-                                                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                                                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_COMMA) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line,
                                                         lexer_peek(lexer).col, "Expected ',' after insert index");
@@ -1574,7 +1582,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                                 }
                                                 lexer_next(lexer); /* consume , */
                                                 char arg_expr[MAX_STRING_LEN];
-                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line,
                                                         lexer_peek(lexer).col, "Expected ')' after insert argument");
@@ -1600,7 +1608,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             } else if (strcmp(mname.value, "remove") == 0) {
                                                 /* remove(index) */
                                                 char idx_expr[MAX_STRING_LEN];
-                                                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                                                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line,
                                                         lexer_peek(lexer).col, "Expected ')' after remove index");
@@ -1616,7 +1624,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             } else if (strcmp(mname.value, "contains") == 0) {
                                                 /* contains(value) */
                                                 char arg_expr[MAX_STRING_LEN];
-                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line,
                                                         lexer_peek(lexer).col, "Expected ')' after contains argument");
@@ -1642,7 +1650,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             } else if (strcmp(mname.value, "index_of") == 0) {
                                                 /* index_of(value) */
                                                 char arg_expr[MAX_STRING_LEN];
-                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line,
                                                         lexer_peek(lexer).col, "Expected ')' after index_of argument");
@@ -1790,7 +1798,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     break;
                                 }
                                 collect_expression(lexer, table, index_exprs[index_count],
-                                                   sizeof(index_exprs[index_count]), 1, 0);
+                                                   sizeof(index_exprs[index_count]), 1, 0, NULL, NULL, NULL, NULL);
                                 Token rbracket = lexer_peek(lexer);
                                 if (rbracket.type != TOKEN_RBRACKET) {
                                     error_state_add(parser_errors, rbracket.line, rbracket.col,
@@ -2090,6 +2098,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             result_type = TYPE_STRING;
         }
     }
+    g_expr_sl=sl; g_expr_sc=sc; g_expr_el=el; g_expr_ec=ec;
+    if (out_sl) *out_sl = sl; if (out_sc) *out_sc = sc; if (out_el) *out_el = el; if (out_ec) *out_ec = ec;
     return result_type;
 }
 
@@ -2573,7 +2583,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             lexer_next(lexer); /* consume ( */
             if (strcmp(third_tok.value, "push") == 0) {
                 char arg_expr[MAX_STRING_LEN];
-                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
+                int esl=g_expr_sl,esc=g_expr_sc,eel=g_expr_el,eec=g_expr_ec;
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ')' after push argument");
@@ -2604,7 +2615,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 return;
             } else if (strcmp(third_tok.value, "insert") == 0) {
                 char idx_expr[MAX_STRING_LEN];
-                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1);
+                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1, NULL, NULL, NULL, NULL);
                 if (lexer_peek(lexer).type != TOKEN_COMMA) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ',' after insert index");
@@ -2613,7 +2624,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 }
                 lexer_next(lexer); /* consume , */
                 char arg_expr[MAX_STRING_LEN];
-                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ')' after insert argument");
@@ -2644,7 +2655,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 return;
             } else if (strcmp(third_tok.value, "remove") == 0) {
                 char idx_expr[MAX_STRING_LEN];
-                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ')' after remove index");
@@ -2665,7 +2676,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 return;
             } else if (strcmp(third_tok.value, "contains") == 0) {
                 char arg_expr[MAX_STRING_LEN];
-                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ')' after contains argument");
@@ -2696,7 +2707,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 return;
             } else if (strcmp(third_tok.value, "index_of") == 0) {
                 char arg_expr[MAX_STRING_LEN];
-                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ')' after index_of argument");
@@ -2782,7 +2793,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 } else {
                     /* pop(index) */
                     char idx_expr[MAX_STRING_LEN];
-                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                         error_state_add(parser_errors, lexer_peek(lexer).line,
                             lexer_peek(lexer).col, "Expected ')' after pop index");
@@ -2814,7 +2825,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
         first.type == TOKEN_PLUS_PLUS || first.type == TOKEN_MINUS_MINUS ||
         has_operator_ahead(lexer) || is_conv_call) {
         char expr[MAX_STRING_LEN];
-        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 1, 0);
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 1, 0, NULL, NULL, NULL, NULL);
+        int esl=g_expr_sl,esc=g_expr_sc,eel=g_expr_el,eec=g_expr_ec;
 
         Token rparen = lexer_next(lexer);
         if (rparen.type != TOKEN_RPAREN) {
@@ -2825,6 +2837,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
         }
 
         ASTNode *node = create_node(NODE_WRITE, "", expr);
+        node->v_sl=esl; node->v_sc=esc; node->v_el=eel; node->v_ec=eec;
         node->is_variable = 0;
         node->is_expr = 1;
         node->var_type = expr_type;
@@ -3523,7 +3536,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume ( */
                         char start_expr[MAX_STRING_LEN];
-                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1);
+                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1, NULL, NULL, NULL, NULL);
                         if (lexer_peek(lexer).type != TOKEN_COMMA) {
                             error_state_add(parser_errors, lexer_peek(lexer).line,
                                 lexer_peek(lexer).col, "Expected ',' after slice start");
@@ -3532,7 +3545,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume , */
                         char end_expr[MAX_STRING_LEN];
-                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0);
+                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0, NULL, NULL, NULL, NULL);
                         if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                             error_state_add(parser_errors, lexer_peek(lexer).line,
                                 lexer_peek(lexer).col, "Expected ')' after slice end");
@@ -3701,7 +3714,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             }
         }
         char expr[MAX_STRING_LEN];
-        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
         symbol_table_add_locked(table, mangled, expr_type);
         const char *cname = symbol_table_get_cname(table, mangled);
         ASTNode *node = create_node(NODE_LET, cname, expr);
@@ -3742,7 +3755,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     return;
                 }
             }
-            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
             symbol_table_add_locked(table, mangled, expr_type);
             const char *cname = symbol_table_get_cname(table, mangled);
             ASTNode *node = create_node(NODE_LET, cname, expr);
@@ -3878,7 +3891,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     } else if (is_type_conv_call) {
         /* Type conversion call: const x = int("3.14") */
         char expr[MAX_STRING_LEN];
-        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
         symbol_table_add_locked(table, mangled, expr_type);
         symbol_table_set_const(table, mangled, 1);
         ASTNode *node = create_node(NODE_CONST, mangled, expr);
@@ -3919,7 +3932,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
                     return;
                 }
             }
-            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
             symbol_table_add_locked(table, mangled, expr_type);
             symbol_table_set_const(table, mangled, 1);
             ASTNode *node = create_node(NODE_CONST, mangled, expr);
@@ -4128,7 +4141,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                 skip_to_newline(lexer);
                 return;
             }
-            collect_expression(lexer, table, index_exprs[index_count], MAX_STRING_LEN, 1, 0);
+            collect_expression(lexer, table, index_exprs[index_count], MAX_STRING_LEN, 1, 0, NULL, NULL, NULL, NULL);
             index_count++;
             Token rb = lexer_next(lexer);
             if (rb.type != TOKEN_RBRACKET) {
@@ -4155,7 +4168,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         }
         /* Parse RHS expression */
         char rhs_expr[MAX_STRING_LEN];
-        VarType rhs_type = collect_expression(lexer, table, rhs_expr, MAX_STRING_LEN, 0, 0);
+        VarType rhs_type = collect_expression(lexer, table, rhs_expr, MAX_STRING_LEN, 0, 0, NULL, NULL, NULL, NULL);
 
         /* Get array dimensions */
         int dim_count = 0;
@@ -4322,7 +4335,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume ( */
                         char start_expr[MAX_STRING_LEN];
-                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1);
+                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1, NULL, NULL, NULL, NULL);
                         if (lexer_peek(lexer).type != TOKEN_COMMA) {
                             error_state_add(parser_errors, lexer_peek(lexer).line,
                                 lexer_peek(lexer).col, "Expected ',' after slice start");
@@ -4331,7 +4344,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume , */
                         char end_expr[MAX_STRING_LEN];
-                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0);
+                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0, NULL, NULL, NULL, NULL);
                         if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                             error_state_add(parser_errors, lexer_peek(lexer).line,
                                 lexer_peek(lexer).col, "Expected ')' after slice end");
@@ -4408,7 +4421,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         if (has_operator_ahead(lexer) || peek_val2.type == TOKEN_MINUS ||
             peek_val2.type == TOKEN_BANG || peek_val2.type == TOKEN_LPAREN) {
             char expr[MAX_STRING_LEN];
-            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
             vtype = expr_type;
             if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
                 return;
@@ -4541,7 +4554,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             }
         }
         char expr[MAX_STRING_LEN];
-        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
         if (!check_set_type_immutable(table, mangled, expr_type, set_tok.line, set_tok.col, lexer))
             return;
         symbol_table_update(table, mangled, expr_type);
@@ -4585,7 +4598,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     return;
                 }
             }
-            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+            VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
             vtype = expr_type;
             if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
                 return;
@@ -4648,7 +4661,8 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
     }
 
     char cond[MAX_STRING_LEN];
-    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0);
+    int csl=0,csc=0,cel=0,cec=0;
+    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
 
     Token rp = lexer_next(lexer);
     if (rp.type != TOKEN_RPAREN) {
@@ -4668,6 +4682,7 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
 
     ASTNode *sw = create_node(NODE_SWITCH, "", cond);
     sw->line = kw.line; sw->col = kw.col;
+    sw->v_sl=csl; sw->v_sc=csc; sw->v_el=cel; sw->v_ec=cec;
     sw->var_type = ctype;
     sw->is_expr = 1;
     ASTNode *last_case = NULL;
@@ -4939,7 +4954,8 @@ static ASTNode *parse_while(Lexer *lexer, SymbolTable *table) {
     }
 
     char cond[MAX_STRING_LEN];
-    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0);
+    int csl=0,csc=0,cel=0,cec=0;
+    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
 
     Token rp = lexer_next(lexer);
     if (rp.type != TOKEN_RPAREN) {
@@ -4964,6 +4980,7 @@ static ASTNode *parse_while(Lexer *lexer, SymbolTable *table) {
 
     ASTNode *node = create_node(NODE_WHILE, "", cond);
     node->line = kw.line; node->col = kw.col;
+    node->v_sl=csl; node->v_sc=csc; node->v_el=cel; node->v_ec=cec;
     node->var_type = ctype;
     node->is_expr = 1;
     g_break_depth++;
@@ -5013,9 +5030,11 @@ static ASTNode *parse_do_while(Lexer *lexer, SymbolTable *table) {
     }
 
     char cond[MAX_STRING_LEN];
-    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0);
+    int csl=0,csc=0,cel=0,cec=0;
+    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
     strncpy(node->value, cond, MAX_STRING_LEN - 1);
     node->value[MAX_STRING_LEN - 1] = '\0';
+    node->v_sl=csl; node->v_sc=csc; node->v_el=cel; node->v_ec=cec;
     node->var_type = ctype;
     node->is_expr = 1;
 
@@ -5127,7 +5146,8 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
 
     /* Start expression */
     char start_expr[MAX_STRING_LEN];
-    VarType start_type = collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 0);
+    int ssl=0,ssc=0,sel=0,sec=0;
+    VarType start_type = collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 0, &ssl,&ssc,&sel,&sec);
 
     Token to_tok = lexer_next(lexer);
     if (to_tok.type != TOKEN_TO) {
@@ -5139,10 +5159,12 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
 
     /* End expression - stop at step or ) */
     char end_expr[MAX_STRING_LEN];
-    VarType end_type = collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0);
+    int esl=0,esc=0,eel=0,eec=0;
+    VarType end_type = collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0, &esl,&esc,&eel,&eec);
 
     /* Optional step */
     char step_expr[MAX_STRING_LEN] = "1";
+    int stsl=0,stsc=0,stel=0,stec=0;
     char step_op = '+';
     Token next = lexer_peek(lexer);
     if (next.type == TOKEN_STEP) {
@@ -5165,7 +5187,7 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
             /* plain number/expression means additive */
             step_op = '+';
         }
-        collect_expression(lexer, table, step_expr, sizeof(step_expr), 1, 0);
+        collect_expression(lexer, table, step_expr, sizeof(step_expr), 1, 0, &stsl,&stsc,&stel,&stec);
         if (step_expr[0] == '\0') {
             strcpy(step_expr, "1");
         }
@@ -5204,6 +5226,9 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
 
     ASTNode *node = create_node(NODE_FOR, cname, "");
     node->line = kw.line; node->col = kw.col;
+    node->fs_sl=ssl; node->fs_sc=ssc; node->fs_el=sel; node->fs_ec=sec;
+    node->fe_sl=esl; node->fe_sc=esc; node->fe_el=eel; node->fe_ec=eec;
+    node->fst_sl=stsl; node->fst_sc=stsc; node->fst_el=stel; node->fst_ec=stec;
     node->var_type = var_type;
     strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
     node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
@@ -5260,7 +5285,8 @@ static ASTNode *parse_if_core(Lexer *lexer, SymbolTable *table) {
     }
 
     char cond[MAX_STRING_LEN];
-    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0);
+    int csl=0,csc=0,cel=0,cec=0;
+    VarType ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
 
     Token rp = lexer_next(lexer);
     if (rp.type != TOKEN_RPAREN) {
@@ -5285,6 +5311,7 @@ static ASTNode *parse_if_core(Lexer *lexer, SymbolTable *table) {
 
     ASTNode *node = create_node(NODE_IF, "", cond);
     node->line = kw.line; node->col = kw.col;
+    node->v_sl=csl; node->v_sc=csc; node->v_el=cel; node->v_ec=cec;
     node->var_type = ctype;
     node->is_expr = 1;
     node->body = parse_block(lexer, table, 1);
@@ -5497,7 +5524,7 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 } else {
                     /* complex expression involving call */
-                    VarType avt = collect_expression(lexer, table, cexpr, sizeof(cexpr), 1, 1);
+                    VarType avt = collect_expression(lexer, table, cexpr, sizeof(cexpr), 1, 1, NULL, NULL, NULL, NULL);
                     ASTNode *an = create_node(NODE_PARAM, "", cexpr);
                     an->var_type = avt;
                     an->is_expr = 1;
@@ -5506,7 +5533,7 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
             } else {
                 /* Parse as expression */
                 char aexpr[MAX_STRING_LEN];
-                VarType avt = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1);
+                VarType avt = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1, NULL, NULL, NULL, NULL);
                 ASTNode *an = create_node(NODE_PARAM, "", aexpr);
                 an->var_type = avt;
                 an->is_expr = 1;
@@ -5612,9 +5639,19 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             emit(node);
             return;
         }
-        etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+        int _esl=0,_esc=0,_eel=0,_eec=0;
+        etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
+        _esl=g_expr_sl; _esc=g_expr_sc; _eel=g_expr_el; _eec=g_expr_ec;
+        ASTNode *node = create_node(NODE_RETURN, "", expr);
+        node->v_sl=_esl; node->v_sc=_esc; node->v_el=_eel; node->v_ec=_eec;
+        node->line = kw.line; node->col = kw.col;
+        node->var_type = etype;
+        node->is_expr = 1;
+        emit(node);
+        return;
     }
     ASTNode *node = create_node(NODE_RETURN, "", expr);
+    node->line = kw.line; node->col = kw.col;
     node->var_type = etype;
     node->is_expr = 1;
     emit(node);
@@ -5631,7 +5668,8 @@ static void parse_exit(Lexer *lexer, SymbolTable *table) {
         skip_to_newline(lexer);
         return;
     }
-    VarType etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0);
+    VarType etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
+    int esl=g_expr_sl,esc=g_expr_sc,eel=g_expr_el,eec=g_expr_ec;
     if (etype != TYPE_INT && etype != TYPE_FLOAT) {
         error_state_add(parser_errors, kw.line, kw.col,
             "Expected integer expression after 'exit'");
@@ -5640,6 +5678,7 @@ static void parse_exit(Lexer *lexer, SymbolTable *table) {
     }
     ASTNode *node = create_node(NODE_EXIT, "", expr);
     node->line = kw.line; node->col = kw.col;
+    node->v_sl=esl; node->v_sc=esc; node->v_el=eel; node->v_ec=eec;
     node->var_type = etype;
     node->is_expr = 1;
     emit(node);
@@ -5825,8 +5864,10 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
             if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                 while (1) {
                     char aexpr[MAX_STRING_LEN];
-                    VarType at = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1);
+                    VarType at = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1, NULL, NULL, NULL, NULL);
+                    int esl=g_expr_sl,esc=g_expr_sc,eel=g_expr_el,eec=g_expr_ec;
                     ASTNode *an = create_node(NODE_PARAM, "", aexpr);
+                    an->v_sl=esl; an->v_sc=esc; an->v_el=eel; an->v_ec=eec;
                     an->var_type = at;
                     an->is_expr = 1;
                     if ((at == TYPE_STRING || at == TYPE_OBJECT) && aexpr[0] != '"' && aexpr[0] != '\0') {
@@ -5934,7 +5975,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 if (strcmp(mname.value, "push") == 0) {
                     /* push(value) */
                     char arg_expr[MAX_STRING_LEN];
-                    VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                    VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                         error_state_add(parser_errors, lexer_peek(lexer).line,
                             lexer_peek(lexer).col, "Expected ')' after push argument");
@@ -5950,7 +5991,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 } else if (strcmp(mname.value, "insert") == 0) {
                     /* insert(index, value) */
                     char idx_expr[MAX_STRING_LEN];
-                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1);
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1, NULL, NULL, NULL, NULL);
                     if (lexer_peek(lexer).type != TOKEN_COMMA) {
                         error_state_add(parser_errors, lexer_peek(lexer).line,
                             lexer_peek(lexer).col, "Expected ',' after insert index");
@@ -5959,7 +6000,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                     }
                     lexer_next(lexer); /* consume , */
                     char arg_expr[MAX_STRING_LEN];
-                    VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                    VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
                     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                         error_state_add(parser_errors, lexer_peek(lexer).line,
                             lexer_peek(lexer).col, "Expected ')' after insert argument");
@@ -5977,7 +6018,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 } else if (strcmp(mname.value, "remove") == 0) {
                     /* remove(index) */
                     char idx_expr[MAX_STRING_LEN];
-                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                         error_state_add(parser_errors, lexer_peek(lexer).line,
                             lexer_peek(lexer).col, "Expected ')' after remove index");
@@ -6031,7 +6072,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                     } else {
                         /* pop(index) */
                         char idx_expr[MAX_STRING_LEN];
-                        collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                        collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
                         if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                             error_state_add(parser_errors, lexer_peek(lexer).line,
                                 lexer_peek(lexer).col, "Expected ')' after pop index");
@@ -6052,7 +6093,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                         lexer_next(lexer); /* consume ) */
                     } else {
                         char dummy[MAX_STRING_LEN];
-                        collect_expression(lexer, table, dummy, sizeof(dummy), 1, 0);
+                        collect_expression(lexer, table, dummy, sizeof(dummy), 1, 0, NULL, NULL, NULL, NULL);
                         if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
                     }
                     return;
@@ -6242,7 +6283,7 @@ VarType parse_expression_from_string(const char *expr, SymbolTable *table,
     if (!target) target = &tmp_errors;
     ErrorState *saved = parser_errors;
     parser_errors = target;
-    VarType result = collect_expression(tmp_lexer, table, out, out_size, 0, 0);
+    VarType result = collect_expression(tmp_lexer, table, out, out_size, 0, 0, NULL, NULL, NULL, NULL);
     parser_errors = saved;
     free(tmp_lexer);
     free(tmp_errors.filename);

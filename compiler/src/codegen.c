@@ -50,11 +50,64 @@ static const char *node_type_name_cg(NodeType t) {
     }
 }
 
-static void log_emitted(const char *src_file, int line, int col, const char *kind, const char *name, const char *c_code) {
-    if (!codegen_log || !codegen_log->enabled || !codegen_log->file) return;
-    fprintf(codegen_log->file, "LTNG %s:%d:%d | %s", src_file ? src_file : "<input>", line, col, kind);
-    if (name && name[0]) fprintf(codegen_log->file, " (%s)", name);
+static void log_span(FILE *f, const char *src_file, const char *label, int sl,int sc,int el,int ec, const char *c_expr) {
+    if (!f) return;
+    if (!c_expr || !c_expr[0]) return;
+    if (sl > 0) {
+        fprintf(f, "  [expr:%s] ltng %s:%d:%d-%d:%d\n", label, src_file ? src_file : "<input>", sl, sc, el, ec);
+    } else {
+        fprintf(f, "  [expr:%s] ltng-span: unknown\n", label);
+    }
+    fprintf(f, "    C: %s\n", c_expr);
+}
+
+static void log_emitted_node(const char *src_file, ASTNode *node, const char *c_code) {
+    if (!codegen_log || !codegen_log->enabled || !codegen_log->file || !node) return;
+    fprintf(codegen_log->file, "LTNG %s:%d:%d | %s", src_file ? src_file : "<input>", node->line, node->col, node_type_name_cg(node->type));
+    if (node->name && node->name[0]) fprintf(codegen_log->file, " (%s)", node->name);
     fprintf(codegen_log->file, "\n");
+
+    /* expression/codegen-level mappings */
+    if (node->type == NODE_IF || node->type == NODE_WHILE || node->type == NODE_DO_WHILE || node->type == NODE_SWITCH) {
+        log_span(codegen_log->file, src_file, "condition", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+    } else if (node->type == NODE_SET || node->type == NODE_LET || node->type == NODE_CONST) {
+        log_span(codegen_log->file, src_file, "rhs", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+    } else if (node->type == NODE_RETURN || node->type == NODE_EXIT) {
+        log_span(codegen_log->file, src_file, "expr", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+    } else if (node->type == NODE_ARRAY_PUSH || node->type == NODE_ARRAY_POP || node->type == NODE_ARRAY_SET ||
+               node->type == NODE_ARRAY_INSERT || node->type == NODE_ARRAY_REMOVE || node->type == NODE_ARRAY_COPY ||
+               node->type == NODE_ARRAY_SLICE) {
+        if (node->value[0]) log_span(codegen_log->file, src_file, "value_or_index", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+        if (node->array_index[0]) log_span(codegen_log->file, src_file, "array_index_or_arg", node->idx_sl,node->idx_sc,node->idx_el,node->idx_ec, node->array_index);
+    } else if (node->type == NODE_FOR) {
+        log_span(codegen_log->file, src_file, "for_start", node->fs_sl,node->fs_sc,node->fs_el,node->fs_ec, node->for_start);
+        log_span(codegen_log->file, src_file, "for_end", node->fe_sl,node->fe_sc,node->fe_el,node->fe_ec, node->for_end);
+        if (node->for_step[0]) log_span(codegen_log->file, src_file, "for_step", node->fst_sl,node->fst_sc,node->fst_el,node->fst_ec, node->for_step);
+    } else if (node->type == NODE_WRITE) {
+        if (node->value[0] || node->is_expr) log_span(codegen_log->file, src_file, "write_value", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+    } else if (node->type == NODE_CASE) {
+        if (!node->is_default && node->value[0]) log_span(codegen_log->file, src_file, "case_expr", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+    } else {
+        if (node->value[0]) log_span(codegen_log->file, src_file, "value", node->v_sl,node->v_sc,node->v_el,node->v_ec, node->value);
+    }
+
+    /* argument-level mappings for calls/writes/other arg-bearing nodes */
+    if (node->args) {
+        int ai = 0;
+        for (ASTNode *a = node->args; a; a = a->next) {
+            char label[64];
+            snprintf(label, sizeof(label), "arg[%d]", ai++);
+            if (a->value[0] || a->is_expr || a->is_variable) {
+                if (a->v_sl > 0) {
+                    fprintf(codegen_log->file, "  [expr:%s] ltng %s:%d:%d-%d:%d\n", label, src_file ? src_file : "<input>", a->v_sl,a->v_sc,a->v_el,a->v_ec);
+                } else {
+                    fprintf(codegen_log->file, "  [expr:%s] ltng-span: unknown\n", label);
+                }
+                fprintf(codegen_log->file, "    C: %s%s\n", a->value[0]?a->value:"", (a->is_variable && a->value[0])?" (var)":"");
+            }
+        }
+    }
+
     fprintf(codegen_log->file, "---- C ----\n");
     if (c_code && c_code[0]) {
         fputs(c_code, codegen_log->file);
@@ -1109,7 +1162,7 @@ static void emit_block(FILE *out, ASTNode *node, SymbolTable *table, int indent)
                 fclose(mem);
                 if (buf) {
                     fputs(buf, out);
-                    log_emitted(codegen_log->src_file, cur->line, cur->col, node_type_name_cg(cur->type), cur->name, buf);
+                    log_emitted_node(codegen_log->src_file, cur, buf);
                     free(buf);
                 } else {
                     codegen_statement(out, cur, table, indent);

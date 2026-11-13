@@ -160,6 +160,12 @@ typedef struct ASTNode {
     char for_step_op; /* '+', '-', '*', '/' or 0 for default (+) */
     int line;
     int col;
+    /* Source spans for expression/codegen mapping (best-effort) */
+    int v_sl, v_sc, v_el, v_ec;       /* primary value/condition expression span */
+    int idx_sl, idx_sc, idx_el, idx_ec; /* array index expression span */
+    int fs_sl, fs_sc, fs_el, fs_ec;   /* for start expression span */
+    int fe_sl, fe_sc, fe_el, fe_ec;   /* for end expression span */
+    int fst_sl, fst_sc, fst_el, fst_ec; /* for step expression span */
     struct ASTNode *body;
     struct ASTNode *orelse;
     struct ASTNode *cases;

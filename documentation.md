@@ -1434,7 +1434,7 @@ Lightning parses source, emits an intermediate representation (IR), generates C,
   - `intermediete.ltng_ir` (IR dump, when parsing succeeds)
   - `emitted.c` (generated C, when available)
   - `logs.txt` (timestamped/staged compiler logs, including Lightning and C compiler output/warnings/errors and success messages; debug output is also printed to the console at end)
-  - `compiler_log.txt` (best-effort mapping of Lightning source file/line and statement/node to the emitted C code)
+  - `compiler_log.txt` (best-effort mapping of Lightning source file/line and statement/node to emitted C, including expression/codegen-level breakdowns for conditions, RHS/values, bounds, indices, and arguments where available)
   - On successful native compilation: a copied compiled binary, `<source basename>.dbg` (debug-symbol binary), `<source basename>.o` (object file), and `<source basename>.s` (assembly file)
 
 ## Current Limitations
