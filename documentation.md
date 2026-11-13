@@ -1211,7 +1211,7 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 
 ## Arrays
 
-Lightning supports 1D, 2D, and 3D arrays with 1-based indexing and negative indexing.
+Lightning supports 1D, 2D, and 3D+ arrays with 1-based indexing and negative indexing. Arrays are dynamically sized and grow automatically on `push()` and `insert()`.
 
 ### Syntax
 
@@ -1220,24 +1220,160 @@ let x = [1, 2, 3]              # 1D array
 let m = [[1, 2], [3, 4]]       # 2D array
 let c = [[[1], [2]], [[3], [4]]]  # 3D array
 const names = ["alice", "bob"]   # const array
+let empty = array                 # empty dynamic array
 ```
 
 ### Indexing
 
 - Indices start at 1: `x[1]` is the first element
 - Negative indices wrap from the end: `x[-1]` is the last, `x[-2]` is second-to-last
+- Index 0 is invalid (returns empty string)
 - For an array of 3 elements: `x[-3]` = first, `x[-2]` = second, `x[-1]` = last
-- Multi-dimensional arrays use one bracket pair per dimension: `m[2][1]` is row 2, column 1; `cube[2][1][3]` indexes a 3D array
+- Multi-dimensional arrays use one bracket pair per dimension: `m[2][1]` is row 2, column 1
 - Negative indices wrap per dimension: `m[-1][-1]` is the last element of the last row
 - The number of indices must match the number of dimensions (`m[1]` on a 2D array is an error)
 - Arrays support arbitrary dimensions (1D, 2D, 3D, and beyond)
 - Indices can be arbitrary integer expressions: `x[i + 1]`, `m[i - 1][j]`, `cube[i][j][k]`
+- Out-of-bounds reads return an empty string
 
-### Elements in expressions
+### Element Access (get / set)
 
+- `x[i]` reads the element at position `i` (1-based)
+- `set x[i] = value` assigns to position `i`
 - Array elements are string buffers, like all Lightning values
-- `+` on array elements uses the runtime numeric-or-string add: numeric elements add (`[1,2]` gives `arr[1] + arr[2]` → `3`), anything else concatenates
+- `+` on array elements uses the runtime numeric-or-string add
 - Array access works inside string interpolation: `write("first=$[arr[1]]")`
+
+### Array Length
+
+- `arr.length` returns the number of elements (1-based count)
+- Works in expressions: `write(arr.length)`, `for (i from 1 to arr.length)`
+
+### Array Methods
+
+**`push(value)`** — Appends a value to the end of the array. Grows automatically.
+
+```
+let arr = [1, 2, 3]
+arr.push(4)
+write(arr[4])   # prints 4
+```
+
+**`pop()`** — Removes and returns the last element.
+
+```
+let arr = [1, 2, 3]
+write(arr.pop())   # prints 3
+write(arr[3])      # prints empty (element removed)
+```
+
+**`pop(index)`** — Removes and returns the element at the given 1-based index.
+
+```
+let arr = [10, 20, 30, 40, 50]
+write(arr.pop(2))   # prints 20
+write(arr[2])       # prints 30 (elements shifted)
+write(arr[4])       # prints 50
+write(arr.pop(-1))  # prints 50 (last element)
+```
+
+**`insert(index, value)`** — Inserts a value at the given 1-based index, shifting elements after it up.
+
+```
+let ins = [10, 20, 30]
+ins.insert(2, 15)   # ins is now [10, 15, 20, 30]
+write(ins[2])       # prints 15
+ins.insert(-1, 25)  # insert before last: [10, 15, 20, 25, 30]
+```
+
+**`remove(index)`** — Removes and returns the element at the given 1-based index.
+
+```
+let rem = [10, 20, 30, 40, 50]
+write(rem.remove(3))  # prints 30
+write(rem.remove(-1)) # prints 50 (last element)
+```
+
+**`contains(value)`** — Returns `true` if the value exists in the array, `false` otherwise.
+
+```
+let ca = ["alice", "bob", "charlie"]
+write(ca.contains("bob"))   # prints true
+write(ca.contains("dave"))  # prints false
+```
+
+**`index_of(value)`** — Returns the 1-based index of the first occurrence, or 0 if not found.
+
+```
+let ia = [10, 20, 30, 20, 10]
+write(ia.index_of(20))   # prints 2
+write(ia.index_of(99))   # prints 0
+```
+
+**`sort()`** — Sorts the array in place. Uses numeric comparison when both compared elements are fully numeric; otherwise uses string comparison.
+
+```
+let sa = [3, 1, 4, 1, 5]
+sa.sort()
+write(sa[1])   # prints 1
+write(sa[5])   # prints 5
+```
+
+**`reverse()`** — Reverses the array in place.
+
+```
+let ra = [1, 2, 3, 4, 5]
+ra.reverse()
+write(ra[1])   # prints 5
+write(ra[5])   # prints 1
+```
+
+**`copy()`** — Returns a copy of the array (useful in `let` declarations).
+
+```
+let c1 = [10, 20, 30]
+let c2 = c1.copy()
+c2.push(40)
+write(c1.length)   # prints 3 (original unchanged)
+write(c2.length)   # prints 4
+```
+
+**`slice(start, end)`** — Returns a sub-array from 1-based `start` to `end` (exclusive). Negative indices count from the end.
+
+```
+let s1 = [1, 2, 3, 4, 5]
+let s2 = s1.slice(2, 4)   # [2, 3]
+let s3 = s1.slice(-3, -1) # [3, 4]
+```
+
+### Array Copy / Aliasing
+
+```
+let orig = [1, 2, 3]
+let alias = orig        # copies array contents into alias
+alias.push(4)
+write(orig[4])          # prints empty (independent copy semantics)
+```
+
+`let b = a.copy()` creates an independent copy. `set b = a`, `set b = a.copy()`, and `set b = a.slice(...)` are supported for existing array variables.
+
+### Iteration
+
+Index-based iteration works with `length`:
+
+```
+for (i from 1 to arr.length) {
+    write(arr[i])
+}
+```
+
+For-each iteration is supported:
+
+```
+for (x in arr) {
+    write(x)
+}
+```
 
 ### Example
 
@@ -1245,7 +1381,6 @@ const names = ["alice", "bob"]   # const array
 let arr = [1, 2, 3]
 write(arr[1])   # prints 1
 write(arr[-1])  # prints 3
-write(arr[-3])  # prints 1
 
 let names = ["alice", "bob"]
 write(names[1]) # prints alice
@@ -1258,48 +1393,20 @@ let cube = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 write(cube[2][1][2]) # prints 6
 ```
 
-### Limitations
-
-- Arrays are auto-locked (dtype-immutable) after declaration.
-- Nested literals of unequal length are accepted; the array shape uses the largest size per dimension and missing slots read as empty strings.
-
-### Array Methods: `push()` and `pop()`
-
-Arrays support `push()` and `pop()` methods for adding and removing elements.
-
-**`push(value)`** — Appends a value to the end of the array. The array automatically grows to accommodate new elements (extra slots are reserved at declaration time).
-
-```
-let arr = [1, 2, 3]
-arr.push(4)
-write(arr[4])   # prints 4
-```
-
-**`pop()`** — Removes and returns the last element of the array.
-
-```
-let arr = [1, 2, 3]
-write(arr.pop())   # prints 3
-write(arr[3])      # prints empty (element removed)
-```
-
-**`pop(index)`** — Removes and returns the element at the given index (1-based). Negative indices count from the end. All elements after the removed one shift down.
-
-```
-let arr = [10, 20, 30, 40, 50]
-write(arr.pop(2))   # prints 20
-write(arr[2])       # prints 30 (elements shifted)
-write(arr[4])       # prints 50
-
-write(arr.pop(-1))  # prints 50 (last element)
-```
-
 `push()` and `pop()` work as standalone statements or inside `write()`:
 
 ```
 write(arr.push(99))   # prints 99 (the pushed value)
 write(arr.pop())      # prints the popped value
 ```
+
+### Limitations
+
+- Arrays are auto-locked (dtype-immutable) after declaration.
+- Nested literals of unequal length are accepted; the array shape uses the largest size per dimension and missing slots read as empty strings.
+- Arrays of objects and jagged arrays (arrays of arrays with differing sizes) are not supported as first-class dynamic collections in this release; rectangular multidimensional arrays remain supported.
+- `copy()` and `slice()` are supported in `let`/`set` array assignment forms (e.g. `let b = a.copy()`, `set b = a.slice(1,3)`), but not as general array-producing expressions in all contexts.
+- Elements follow the current string-buffer runtime model (formatted storage/comparison), so operations like `sort`, `contains`, and `index_of` use string-form semantics.
 
 ---
 

@@ -1,0 +1,223 @@
+# Comprehensive array test for Lightning (Phase 3)
+
+# --- 1D literal, indexing (1-based, negative, 0 invalid, OOB) ---
+let a = [10, 20, 30, 40]
+write("idx_basic")
+write(a[1])
+write(a[4])
+write(a[-1])
+write(a[-4])
+write(a[0])      # invalid -> empty
+write(a[5])      # OOB -> empty
+write(a[-5])     # OOB -> empty
+
+# --- length property ---
+write("length_basic")
+write(a.length)
+let e = array
+write(e.length)
+
+# --- push (growth) and get ---
+write("push_growth")
+e.push(1)
+e.push(2)
+e.push(3)
+e.push(4)
+e.push(5)
+write(e.length)
+write(e[1])
+write(e[5])
+
+# --- pop() and pop(index), negative index pop ---
+write("pop_ops")
+write(e.pop())      # 5
+write(e.length)     # 4
+write(e.pop(2))     # removes 2 -> returns 2
+write(e[1])         # 1
+write(e[2])         # 3
+write(e[3])         # 4
+write(e.length)     # 3
+write(e.pop(-1))    # removes last (4)
+write(e.length)     # 2
+write(e[1])
+write(e[2])
+
+# --- insert (front, middle, end-ish, negative index) ---
+write("insert_ops")
+let ins = [10, 30, 40]
+ins.insert(2, 20)   # [10,20,30,40]
+write(ins[1])
+write(ins[2])
+write(ins[3])
+write(ins[4])
+ins.insert(1, 5)    # [5,10,20,30,40]
+write(ins[1])
+write(ins.length)
+ins.insert(-1, 35)  # insert before last -> [5,10,20,30,35,40]
+write(ins[5])
+write(ins[6])
+write(ins.length)
+
+# --- remove (front, middle, negative, returns removed) ---
+write("remove_ops")
+let rem = [10, 20, 30, 40, 50]
+write(rem.remove(3))   # 30
+write(rem[1])
+write(rem[2])
+write(rem[3])
+write(rem[4])
+write(rem.length)
+write(rem.remove(-1))  # 50
+write(rem.length)
+write(rem.remove(1))   # 10
+write(rem[1])
+write(rem.length)
+
+# --- contains and index_of ---
+write("contains_index_of")
+let c = ["alice", "bob", "charlie", "bob"]
+write(c.contains("bob"))
+write(c.contains("dave"))
+write(c.index_of("alice"))
+write(c.index_of("bob"))     # first occurrence
+write(c.index_of("charlie"))
+write(c.index_of("dave"))    # not found -> 0
+let nums = [10, 20, 30]
+write(nums.contains(20))
+write(nums.contains(99))
+write(nums.index_of(20))
+write(nums.index_of(99))
+
+# --- sort and reverse (in-place) ---
+write("sort_reverse")
+let s = [3, 1, 4, 1, 5, 9, 2]
+s.sort()
+write(s[1])
+write(s[2])
+write(s[3])
+write(s[4])
+write(s[5])
+write(s[6])
+write(s[7])
+s.reverse()
+write(s[1])
+write(s[7])
+
+let words = ["pear", "apple", "banana"]
+words.sort()
+write(words[1])
+write(words[2])
+write(words[3])
+words.reverse()
+write(words[1])
+write(words[3])
+
+# --- aliasing: let b = a ---
+write("aliasing")
+let orig = [1, 2, 3]
+let alias = orig
+alias.push(4)
+write(orig.length)
+write(orig[4])
+set orig[1] = 99
+write(alias[1])
+
+# --- copy(): independent ---
+write("copy")
+let c1 = [7, 8, 9]
+let c2 = c1.copy()
+c2.push(10)
+set c2[1] = 70
+write(c1.length)
+write(c1[1])
+write(c1[4])    # unchanged/OOB
+write(c2.length)
+write(c2[1])
+write(c2[4])
+
+# --- slice(start, end) 1-based start, exclusive end, negatives ---
+write("slice")
+let sl = [10, 20, 30, 40, 50]
+let sl1 = sl.slice(2, 4)    # [20,30]
+write(sl1.length)
+write(sl1[1])
+write(sl1[2])
+let sl2 = sl.slice(1, 6)    # full copy-like range
+write(sl2.length)
+write(sl2[1])
+write(sl2[5])
+let sl3 = sl.slice(-3, 6)   # [30,40,50] (positions 3..5)
+write(sl3.length)
+write(sl3[1])
+write(sl3[3])
+let sl4 = sl.slice(3, 3)    # empty
+write(sl4.length)
+
+# --- set element and expression index ---
+write("set_expr_index")
+let m = [1, 2, 3]
+set m[2] = 22
+write(m[2])
+let ix = 3
+set m[ix] = 33
+write(m[3])
+set m[ix - 2] = 11
+write(m[1])
+
+# --- set array variable to copy/slice/other array ---
+write("set_array_ops")
+let sa = [1, 2, 3]
+let sb = [9]
+set sb = sa
+sb.push(4)
+write(sa.length)
+write(sa[4])      # copy semantics -> empty
+write(sb.length)
+write(sb[4])
+
+let sc = [0]
+set sc = sa.copy()
+set sc[1] = 99
+write(sa[1])
+write(sc[1])
+
+let sd = [0]
+set sd = sa.slice(2, 4)
+write(sd.length)
+write(sd[1])
+write(sd[2])
+
+# --- iteration using length and for-each ---
+write("iteration")
+let it = [5, 6, 7, 8]
+let i = 1
+while (i <= it.length) {
+    write(it[i])
+    set i = i + 1
+}
+for (j from 1 to it.length) {
+    write(it[j])
+}
+for (val in it) {
+    write(val)
+}
+
+# --- empty array edge operations ---
+write("empty_edges")
+let ee = array
+write(ee.pop())          # empty pop -> empty
+write(ee.contains(1))
+write(ee.index_of(1))
+write(ee.remove(1))      # remove invalid -> empty/no-op style
+write(ee.length)
+
+# --- multidimensional arrays still work (regression) ---
+write("multidim")
+let md = [[1, 2], [3, 4]]
+write(md[1][1])
+write(md[2][2])
+write(md[-1][-2])
+set md[1][2] = 22
+write(md[1][2])
+
+write("array_test_done")

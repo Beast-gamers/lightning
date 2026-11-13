@@ -66,6 +66,7 @@ typedef enum {
     TOKEN_FROM,
     TOKEN_TO,
     TOKEN_STEP,
+    TOKEN_IN,
     TOKEN_FUNCTION,
     TOKEN_RETURN,
     TOKEN_EXIT,
@@ -133,7 +134,13 @@ typedef enum {
     NODE_ARRAY_ACCESS,
     NODE_ARRAY_PUSH,
     NODE_ARRAY_POP,
-    NODE_ARRAY_SET
+    NODE_ARRAY_SET,
+    NODE_ARRAY_INSERT,
+    NODE_ARRAY_REMOVE,
+    NODE_ARRAY_COPY,
+    NODE_ARRAY_SLICE,
+    NODE_ARRAY_SORT,
+    NODE_ARRAY_REVERSE
 } NodeType;
 
 typedef struct ASTNode {

@@ -1,0 +1,162 @@
+# Phase 3: Arrays and collections - comprehensive test
+
+# --- Basic dynamic push beyond initial capacity ---
+let arr = [1, 2, 3]
+arr.push(4)
+arr.push(5)
+arr.push(6)
+arr.push(7)
+arr.push(8)
+write(arr[1])
+write(arr[2])
+write(arr[3])
+write(arr[4])
+write(arr[5])
+write(arr[6])
+write(arr[7])
+write(arr.length)
+
+# --- Pop ---
+write(arr.pop())
+write(arr.pop())
+write(arr.length)
+write(arr[6])
+
+# --- Pop with index ---
+let pa3 = [10, 20, 30, 40, 50]
+write(pa3.pop(2))
+write(pa3[2])
+write(pa3[4])
+write(pa3.pop(-1))
+write(pa3[4])
+
+# --- Insert ---
+let ins = [10, 20, 30]
+ins.insert(2, 15)     # insert before position 2: [10, 15, 20, 30]
+write(ins[1])
+write(ins[2])
+write(ins[3])
+write(ins[4])
+write(ins.length)
+ins.insert(1, 5)      # insert at beginning: [5, 10, 15, 20, 30]
+write(ins[1])
+write(ins[5])
+write(ins.length)
+ins.insert(-1, 25)    # insert before last: [5, 10, 15, 20, 25, 30]
+write(ins[5])
+write(ins[6])
+write(ins.length)
+
+# --- Remove ---
+let rem = [10, 20, 30, 40, 50]
+write(rem.remove(3))  # remove position 3 (=30), returns 30
+write(rem[1])
+write(rem[2])
+write(rem[3])
+write(rem[4])
+write(rem.length)
+write(rem.remove(-1)) # remove last (=50), returns 50
+write(rem.length)
+write(rem.remove(1))  # remove first (=10), returns 10
+write(rem[1])
+write(rem.length)
+
+# --- Length property ---
+let len_arr = [1, 2, 3]
+write(len_arr.length)
+len_arr.push(4)
+write(len_arr.length)
+
+# --- Contains ---
+let ca = ["alice", "bob", "charlie"]
+write(ca.contains("bob"))
+write(ca.contains("dave"))
+write(ca.contains(10))
+
+# --- Index of ---
+let ia = [10, 20, 30, 20, 10]
+write(ia.index_of(20))  # first occurrence = 2
+write(ia.index_of(10))  # first occurrence = 1
+write(ia.index_of(99))  # not found = 0
+
+# --- Sort ---
+let sa = [3, 1, 4, 1, 5]
+sa.sort()
+write(sa[1])
+write(sa[2])
+write(sa[3])
+write(sa[4])
+write(sa[5])
+
+# --- Reverse ---
+let ra = [1, 2, 3, 4, 5]
+ra.reverse()
+write(ra[1])
+write(ra[2])
+write(ra[3])
+write(ra[4])
+write(ra[5])
+
+# --- Copy (aliasing) ---
+let orig = [1, 2, 3]
+let copy_arr = orig
+write(copy_arr[1])
+copy_arr.push(4)
+write(orig[4])    # aliasing: orig sees the push
+write(orig.length)
+
+# --- let b = a.copy() ---
+let c1 = [10, 20, 30]
+let c2 = c1.copy()
+write(c2[1])
+write(c2[2])
+write(c2[3])
+c2.push(40)
+write(c1.length)   # original unchanged
+write(c2.length)   # copy has 4
+
+# --- let b = a.slice(start, end) ---
+let s1 = [1, 2, 3, 4, 5]
+let s2 = s1.slice(2, 4)   # elements at positions 2,3 = [2, 3]
+write(s2[1])
+write(s2[2])
+write(s2.length)
+let s3 = s1.slice(-3, -1) # elements at positions 3,4 (from end)
+write(s3[1])
+write(s3[2])
+write(s3.length)
+
+# --- Empty arrays ---
+let empty = array
+write(empty.length)
+empty.push(100)
+write(empty[1])
+write(empty.length)
+write(empty.pop())
+write(empty.length)
+
+# --- Invalid index 0 ---
+let z = [10, 20, 30]
+write(z[0])          # index 0 invalid -> ""
+write(z[-0])         # same as 0 -> ""
+
+# --- Out of bounds ---
+write(z[99])         # out of bounds -> ""
+write(z[-99])        # out of bounds -> ""
+
+# --- String arrays with push/pop ---
+let sa2 = ["a", "b"]
+sa2.push("c")
+write(sa2[3])
+write(sa2.pop())
+write(sa2.length)
+
+# --- Iteration via for loop + length ---
+let it = [10, 20, 30]
+let i = 1
+while (i <= it.length) {
+    write(it[i])
+    set i = i + 1
+}
+
+write("phase3_done")

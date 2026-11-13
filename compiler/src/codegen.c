@@ -327,14 +327,17 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         return;
     }
     if (node->var_type == TYPE_ARRAY) {
-        /* Generate C array declaration for array literals:
-           char name_data[N][256] = {{"v1"},{"v2"},...};
-           int name_len = N; */
+        /* Generate dynamic array declaration:
+           int name_len = 0;
+           int name_cap = 0;
+           char **name_data = _ltng_arr_new(cap);
+           _ltng_arr_push(name_data, &name_len, &name_cap, "v1");
+           ...
+        */
         char arrname[MAX_IDENTIFIER_LEN];
         snprintf(arrname, sizeof(arrname), "%s_data", node->name);
-        /* Allocate the rectangular shape (product of dimensions), not just the
-           number of written elements, so ragged literals leave empty slots
-           instead of reading out of bounds. */
+        /* Initial capacity: product of dimensions (rectangular layout) or
+           element count, whichever is larger; array grows on demand. */
         int slots = node->array_elem_count;
         if (node->array_dim_count >= 1 && node->array_dims != NULL) {
             int product = 1;
@@ -344,36 +347,33 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             }
             if (product > slots) slots = product;
         }
-        /* Add reserve capacity for push() operations */
-        slots += ARRAY_PUSH_RESERVE;
         if (slots < 1) slots = 1;
         pad(out, indent);
-        fprintf(out, "char %s[%d][256] = {", arrname, slots);
-        /* Parse pipe-separated values from node->value */
+        fprintf(out, "int %s_len = 0;\n", node->name);
+        pad(out, indent);
+        fprintf(out, "int %s_cap = 0;\n", node->name);
+        pad(out, indent);
+        fprintf(out, "char **%s = _ltng_arr_new(%d);\n", arrname, slots);
+        /* Push each literal element (pipe-separated raw token text). */
         const char *val = node->value;
         int elem_idx = 0;
         while (*val && elem_idx < node->array_elem_count) {
-            /* Skip leading | */
             if (*val == '|') val++;
-            /* Find end of value */
             const char *end = val;
             while (*end && *end != '|') end++;
             int vlen = (int)(end - val);
-            /* Emit string literal */
-            fprintf(out, "\"");
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, \"",
+                arrname, node->name, node->name);
             for (int i = 0; i < vlen; i++) {
                 if (val[i] == '"') fputc('\\', out);
                 if (val[i] == '\\') fputc('\\', out);
                 fputc(val[i], out);
             }
-            fprintf(out, "\"");
+            fprintf(out, "\");\n");
             val = end;
             elem_idx++;
-            if (elem_idx < node->array_elem_count) fprintf(out, ",");
         }
-        fprintf(out, "};\n");
-        pad(out, indent);
-        fprintf(out, "int %s_len = %d;\n", node->name, node->array_elem_count);
         return;
     }
     if (node->is_expr) {
@@ -697,6 +697,24 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
     /* Use a C for loop so that 'continue' jumps to the step expression */
     pad(out, indent);
     fprintf(out, "{\n");
+    if (op == 'E') {
+        /* for-each: iterate over array elements (0-based internal order) */
+        static int fe_id = 0;
+        int id = fe_id++;
+        pad(out, indent + 1);
+        fprintf(out, "char %s[256] = \"\";\n", var);
+        pad(out, indent + 1);
+        fprintf(out, "for (int __fe_i%d = 0; __fe_i%d < %s_len; __fe_i%d++) {\n", id, id, start, id);
+        pad(out, indent + 2);
+        fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s_data[__fe_i%d] ? %s_data[__fe_i%d] : \"\");\n",
+            var, var, start, id, start, id);
+        if (node->body) emit_block(out, node->body, table, indent + 2);
+        pad(out, indent + 1);
+        fprintf(out, "}\n");
+        pad(out, indent);
+        fprintf(out, "}\n");
+        return;
+    }
     pad(out, indent + 1);
     fprintf(out, "char %s[256] = \"0\";\n", var);
     pad(out, indent + 1);
@@ -777,51 +795,115 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
         case NODE_WRITE:
             codegen_write(out, node, table, indent);
             break;
-        case NODE_ARRAY_PUSH:
+        case NODE_ARRAY_PUSH: {
+            /* Push a formatted value onto the dynamic array. */
+            const char *fmt;
+            const char *cast;
+            if (node->var_type == TYPE_INT) { fmt = "%lld"; cast = "(long long)("; }
+            else if (node->var_type == TYPE_FLOAT) { fmt = "%g"; cast = "(double)("; }
+            else { fmt = "%s"; cast = ""; }
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
             pad(out, indent);
-            if (node->var_type == TYPE_STRING) {
-                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%s\", %s); %s_len++;\n",
-                    node->name, node->name, node->value, node->name);
-            } else if (node->var_type == TYPE_INT) {
-                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%lld\", (long long)(%s)); %s_len++;\n",
-                    node->name, node->name, node->value, node->name);
-            } else if (node->var_type == TYPE_FLOAT) {
-                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%g\", (double)(%s)); %s_len++;\n",
-                    node->name, node->name, node->value, node->name);
-            } else {
-                fprintf(out, "snprintf(%s_data[%s_len], 256, \"%%s\", %s); %s_len++;\n",
-                    node->name, node->name, node->value, node->name);
-            }
+            fprintf(out, "{ char __apv[256]; snprintf(__apv, 256, \"%s\", %s%s%s); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); }\n",
+                fmt, cast, node->value, cast[0] ? ")" : "",
+                arrname, node->name, node->name);
             break;
+        }
         case NODE_ARRAY_POP:
             pad(out, indent);
-            if (node->value[0] == '\0' || strncmp(node->value, "({ int", 7) != 0) {
-                /* pop() - no args */
-                fprintf(out, "%s_len--;\n", node->name);
+            if (node->value[0] == '\0') {
+                /* pop() - no args, discard result */
+                fprintf(out, "_ltng_arr_pop(%s, &%s_len);\n", node->name, node->name);
             } else {
-                /* pop(index) */
-                fprintf(out, "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s_len); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s_data[__pop_idx]); memmove(&%s_data[__pop_idx], &%s_data[__pop_idx + 1], (%s_len - __pop_idx - 1) * 256); %s_len--; __pop_val; })",
-                    node->value, node->name, node->name, node->name, node->name, node->name, node->name);
+                /* pop(index) - discard result */
+                fprintf(out, "{ int __pi = (int)(%s); _ltng_arr_pop_index(%s, &%s_len, __pi); }\n",
+                    node->value, node->name, node->name);
             }
             break;
-        case NODE_ARRAY_SET:
+        case NODE_ARRAY_SET: {
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
             pad(out, indent);
             if (node->is_expr) {
                 if (node->var_type == TYPE_INT) {
-                    fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%lld\", (long long)(%s)); }\n",
-                        node->array_index, node->name, node->value);
+                    fprintf(out, "{ int __aidx = %s; char __asv[256]; snprintf(__asv, 256, \"%%lld\", (long long)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); }\n",
+                        node->array_index, node->value, arrname, node->name, node->name);
                 } else if (node->var_type == TYPE_FLOAT) {
-                    fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%g\", (double)(%s)); }\n",
-                        node->array_index, node->name, node->value);
+                    fprintf(out, "{ int __aidx = %s; char __asv[256]; snprintf(__asv, 256, \"%%g\", (double)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); }\n",
+                        node->array_index, node->value, arrname, node->name, node->name);
                 } else {
-                    fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%s\", %s); }\n",
-                        node->array_index, node->name, node->value);
+                    fprintf(out, "{ int __aidx = %s; _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, %s); }\n",
+                        node->array_index, arrname, node->name, node->name, node->value);
                 }
             } else {
-                fprintf(out, "{ int __aidx = %s; snprintf(%s_data[__aidx], 256, \"%%s\", \"%s\"); }\n",
-                    node->array_index, node->name, node->value);
+                fprintf(out, "{ int __aidx = %s; _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, \"%s\"); }\n",
+                    node->array_index, arrname, node->name, node->name, node->value);
             }
             break;
+        }
+        case NODE_ARRAY_INSERT: {
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            /* arr.insert(i, x) statement: node->name = arr cname,
+               node->value = index expr, node->array_index = element expr. */
+            const char *fmt;
+            const char *cast;
+            if (node->var_type == TYPE_INT) { fmt = "%lld"; cast = "(long long)("; }
+            else if (node->var_type == TYPE_FLOAT) { fmt = "%g"; cast = "(double)("; }
+            else { fmt = "%s"; cast = ""; }
+            pad(out, indent);
+            fprintf(out, "{ int __ii = (int)(%s); char __aiv[256]; snprintf(__aiv, 256, \"%s\", %s%s%s); _ltng_arr_insert(&%s, &%s_len, &%s_cap, __ii, __aiv); }\n",
+                node->value, fmt, cast, node->array_index, cast[0] ? ")" : "",
+                arrname, node->name, node->name);
+            break;
+        }
+        case NODE_ARRAY_REMOVE: {
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            /* arr.remove(i): node->name = arr cname, node->value = index expr. */
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_remove(%s, &%s_len, (int)(%s));\n",
+                arrname, node->name, node->value);
+            break;
+        }
+        case NODE_ARRAY_COPY: {
+            /* let b = a.copy(): node->name = dst cname, node->value = src cname. */
+            char srcname[MAX_IDENTIFIER_LEN];
+            snprintf(srcname, sizeof(srcname), "%s_data", node->value);
+            char dstname[MAX_IDENTIFIER_LEN];
+            snprintf(dstname, sizeof(dstname), "%s_data", node->name);
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_copy(%s, &%s_data, &%s_len, &%s_cap, %s_len);\n",
+                srcname, node->name, node->name, node->name, node->value);
+            break;
+        }
+        case NODE_ARRAY_SLICE: {
+            /* let b = a.slice(s, e): node->name = dst cname, node->value = src cname,
+               node->array_index = "start,end" C expressions. */
+            char srcname[MAX_IDENTIFIER_LEN];
+            snprintf(srcname, sizeof(srcname), "%s_data", node->value);
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_slice(%s, %s_len, %s, &%s_data, &%s_len, &%s_cap);\n",
+                srcname, node->value, node->array_index, node->name, node->name, node->name);
+            break;
+        }
+        case NODE_ARRAY_SORT: {
+            /* arr.sort() statement */
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_sort(%s, %s_len);\n", arrname, node->name);
+            break;
+        }
+        case NODE_ARRAY_REVERSE: {
+            /* arr.reverse() statement */
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_reverse(%s, %s_len);\n", arrname, node->name);
+            break;
+        }
         case NODE_READ:
             codegen_read(out, node, indent);
             break;
@@ -1031,7 +1113,31 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "#include <ctype.h>\n");
     fprintf(out, "static char *_ltng_concat(char *buf, size_t sz, int n, ...) { va_list ap; va_start(ap,n); buf[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); strncat(buf,s,sz-strlen(buf)-1); } va_end(ap); return buf; }\n");
     fprintf(out, "static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { buf[0]=0; if (n < 0) n = 0; for (long long i=0; i<n && strlen(buf) < sz-1; i++) { strncat(buf, s, sz-strlen(buf)-1); } return buf; }\n");
-    fprintf(out, "static char *_ltng_arr_get(char data[][256], int len, int idx) { if (idx >= 0 && idx < len) return data[idx]; if (idx < 0 && len + idx >= 0) return data[len + idx]; return \"\"; }\n");
+    /* Dynamic array runtime helpers. Arrays are represented as char **data plus
+       int len and int cap. Each element is a strdup'd char buffer. Indexing is
+       1-based for positive indices, counts from the end for negative indices,
+       and index 0 is invalid (returns ""). All '%' below are escaped for fprintf.
+       Functions that may realloc take char ***d so the caller's pointer is updated. */
+    fprintf(out, "static char *_ltng_arr_strdup(const char *s){ if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=malloc(n); if(p) memcpy(p,s,n); return p; }\n");
+    fprintf(out, "static char **_ltng_arr_new(int cap){ if(cap<1)cap=1; char **d=malloc(sizeof(char*)*cap); for(int i=0;i<cap;i++) d[i]=NULL; return d; }\n");
+    fprintf(out, "static void _ltng_arr_ensure(char ***d,int *len,int *cap,int need){ if(*cap>=need) return; int nc=*cap?*cap*2:1; while(nc<need) nc*=2; *d=realloc(*d,sizeof(char*)*nc); for(int i=*cap;i<nc;i++) (*d)[i]=NULL; *cap=nc; }\n");
+    fprintf(out, "static void _ltng_arr_set_elem(char **d,int idx,const char *v){ if(d[idx]) free(d[idx]); d[idx]=v?_ltng_arr_strdup(v):_ltng_arr_strdup(\"\"); }\n");
+    fprintf(out, "static const char *_ltng_arr_get(char **d,int len,int idx){ if(idx>=0&&idx<len) return d[idx]?d[idx]:\"\"; if(idx<0&&len+idx>=0) return d[len+idx]?d[len+idx]:\"\"; return \"\"; }\n");
+    fprintf(out, "static void _ltng_arr_set(char **d,int *len,int *cap,int idx,const char *v){ (void)cap; if(idx<0||idx>=*len) return; _ltng_arr_set_elem(d,idx,v); }\n");
+    fprintf(out, "static void _ltng_arr_push(char ***d,int *len,int *cap,const char *v){ _ltng_arr_ensure(d,len,cap,*len+1); _ltng_arr_set_elem(*d,*len,v); (*len)++; }\n");
+    fprintf(out, "static char *_ltng_arr_pop(char **d,int *len){ static char b[256]; if(*len<=0){ b[0]=0; return b; } (*len)--; const char *v=d[*len]?d[*len]:\"\"; snprintf(b,256,\"%%s\",v); free(d[*len]); d[*len]=NULL; return b; }\n");
+    fprintf(out, "static char *_ltng_arr_pop_index(char **d,int *len,int idx){ static char b[256]; /* idx is 1-based positive, negative from end, 0 invalid */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0||idx>=*len){ b[0]=0; return b; } const char *v=d[idx]?d[idx]:\"\"; snprintf(b,256,\"%%s\",v); free(d[idx]); for(int i=idx;i<*len-1;i++) d[i]=d[i+1]; d[*len-1]=NULL; (*len)--; return b; }\n");
+    fprintf(out, "static void _ltng_arr_insert(char ***d,int *len,int *cap,int idx,const char *v){ /* idx is 1-based positive, negative from end */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0) idx=0; if(idx>*len) idx=*len; _ltng_arr_ensure(d,len,cap,*len+1); for(int i=*len;i>idx;i--) (*d)[i]=(*d)[i-1]; _ltng_arr_set_elem(*d,idx,v); (*len)++; }\n");
+    fprintf(out, "static void _ltng_arr_remove(char **d,int *len,int idx){ /* idx is 1-based positive, negative from end, 0 invalid */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0||idx>=*len) return; free(d[idx]); for(int i=idx;i<*len-1;i++) d[i]=d[i+1]; d[*len-1]=NULL; (*len)--; }\n");
+    fprintf(out, "static int _ltng_arr_contains(char **d,int len,const char *v){ for(int i=0;i<len;i++){ if(d[i]&&strcmp(d[i],v)==0) return 1; } return 0; }\n");
+    fprintf(out, "static int _ltng_arr_index_of(char **d,int len,const char *v){ for(int i=0;i<len;i++){ if(d[i]&&strcmp(d[i],v)==0) return i+1; } return 0; }\n");
+    fprintf(out, "static void _ltng_arr_reverse(char **d,int len){ for(int i=0,j=len-1;i<j;i++,j--){ char *t=d[i]; d[i]=d[j]; d[j]=t; } }\n");
+    fprintf(out, "static int _ltng_arr_numcmp(const char *a,const char *b){ char *ea=NULL,*eb=NULL; double da=strtod(a?a:\"\",&ea); double db=strtod(b?b:\"\",&eb); int na=(ea&&*ea==0&&a&&*a); int nb=(eb&&*eb==0&&b&&*b); if(na&&nb){ if(da<db) return -1; if(da>db) return 1; return 0; } return strcmp(a?a:\"\", b?b:\"\"); }\n");
+    fprintf(out, "static int _ltng_arr_cmp(const void *a,const void *b){ return _ltng_arr_numcmp(*(const char * const *)a, *(const char * const *)b); }\n");
+    fprintf(out, "static void _ltng_arr_sort(char **d,int len){ qsort(d,len,sizeof(char *),_ltng_arr_cmp); }\n");
+    fprintf(out, "static void _ltng_arr_copy(char **sd,char ***dd,int *dl,int *dc,int sl){ _ltng_arr_ensure(dd,dl,dc,sl); for(int i=sl;i<*dl;i++){ if((*dd)[i]){ free((*dd)[i]); (*dd)[i]=NULL; } } for(int i=0;i<sl;i++){ if((*dd)[i]) free((*dd)[i]); (*dd)[i]=sd[i]?_ltng_arr_strdup(sd[i]):_ltng_arr_strdup(\"\"); } *dl=sl; }\n");
+    fprintf(out, "static void _ltng_arr_slice(char **sd,int sl,int start,int end,char ***dd,int *dl,int *dc){ if(start<0) start=sl+start; if(end<0) end=sl+end; if(start<0) start=0; if(end>sl) end=sl; if(start>end) end=start; int n=end-start; _ltng_arr_ensure(dd,dl,dc,n); for(int i=0;i<*dl;i++){ if((*dd)[i]){ free((*dd)[i]); (*dd)[i]=NULL; } } *dl=0; for(int i=0;i<n;i++){ _ltng_arr_push(dd,dl,dc,sd[start+i]?sd[start+i]:\"\"); } }\n");
+    fprintf(out, "static void _ltng_arr_free(char **d,int len){ if(!d) return; for(int i=0;i<len;i++){ if(d[i]) free(d[i]); } free(d); }\n");
     fprintf(out, "static int _ltng_idx2(int i0, int i1, int d1) { return i0 * d1 + i1; }\n");
     fprintf(out, "static int _ltng_idx3(int i0, int i1, int i2, int d1, int d2) { return (i0 * d1 + i1) * d2 + i2; }\n");
     fprintf(out, "static char *_ltng_retbuf(void){ static char b[32][256]; static int i; i=(i+1)%%32; b[i][0]=0; return b[i]; }\n");

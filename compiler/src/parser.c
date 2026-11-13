@@ -282,20 +282,21 @@ static int is_ltng_keyword(const char *name) {
            strcmp(name, "from") == 0 ||
            strcmp(name, "to") == 0 ||
            strcmp(name, "step") == 0 ||
+           strcmp(name, "in") == 0 ||
            strcmp(name, "and") == 0 ||
            strcmp(name, "or") == 0 ||
            strcmp(name, "not") == 0;
 }
 
 /* Tokens that can serve as identifier names in declaration/reference contexts.
-   Keywords like return/break/switch/case/default/function/from/to/step carry
+   Keywords like return/break/switch/case/default/function/from/to/step/in carry
    their text in .value and can be used as mangled variable names. */
 static int token_is_name(Token t) {
     if (t.type == TOKEN_IDENT) return 1;
     switch (t.type) {
         case TOKEN_RETURN: case TOKEN_BREAK: case TOKEN_CONTINUE: case TOKEN_FUNCTION:
         case TOKEN_SWITCH: case TOKEN_CASE: case TOKEN_DEFAULT:
-        case TOKEN_FROM: case TOKEN_TO: case TOKEN_STEP:
+        case TOKEN_FROM: case TOKEN_TO: case TOKEN_STEP: case TOKEN_IN:
             return t.value[0] != '\0';
         default: return 0;
     }
@@ -1357,6 +1358,23 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     int saved_m = lexer->current;
                     lexer_next(lexer); /* dot */
                     Token mname = lexer_next(lexer);
+                    /* Array .length property (general ident context) */
+                    {
+                        char tmangled[MAX_IDENTIFIER_LEN];
+                        mangle_name(tok.value, tmangled, MAX_IDENTIFIER_LEN);
+                        if (symbol_table_has(table, tmangled) &&
+                            symbol_table_get(table, tmangled) == TYPE_ARRAY &&
+                            strcmp(mname.value, "length") == 0 &&
+                            lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            const char *tcname = symbol_table_get_cname(table, tmangled);
+                            char tlenname[MAX_IDENTIFIER_LEN];
+                            snprintf(tlenname, sizeof(tlenname), "%s_len", tcname);
+                            pos += snprintf(out + pos, out_size - pos,
+                                "%s", tlenname);
+                            result_type = TYPE_INT;
+                            break;
+                        }
+                    }
                     if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
                         lexer_peek(lexer).type == TOKEN_LPAREN &&
                         is_function_name_scoped(table, mname.value)) {
@@ -1499,16 +1517,41 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     "(%s[0]=='t'?1:0)", cname);
                                 break;
                             case TYPE_ARRAY:
-                                /* Check for .push() / .pop() method calls on array variables */
+                                /* Check for .length property and array method calls */
                                 {
                                     Token nxt = lexer_peek(lexer);
                                     if (nxt.type == TOKEN_DOT) {
                                         int saved_dot = lexer->current;
                                         lexer_next(lexer); /* consume . */
                                         Token mname = lexer_next(lexer);
+
+                                        char arrname[MAX_IDENTIFIER_LEN];
+                                        snprintf(arrname, sizeof(arrname), "%s_data", cname);
+                                        char lenname[MAX_IDENTIFIER_LEN];
+                                        snprintf(lenname, sizeof(lenname), "%s_len", cname);
+                                        char capname[MAX_IDENTIFIER_LEN];
+                                        snprintf(capname, sizeof(capname), "%s_cap", cname);
+
+                                        /* .length property (no parens) */
+                                        if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
+                                            strcmp(mname.value, "length") == 0 &&
+                                            lexer_peek(lexer).type != TOKEN_LPAREN) {
+                                            pos += snprintf(out + pos, out_size - pos,
+                                                "%s", lenname);
+                                            result_type = TYPE_INT;
+                                            return result_type;
+                                        }
+
+                                        /* Array methods with (args) */
                                         if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
                                             (strcmp(mname.value, "push") == 0 ||
-                                             strcmp(mname.value, "pop") == 0)) {
+                                             strcmp(mname.value, "pop") == 0 ||
+                                             strcmp(mname.value, "insert") == 0 ||
+                                             strcmp(mname.value, "remove") == 0 ||
+                                             strcmp(mname.value, "contains") == 0 ||
+                                             strcmp(mname.value, "index_of") == 0 ||
+                                             strcmp(mname.value, "sort") == 0 ||
+                                             strcmp(mname.value, "reverse") == 0)) {
                                             if (lexer_peek(lexer).type != TOKEN_LPAREN) {
                                                 char errmsg[256];
                                                 snprintf(errmsg, sizeof(errmsg),
@@ -1520,11 +1563,6 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                                 break;
                                             }
                                             lexer_next(lexer); /* consume ( */
-
-                                            char arrname[MAX_IDENTIFIER_LEN];
-                                            snprintf(arrname, sizeof(arrname), "%s_data", cname);
-                                            char lenname[MAX_IDENTIFIER_LEN];
-                                            snprintf(lenname, sizeof(lenname), "%s_len", cname);
 
                                             if (strcmp(mname.value, "push") == 0) {
                                                 /* push(value) */
@@ -1540,26 +1578,26 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                                 lexer_next(lexer); /* consume ) */
                                                 if (arg_type == TYPE_INT) {
                                                     pos += snprintf(out + pos, out_size - pos,
-                                                        "({ snprintf(%s[%s], 256, \"%%lld\", (long long)(%s)); %s++; char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%lld\", (long long)(%s)); __r; })",
-                                                        arrname, lenname, arg_expr, lenname, arg_expr);
+                                                        "({ char __apv[256]; snprintf(__apv, 256, \"%%lld\", (long long)(%s)); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __apv); __r; })",
+                                                        arg_expr, arrname, lenname, capname);
                                                 } else if (arg_type == TYPE_FLOAT) {
                                                     pos += snprintf(out + pos, out_size - pos,
-                                                        "({ snprintf(%s[%s], 256, \"%%g\", (double)(%s)); %s++; char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%g\", (double)(%s)); __r; })",
-                                                        arrname, lenname, arg_expr, lenname, arg_expr);
+                                                        "({ char __apv[256]; snprintf(__apv, 256, \"%%g\", (double)(%s)); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __apv); __r; })",
+                                                        arg_expr, arrname, lenname, capname);
                                                 } else {
                                                     pos += snprintf(out + pos, out_size - pos,
-                                                        "({ snprintf(%s[%s], 256, \"%%s\", %s); %s++; %s; })",
-                                                        arrname, lenname, arg_expr, lenname, arg_expr);
+                                                        "({ char __apv[256]; snprintf(__apv, 256, \"%%s\", %s); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __apv); __r; })",
+                                                        arg_expr, arrname, lenname, capname);
                                                 }
                                                 result_type = TYPE_STRING;
-                                            } else {
+                                            } else if (strcmp(mname.value, "pop") == 0) {
                                                 /* pop() or pop(index) */
                                                 if (lexer_peek(lexer).type == TOKEN_RPAREN) {
                                                     /* pop() - no args */
                                                     lexer_next(lexer); /* consume ) */
                                                     pos += snprintf(out + pos, out_size - pos,
-                                                        "({ %s--; %s[%s]; })",
-                                                        lenname, arrname, lenname);
+                                                        "({ char *__r = _ltng_arr_pop(%s, &%s); __r; })",
+                                                        arrname, lenname);
                                                     result_type = TYPE_STRING;
                                                 } else {
                                                     /* pop(index) */
@@ -1574,20 +1612,159 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                                     }
                                                     lexer_next(lexer); /* consume ) */
                                                     pos += snprintf(out + pos, out_size - pos,
-                                                        "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s[__pop_idx]); memmove(&%s[__pop_idx], &%s[__pop_idx + 1], (%s - __pop_idx - 1) * 256); %s--; __pop_val; })",
-                                                        idx_expr, lenname, arrname, arrname, arrname, lenname, lenname);
+                                                        "({ char *__r = _ltng_arr_pop_index(%s, &%s, (int)(%s)); __r; })",
+                                                        arrname, lenname, idx_expr);
                                                     result_type = TYPE_STRING;
                                                 }
+                                            } else if (strcmp(mname.value, "insert") == 0) {
+                                                /* insert(index, value) */
+                                                char idx_expr[MAX_STRING_LEN];
+                                                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                                                if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ',' after insert index");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume , */
+                                                char arg_expr[MAX_STRING_LEN];
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after insert argument");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                if (arg_type == TYPE_INT) {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __aiv[256]; snprintf(__aiv, 256, \"%%lld\", (long long)(%s)); _ltng_arr_insert(&%s, &%s_len, &%s_cap, (int)(%s), __aiv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __aiv); __r; })",
+                                                        arg_expr, arrname, lenname, capname, idx_expr);
+                                                } else if (arg_type == TYPE_FLOAT) {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __aiv[256]; snprintf(__aiv, 256, \"%%g\", (double)(%s)); _ltng_arr_insert(&%s, &%s_len, &%s_cap, (int)(%s), __aiv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __aiv); __r; })",
+                                                        arg_expr, arrname, lenname, capname, idx_expr);
+                                                } else {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __aiv[256]; snprintf(__aiv, 256, \"%%s\", %s); _ltng_arr_insert(&%s, &%s_len, &%s_cap, (int)(%s), __aiv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __aiv); __r; })",
+                                                        arg_expr, arrname, lenname, capname, idx_expr);
+                                                }
+                                                result_type = TYPE_STRING;
+                                            } else if (strcmp(mname.value, "remove") == 0) {
+                                                /* remove(index) */
+                                                char idx_expr[MAX_STRING_LEN];
+                                                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after remove index");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                pos += snprintf(out + pos, out_size - pos,
+                                                    "({ char *__r = _ltng_arr_pop_index(%s, &%s, (int)(%s)); __r; })",
+                                                    arrname, lenname, idx_expr);
+                                                result_type = TYPE_STRING;
+                                            } else if (strcmp(mname.value, "contains") == 0) {
+                                                /* contains(value) */
+                                                char arg_expr[MAX_STRING_LEN];
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after contains argument");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                if (arg_type == TYPE_INT) {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __cv[256]; snprintf(__cv, 256, \"%%lld\", (long long)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", _ltng_arr_contains(%s, %s_len, __cv) ? \"true\" : \"false\"); __r; })",
+                                                        arg_expr, arrname, lenname);
+                                                } else if (arg_type == TYPE_FLOAT) {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __cv[256]; snprintf(__cv, 256, \"%%g\", (double)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", _ltng_arr_contains(%s, %s_len, __cv) ? \"true\" : \"false\"); __r; })",
+                                                        arg_expr, arrname, lenname);
+                                                } else {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __cv[256]; snprintf(__cv, 256, \"%%s\", %s); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", _ltng_arr_contains(%s, %s_len, __cv) ? \"true\" : \"false\"); __r; })",
+                                                        arg_expr, arrname, lenname);
+                                                }
+                                                result_type = TYPE_STRING;
+                                            } else if (strcmp(mname.value, "index_of") == 0) {
+                                                /* index_of(value) */
+                                                char arg_expr[MAX_STRING_LEN];
+                                                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after index_of argument");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                if (arg_type == TYPE_INT) {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __iv[256]; snprintf(__iv, 256, \"%%lld\", (long long)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%d\", _ltng_arr_index_of(%s, %s_len, __iv)); __r; })",
+                                                        arg_expr, arrname, lenname);
+                                                } else if (arg_type == TYPE_FLOAT) {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __iv[256]; snprintf(__iv, 256, \"%%g\", (double)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%d\", _ltng_arr_index_of(%s, %s_len, __iv)); __r; })",
+                                                        arg_expr, arrname, lenname);
+                                                } else {
+                                                    pos += snprintf(out + pos, out_size - pos,
+                                                        "({ char __iv[256]; snprintf(__iv, 256, \"%%s\", %s); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%d\", _ltng_arr_index_of(%s, %s_len, __iv)); __r; })",
+                                                        arg_expr, arrname, lenname);
+                                                }
+                                                result_type = TYPE_STRING;
+                                            } else if (strcmp(mname.value, "sort") == 0) {
+                                                /* sort() */
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after sort");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                pos += snprintf(out + pos, out_size - pos,
+                                                    "({ _ltng_arr_sort(%s, %s_len); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"true\"); __r; })",
+                                                    arrname, lenname);
+                                                result_type = TYPE_STRING;
+                                            } else if (strcmp(mname.value, "reverse") == 0) {
+                                                /* reverse() */
+                                                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                                                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                                                        lexer_peek(lexer).col, "Expected ')' after reverse");
+                                                    skip_to_newline(lexer);
+                                                    pos += snprintf(out + pos, out_size - pos, "0");
+                                                    break;
+                                                }
+                                                lexer_next(lexer); /* consume ) */
+                                                pos += snprintf(out + pos, out_size - pos,
+                                                    "({ _ltng_arr_reverse(%s, %s_len); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"true\"); __r; })",
+                                                    arrname, lenname);
+                                                result_type = TYPE_STRING;
                                             }
                                             return result_type; /* skip postfix/array-access handling */
                                         }
-                                        /* Not push/pop - rewind to the dot */
+
+                                        /* copy() and slice() are handled in let/const declarations,
+                                           not as bare expressions. Rewind so the caller reports an error. */
+                                        if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
+                                            (strcmp(mname.value, "copy") == 0 ||
+                                             strcmp(mname.value, "slice") == 0)) {
+                                            lexer->current = saved_dot;
+                                            break;
+                                        }
+
+                                        /* Not a recognized array operation - rewind to the dot */
                                         lexer->current = saved_dot;
                                     }
                                 }
-                                break;
-                            default:
-                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", cname);
                                 break;
                         }
                     }
@@ -2413,7 +2590,10 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
         Token fourth_tok = lexer->tokens[lexer->current + 3];
         if (second_tok.type == TOKEN_DOT &&
             (third_tok.type == TOKEN_IDENT || token_is_name(third_tok)) &&
-            (strcmp(third_tok.value, "push") == 0 || strcmp(third_tok.value, "pop") == 0) &&
+            (strcmp(third_tok.value, "push") == 0 || strcmp(third_tok.value, "pop") == 0 ||
+             strcmp(third_tok.value, "insert") == 0 || strcmp(third_tok.value, "remove") == 0 ||
+             strcmp(third_tok.value, "contains") == 0 || strcmp(third_tok.value, "index_of") == 0 ||
+             strcmp(third_tok.value, "sort") == 0 || strcmp(third_tok.value, "reverse") == 0) &&
             fourth_tok.type == TOKEN_LPAREN) {
             char rm[MAX_IDENTIFIER_LEN];
             mangle_name(first.value, rm, MAX_IDENTIFIER_LEN);
@@ -2436,6 +2616,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             snprintf(arrname, sizeof(arrname), "%s_data", rm);
             char lenname[MAX_IDENTIFIER_LEN];
             snprintf(lenname, sizeof(lenname), "%s_len", rm);
+            char capname[MAX_IDENTIFIER_LEN];
+            snprintf(capname, sizeof(capname), "%s_cap", rm);
             /* current points to arr; consume arr, ., method, ( */
             lexer_next(lexer); /* consume arr (already peeked as first) */
             lexer_next(lexer); /* consume . */
@@ -2464,15 +2646,176 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     fmt = "%s";
                 }
                 snprintf(expr, sizeof(expr),
-                    "({ snprintf(%s[%s], 256, \"%s\", %s); %s++; %s[%s-1]; })",
-                    arrname, lenname, fmt, arg_expr, lenname, arrname, lenname);
+                    "({ char __apv[256]; snprintf(__apv, 256, \"%s\", %s); _ltng_arr_push(&%s, &%s, &%s, __apv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __apv); __r; })",
+                    fmt, arg_expr, arrname, lenname, capname);
                 ASTNode *node = create_node(NODE_WRITE, "", expr);
                 node->is_variable = 0;
                 node->is_expr = 1;
                 node->var_type = TYPE_STRING;
                 emit(node);
                 return;
-            } else {
+            } else if (strcmp(third_tok.value, "insert") == 0) {
+                char idx_expr[MAX_STRING_LEN];
+                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1);
+                if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ',' after insert index");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume , */
+                char arg_expr[MAX_STRING_LEN];
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after insert argument");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume insert's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                const char *fmt;
+                if (arg_type == TYPE_STRING) {
+                    fmt = "%s";
+                } else if (arg_type == TYPE_INT) {
+                    fmt = "%lld";
+                } else if (arg_type == TYPE_FLOAT) {
+                    fmt = "%g";
+                } else {
+                    fmt = "%s";
+                }
+                snprintf(expr, sizeof(expr),
+                    "({ char __apv[256]; snprintf(__apv, 256, \"%s\", %s); _ltng_arr_insert(&%s, &%s, &%s, (int)(%s), __apv); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", __apv); __r; })",
+                    fmt, arg_expr, arrname, lenname, capname, idx_expr);
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else if (strcmp(third_tok.value, "remove") == 0) {
+                char idx_expr[MAX_STRING_LEN];
+                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after remove index");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume remove's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                snprintf(expr, sizeof(expr),
+                    "({ char *__r = _ltng_arr_pop_index(%s, &%s, (int)(%s)); __r; })",
+                    arrname, lenname, idx_expr);
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else if (strcmp(third_tok.value, "contains") == 0) {
+                char arg_expr[MAX_STRING_LEN];
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after contains argument");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume contains's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                if (arg_type == TYPE_INT) {
+                    snprintf(expr, sizeof(expr),
+                        "({ char __cv[256]; snprintf(__cv, 256, \"%%lld\", (long long)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", _ltng_arr_contains(%s, %s, __cv) ? \"true\" : \"false\"); __r; })",
+                        arg_expr, arrname, lenname);
+                } else if (arg_type == TYPE_FLOAT) {
+                    snprintf(expr, sizeof(expr),
+                        "({ char __cv[256]; snprintf(__cv, 256, \"%%g\", (double)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", _ltng_arr_contains(%s, %s, __cv) ? \"true\" : \"false\"); __r; })",
+                        arg_expr, arrname, lenname);
+                } else {
+                    snprintf(expr, sizeof(expr),
+                        "({ char __cv[256]; snprintf(__cv, 256, \"%%s\", %s); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%s\", _ltng_arr_contains(%s, %s, __cv) ? \"true\" : \"false\"); __r; })",
+                        arg_expr, arrname, lenname);
+                }
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else if (strcmp(third_tok.value, "index_of") == 0) {
+                char arg_expr[MAX_STRING_LEN];
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after index_of argument");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume index_of's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                if (arg_type == TYPE_INT) {
+                    snprintf(expr, sizeof(expr),
+                        "({ char __iv[256]; snprintf(__iv, 256, \"%%lld\", (long long)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%d\", _ltng_arr_index_of(%s, %s, __iv)); __r; })",
+                        arg_expr, arrname, lenname);
+                } else if (arg_type == TYPE_FLOAT) {
+                    snprintf(expr, sizeof(expr),
+                        "({ char __iv[256]; snprintf(__iv, 256, \"%%g\", (double)(%s)); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%d\", _ltng_arr_index_of(%s, %s, __iv)); __r; })",
+                        arg_expr, arrname, lenname);
+                } else {
+                    snprintf(expr, sizeof(expr),
+                        "({ char __iv[256]; snprintf(__iv, 256, \"%%s\", %s); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"%%d\", _ltng_arr_index_of(%s, %s, __iv)); __r; })",
+                        arg_expr, arrname, lenname);
+                }
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else if (strcmp(third_tok.value, "sort") == 0) {
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after sort");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume sort's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                snprintf(expr, sizeof(expr),
+                    "({ _ltng_arr_sort(%s, %s_len); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"true\"); __r; })",
+                    arrname, lenname);
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else if (strcmp(third_tok.value, "reverse") == 0) {
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line,
+                        lexer_peek(lexer).col, "Expected ')' after reverse");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                lexer_next(lexer); /* consume reverse's ) */
+                lexer_next(lexer); /* consume write's ) */
+                char expr[MAX_STRING_LEN];
+                snprintf(expr, sizeof(expr),
+                    "({ _ltng_arr_reverse(%s, %s_len); char *__r = _ltng_retbuf(); snprintf(__r, 256, \"true\"); __r; })",
+                    arrname, lenname);
+                ASTNode *node = create_node(NODE_WRITE, "", expr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            } else if (strcmp(third_tok.value, "pop") == 0) {
                 /* pop() or pop(index) */
                 if (lexer_peek(lexer).type == TOKEN_RPAREN) {
                     /* pop() - no args */
@@ -2480,8 +2823,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     lexer_next(lexer); /* consume write's ) */
                     char expr[MAX_STRING_LEN];
                     snprintf(expr, sizeof(expr),
-                        "({ %s--; %s[%s]; })",
-                        lenname, arrname, lenname);
+                        "({ char *__r = _ltng_arr_pop(%s, &%s); __r; })",
+                        arrname, lenname);
                     ASTNode *node = create_node(NODE_WRITE, "", expr);
                     node->is_variable = 0;
                     node->is_expr = 1;
@@ -2502,8 +2845,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     lexer_next(lexer); /* consume write's ) */
                     char expr[MAX_STRING_LEN];
                     snprintf(expr, sizeof(expr),
-                        "({ int __pop_idx = (int)(%s); __pop_idx = __pop_idx > 0 ? __pop_idx - 1 : __pop_idx + (%s); char __pop_val[256]; snprintf(__pop_val, 256, \"%%s\", %s[__pop_idx]); memmove(&%s[__pop_idx], &%s[__pop_idx + 1], (%s - __pop_idx - 1) * 256); %s--; __pop_val; })",
-                        idx_expr, lenname, arrname, arrname, arrname, lenname, lenname);
+                        "({ char *__r = _ltng_arr_pop_index(%s, &%s, (int)(%s)); __r; })",
+                        arrname, lenname, idx_expr);
                     ASTNode *node = create_node(NODE_WRITE, "", expr);
                     node->is_variable = 0;
                     node->is_expr = 1;
@@ -2741,7 +3084,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 node->is_expr = 1;
                 node->var_type = TYPE_STRING;
             } else if (mname.type == TOKEN_IDENT || token_is_name(mname)) {
-                /* property access: obj.field */
+                /* property access: obj.field, or array .length */
                 char mwname[MAX_IDENTIFIER_LEN];
                 mangle_name(arg.value, mwname, MAX_IDENTIFIER_LEN);
                 if (!symbol_table_has(table, mwname)) {
@@ -2750,11 +3093,23 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     skip_to_newline(lexer);
                     return;
                 }
-                char fv[MAX_IDENTIFIER_LEN*2+8];
-                obj_resolve_field(mwname, mname.value, fv, sizeof(fv));
-                node = create_node(NODE_WRITE, fv, "");
-                node->is_variable = 1;
-                node->var_type = TYPE_STRING; /* fields stored as strings */
+                const char *cwname = symbol_table_get_cname(table, mwname);
+                VarType avt = symbol_table_get(table, mwname);
+                /* Array .length property */
+                if (avt == TYPE_ARRAY && strcmp(mname.value, "length") == 0) {
+                    char lenname[MAX_IDENTIFIER_LEN];
+                    snprintf(lenname, sizeof(lenname), "%s_len", cwname);
+                    node = create_node(NODE_WRITE, "", (char *)lenname);
+                    node->is_variable = 0;
+                    node->is_expr = 1;
+                    node->var_type = TYPE_INT;
+                } else {
+                    char fv[MAX_IDENTIFIER_LEN*2+8];
+                    obj_resolve_field(mwname, mname.value, fv, sizeof(fv));
+                    node = create_node(NODE_WRITE, fv, "");
+                    node->is_variable = 1;
+                    node->var_type = TYPE_STRING; /* fields stored as strings */
+                }
             } else {
                 lexer->current = saved_m;
                 char mwname[MAX_IDENTIFIER_LEN];
@@ -3146,6 +3501,117 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         node->is_expr = 0;
         emit(node);
         return;
+    }
+
+    /* let b = a        (array copy/alias)
+       let b = a.copy() (array copy via method)
+       let b = a.slice(s, e) (array slice via method) */
+    {
+        Token src_tok = lexer_peek(lexer);
+        if (src_tok.type == TOKEN_IDENT && !is_type_keyword(src_tok.value) && !is_bool_value(src_tok.value)) {
+            char sm[MAX_IDENTIFIER_LEN];
+            mangle_name(src_tok.value, sm, MAX_IDENTIFIER_LEN);
+            if (symbol_table_has(table, sm) && symbol_table_get(table, sm) == TYPE_ARRAY) {
+                Token n2 = lexer->tokens[lexer->current + 1];
+                if (n2.type == TOKEN_NEWLINE || n2.type == TOKEN_EOF || n2.type == TOKEN_RBRACE) {
+                    /* let b = a - plain alias/copy */
+                    lexer_next(lexer); /* consume src ident */
+                    const char *scname = symbol_table_get_cname(table, sm);
+                    symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                    const char *dcname = symbol_table_get_cname(table, mangled);
+                    ASTNode *node = create_node(NODE_LET, dcname, "");
+                    node->var_type = TYPE_ARRAY;
+                    node->is_expr = 0;
+                    emit(node);
+                    /* Emit copy statement */
+                    ASTNode *cp = create_node(NODE_ARRAY_COPY, dcname, (char *)scname);
+                    cp->is_expr = 1;
+                    emit(cp);
+                    return;
+                } else if (n2.type == TOKEN_DOT) {
+                    Token n3 = lexer->tokens[lexer->current + 2];
+                    if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
+                        strcmp(n3.value, "copy") == 0) {
+                        /* let b = a.copy() */
+                        lexer_next(lexer); /* consume src ident */
+                        lexer_next(lexer); /* consume . */
+                        lexer_next(lexer); /* consume copy */
+                        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            error_state_add(parser_errors, n3.line, n3.col,
+                                "Expected '(' after 'copy'");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ( */
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ')' after 'copy()'");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        const char *scname = symbol_table_get_cname(table, sm);
+                        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        ASTNode *node = create_node(NODE_LET, dcname, "");
+                        node->var_type = TYPE_ARRAY;
+                        node->is_expr = 0;
+                        emit(node);
+                        ASTNode *cp = create_node(NODE_ARRAY_COPY, dcname, (char *)scname);
+                        cp->is_expr = 1;
+                        emit(cp);
+                        return;
+                    } else if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
+                               strcmp(n3.value, "slice") == 0) {
+                        /* let b = a.slice(s, e) */
+                        lexer_next(lexer); /* consume src ident */
+                        lexer_next(lexer); /* consume . */
+                        lexer_next(lexer); /* consume slice */
+                        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            error_state_add(parser_errors, n3.line, n3.col,
+                                "Expected '(' after 'slice'");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ( */
+                        char start_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1);
+                        if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ',' after slice start");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume , */
+                        char end_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0);
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ')' after slice end");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        const char *scname = symbol_table_get_cname(table, sm);
+                        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        ASTNode *node = create_node(NODE_LET, dcname, "");
+                        node->var_type = TYPE_ARRAY;
+                        node->is_expr = 0;
+                        emit(node);
+                        /* Build slice range string "start,end" */
+                        char slrange[MAX_STRING_LEN];
+                        snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
+                        ASTNode *sl = create_node(NODE_ARRAY_SLICE, dcname, (char *)scname);
+                        strncpy(sl->array_index, slrange, MAX_STRING_LEN - 1);
+                        sl->array_index[MAX_STRING_LEN - 1] = '\0';
+                        sl->is_expr = 1;
+                        emit(sl);
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     Token next = lexer_peek(lexer);
@@ -3721,6 +4187,97 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             "Expected '=' after variable name");
         skip_to_newline(lexer);
         return;
+    }
+
+    /* Array assignment/copy/slice on existing array variable:
+       set a = b, set a = b.copy(), set a = b.slice(s,e) */
+    if (symbol_table_get(table, mangled) == TYPE_ARRAY) {
+        Token src_tok = lexer_peek(lexer);
+        if (src_tok.type == TOKEN_IDENT && !is_type_keyword(src_tok.value) && !is_bool_value(src_tok.value)) {
+            char sm[MAX_IDENTIFIER_LEN];
+            mangle_name(src_tok.value, sm, MAX_IDENTIFIER_LEN);
+            if (symbol_table_has(table, sm) && symbol_table_get(table, sm) == TYPE_ARRAY) {
+                Token n2 = lexer->tokens[lexer->current + 1];
+                if (n2.type == TOKEN_NEWLINE || n2.type == TOKEN_EOF || n2.type == TOKEN_RBRACE) {
+                    /* set a = b */
+                    lexer_next(lexer); /* consume src ident */
+                    const char *scname = symbol_table_get_cname(table, sm);
+                    /* Emit copy into existing array variable (dst). */
+                    ASTNode *cp = create_node(NODE_ARRAY_COPY, (char *)cname, (char *)scname);
+                    cp->is_expr = 1;
+                    emit(cp);
+                    return;
+                } else if (n2.type == TOKEN_DOT) {
+                    Token n3 = lexer->tokens[lexer->current + 2];
+                    if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
+                        strcmp(n3.value, "copy") == 0) {
+                        /* set a = b.copy() */
+                        lexer_next(lexer); /* consume src ident */
+                        lexer_next(lexer); /* consume . */
+                        lexer_next(lexer); /* consume copy */
+                        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            error_state_add(parser_errors, n3.line, n3.col,
+                                "Expected '(' after 'copy'");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ( */
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ')' after 'copy()'");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        const char *scname = symbol_table_get_cname(table, sm);
+                        ASTNode *cp = create_node(NODE_ARRAY_COPY, (char *)cname, (char *)scname);
+                        cp->is_expr = 1;
+                        emit(cp);
+                        return;
+                    } else if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
+                               strcmp(n3.value, "slice") == 0) {
+                        /* set a = b.slice(s, e) */
+                        lexer_next(lexer); /* consume src ident */
+                        lexer_next(lexer); /* consume . */
+                        lexer_next(lexer); /* consume slice */
+                        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            error_state_add(parser_errors, n3.line, n3.col,
+                                "Expected '(' after 'slice'");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ( */
+                        char start_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1);
+                        if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ',' after slice start");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume , */
+                        char end_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0);
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line,
+                                lexer_peek(lexer).col, "Expected ')' after slice end");
+                            skip_to_newline(lexer);
+                            return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        const char *scname = symbol_table_get_cname(table, sm);
+                        char slrange[MAX_STRING_LEN];
+                        snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
+                        ASTNode *sl = create_node(NODE_ARRAY_SLICE, (char *)cname, (char *)scname);
+                        strncpy(sl->array_index, slrange, MAX_STRING_LEN - 1);
+                        sl->array_index[MAX_STRING_LEN - 1] = '\0';
+                        sl->is_expr = 1;
+                        emit(sl);
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     Token next = lexer_peek(lexer);
@@ -4318,26 +4875,85 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
 
     /* Iterator variable */
     Token var_tok = lexer_next(lexer);
-    if (var_tok.type != TOKEN_IDENT) {
+    if (var_tok.type != TOKEN_IDENT && !token_is_name(var_tok)) {
         error_state_add(parser_errors, var_tok.line, var_tok.col,
             "Expected loop variable name after 'for ('");
         skip_to_newline(lexer);
         return NULL;
     }
-    if (is_ltng_reserved(var_tok.value)) {
+    if (is_ltng_reserved(var_tok.value) && strcmp(var_tok.value, "in") != 0) {
         error_state_add(parser_errors, var_tok.line, var_tok.col,
             "Cannot use reserved word as loop variable");
         skip_to_newline(lexer);
         return NULL;
     }
 
-    Token from_tok = lexer_next(lexer);
-    if (from_tok.type != TOKEN_FROM) {
-        error_state_add(parser_errors, from_tok.line, from_tok.col,
-            "Expected 'from' in for loop");
+    Token next_tok = lexer_peek(lexer);
+    if (next_tok.type == TOKEN_IN) {
+        /* for-each: for (x in arr) { ... } */
+        lexer_next(lexer); /* consume 'in' */
+        Token arr_tok = lexer_next(lexer);
+        if (arr_tok.type != TOKEN_IDENT && !token_is_name(arr_tok)) {
+            error_state_add(parser_errors, arr_tok.line, arr_tok.col,
+                "Expected array variable name after 'in'");
+            skip_to_newline(lexer);
+            return NULL;
+        }
+        char am[MAX_IDENTIFIER_LEN];
+        mangle_name(arr_tok.value, am, MAX_IDENTIFIER_LEN);
+        if (!symbol_table_has(table, am) || symbol_table_get(table, am) != TYPE_ARRAY) {
+            error_state_add(parser_errors, arr_tok.line, arr_tok.col,
+                "for-in expects an array variable");
+            skip_to_newline(lexer);
+            return NULL;
+        }
+        Token rp = lexer_next(lexer);
+        if (rp.type != TOKEN_RPAREN) {
+            error_state_add(parser_errors, rp.line, rp.col,
+                "Expected ')' after for-in header");
+            skip_to_newline(lexer);
+            return NULL;
+        }
+        Token lb = lexer_next(lexer);
+        if (lb.type != TOKEN_LBRACE) {
+            error_state_add(parser_errors, lb.line, lb.col,
+                "Expected '{' after for-in header");
+            skip_to_newline(lexer);
+            return NULL;
+        }
+        char mangled[MAX_IDENTIFIER_LEN];
+        mangle_name(var_tok.value, mangled, MAX_IDENTIFIER_LEN);
+        Scope *loop_scope = (Scope *)malloc(sizeof(Scope));
+        if (!loop_scope) {
+            error_state_add(parser_errors, var_tok.line, var_tok.col, "Memory allocation failed");
+            return NULL;
+        }
+        scope_init(loop_scope, table, 0);
+        symbol_table_add_local(loop_scope, mangled, TYPE_STRING);
+        const char *cname = symbol_table_get_cname(loop_scope, mangled);
+        const char *acname = symbol_table_get_cname(table, am);
+        ASTNode *node = create_node(NODE_FOR, cname, "");
+        node->var_type = TYPE_STRING;
+        strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
+        node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+        strncpy(node->for_start, acname, MAX_STRING_LEN - 1);
+        node->for_start[MAX_STRING_LEN - 1] = '\0';
+        node->for_step_op = 'E';
+        g_break_depth++;
+        node->body = parse_block(lexer, loop_scope, 1);
+        g_break_depth--;
+        free(loop_scope);
+        (void)kw;
+        return node;
+    }
+
+    if (next_tok.type != TOKEN_FROM) {
+        error_state_add(parser_errors, next_tok.line, next_tok.col,
+            "Expected 'from' or 'in' in for loop");
         skip_to_newline(lexer);
         return NULL;
     }
+    lexer_next(lexer); /* consume 'from' */
 
     /* Start expression */
     char start_expr[MAX_STRING_LEN];
@@ -5095,11 +5711,18 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 symbol_table_set_locked(table, rm, want_locked);
                 return;
             }
-            /* Special: x.push(y) / x.pop() / x.pop(i) - array methods.
+            /* Special: x.push(y) / x.pop() / x.pop(i) / x.insert(i,x) / x.remove(i)
+               / x.sort() / x.reverse() / x.contains(x) / x.index_of(x) - array methods.
                These generate AST nodes handled by codegen. */
             if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
                 (strcmp(mname.value, "push") == 0 ||
-                 strcmp(mname.value, "pop") == 0)) {
+                 strcmp(mname.value, "pop") == 0 ||
+                 strcmp(mname.value, "insert") == 0 ||
+                 strcmp(mname.value, "remove") == 0 ||
+                 strcmp(mname.value, "sort") == 0 ||
+                 strcmp(mname.value, "reverse") == 0 ||
+                 strcmp(mname.value, "contains") == 0 ||
+                 strcmp(mname.value, "index_of") == 0)) {
                 lexer_next(lexer); /* consume ( */
 
                 char rm[MAX_IDENTIFIER_LEN];
@@ -5136,7 +5759,78 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                     node->is_expr = 1;
                     emit(node);
                     return;
-                } else {
+                } else if (strcmp(mname.value, "insert") == 0) {
+                    /* insert(index, value) */
+                    char idx_expr[MAX_STRING_LEN];
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1);
+                    if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ',' after insert index");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume , */
+                    char arg_expr[MAX_STRING_LEN];
+                    VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0);
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ')' after insert argument");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume ) */
+                    ASTNode *node = create_node(NODE_ARRAY_INSERT, rm, idx_expr);
+                    strncpy(node->array_index, arg_expr, MAX_STRING_LEN - 1);
+                    node->array_index[MAX_STRING_LEN - 1] = '\0';
+                    node->var_type = arg_type;
+                    node->is_expr = 1;
+                    emit(node);
+                    return;
+                } else if (strcmp(mname.value, "remove") == 0) {
+                    /* remove(index) */
+                    char idx_expr[MAX_STRING_LEN];
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0);
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ')' after remove index");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume ) */
+                    ASTNode *node = create_node(NODE_ARRAY_REMOVE, rm, idx_expr);
+                    node->var_type = TYPE_STRING;
+                    node->is_expr = 1;
+                    emit(node);
+                    return;
+                } else if (strcmp(mname.value, "sort") == 0) {
+                    /* sort() */
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ')' after sort");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume ) */
+                    ASTNode *node = create_node(NODE_ARRAY_SORT, rm, "");
+                    node->var_type = TYPE_STRING;
+                    node->is_expr = 1;
+                    emit(node);
+                    return;
+                } else if (strcmp(mname.value, "reverse") == 0) {
+                    /* reverse() */
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line,
+                            lexer_peek(lexer).col, "Expected ')' after reverse");
+                        skip_to_newline(lexer);
+                        return;
+                    }
+                    lexer_next(lexer); /* consume ) */
+                    ASTNode *node = create_node(NODE_ARRAY_REVERSE, rm, "");
+                    node->var_type = TYPE_STRING;
+                    node->is_expr = 1;
+                    emit(node);
+                    return;
+                } else if (strcmp(mname.value, "pop") == 0) {
                     /* pop() or pop(index) */
                     if (lexer_peek(lexer).type == TOKEN_RPAREN) {
                         /* pop() - no args */
@@ -5163,6 +5857,17 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                         emit(node);
                         return;
                     }
+                } else {
+                    /* contains / index_of used as statements - result discarded,
+                       treat as no-op but consume tokens for sync */
+                    if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                        lexer_next(lexer); /* consume ) */
+                    } else {
+                        char dummy[MAX_STRING_LEN];
+                        collect_expression(lexer, table, dummy, sizeof(dummy), 1, 0);
+                        if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
+                    }
+                    return;
                 }
             }
             if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&

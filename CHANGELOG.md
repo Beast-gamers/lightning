@@ -14,6 +14,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Initial support for `tofloat(...)` and `tochar(...)` conversion-function recognition and partial handling in expression/type contexts.
 - Support for explicit type declarations `let x = float` and `let x = char` (with default initialization).
 - Phase 2 semantic/scope improvements: declarations allowed in control-flow blocks, switch cases, and nested blocks; variable shadowing support; inline block-local declarations in codegen; scope-aware unique C names for shadowed declarations.
+- Phase 3 arrays and collections: dynamic array storage (`char **data` + `len`/`cap` with automatic reallocation); array methods `push`, `pop`, `pop(index)`, `insert`, `remove`, `contains`, `index_of`, `sort`, `reverse`; `length` property; array copy/assignment in `let`/`set` forms (`a`, `a.copy()`, `a.slice(...)`); for-each iteration (`for (x in arr)`); 1-based positive / negative-from-end / 0-invalid indexing preserved; numeric-aware `sort` for fully numeric elements; `write(arr.length)` reports numeric length; methods usable in `write()` and as statements.
 
 ### Changed
 - Type tracking now distinguishes float values/literals as `TYPE_FLOAT` in key parsing/inference paths (previously merged to int in several cases).

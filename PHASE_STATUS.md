@@ -129,6 +129,46 @@
 - Bare `{}` blocks (not attached to control constructs/functions) are not part of current language syntax; nested scoping is verified via supported block constructs.
 - Scope/lifetime semantics are implemented for the current string-buffer runtime model; further hardening may be needed as later phases change runtime representations.
 
-## Phases 3–13
+## Phase 3 — Arrays and collections
+
+**Status:** Complete (implemented and regression-tested; key limitations reduced)
+
+### Implemented
+- **Dynamic storage:** arrays use `char **data` + `int len` + `int cap` with automatic growth/reallocation (replaces fixed-size/static patterns in emitted code paths).
+- **Runtime helpers:** `_ltng_arr_new`, `_ltng_arr_ensure`, `_ltng_arr_set_elem`, `_ltng_arr_get`, `_ltng_arr_set`, `_ltng_arr_push`, `_ltng_arr_pop`, `_ltng_arr_pop_index`, `_ltng_arr_insert`, `_ltng_arr_remove`, `_ltng_arr_contains`, `_ltng_arr_index_of`, `_ltng_arr_reverse`, `_ltng_arr_sort`, `_ltng_arr_copy`, `_ltng_arr_slice`, `_ltng_arr_free`, `_ltng_arr_strdup`.
+- **Indexing semantics preserved:** 1-based positive indices, negative indices count from end, index `0` invalid; out-of-bounds/invalid reads return empty string (existing behavior preserved).
+- **Core API:** `get`/`set` via indexing (`arr[i]`, `set arr[i]=...`), `length`, `push(value)`, `pop()`, `pop(index)`, `insert(index, value)`, `remove(index)`, `contains(value)`, `index_of(value)`, `sort()`, `reverse()`.
+- **Copy/slice/assignment:** `let b = a`, `let b = a.copy()`, `let b = a.slice(start, end)`, and `set b = a`, `set b = a.copy()`, `set b = a.slice(start, end)` for existing array variables (1-based start, exclusive end; negative indices supported).
+- **Iteration:** index-based iteration via `length`/loops and **for-each** syntax `for (x in arr) { ... }`.
+- **Usage contexts:** array methods/properties supported in statements and in `write(...)` expressions where applicable; `.length` usable in numeric comparisons/conditions and `for` ranges.
+- **Bug fixes (discovered during validation):** added missing `_ltng_arr_set` runtime helper for array element assignment; fixed `_ltng_arr_copy`/`_ltng_arr_slice` cleanup to avoid leaks/double-frees when replacing array contents.
+- **Compatibility:** existing multidimensional array behavior and prior `test_arrays` corpus preserved.
+
+### Test results
+- Full suite: **PASS=111 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
+- Existing regression: `code/test_arrays.ltng` passes with dynamic array backend.
+- Phase 3/array coverage: `tests/runtime/phase3_arrays.ltng` (+ `.expected`), `code/array_test.ltng` (comprehensive native test including copy/slice in `set`, for-each, edge cases).
+
+### Changed files
+- `compiler/src/ltng.h`
+- `compiler/src/lexer.c`
+- `compiler/src/parser.c`
+- `compiler/src/codegen.c`
+- `compiler/ltng` (rebuilt)
+- `documentation.md`
+- `CHANGELOG.md`
+- `PHASE_STATUS.md`
+- `tests/runtime/phase3_arrays.ltng`
+- `tests/runtime/phase3_arrays.expected`
+- `code/array_test.ltng`
+
+### Notes / remaining limitations
+- **Arrays of objects / jagged nested arrays:** not supported as first-class dynamic collections due to the current string-buffer/object runtime model; rectangular multidimensional arrays remain supported. (Likely requires broader runtime/object-model changes in later phases.)
+- **`copy()` / `slice()` as general array-producing expressions:** supported in `let`/`set` array assignment forms, but not in all expression contexts (arrays are not first-class expression values in the current runtime).
+- **Element semantics:** values remain string-buffer formatted. `sort` now uses numeric-aware comparison when both compared elements are fully numeric (otherwise string comparison), improving numeric array sorting; `contains`/`index_of` still compare formatted string values. Full value/type semantics remain tied to the runtime/type-system model.
+- **Memory validation:** runtime helpers free/replace elements on mutation/copy/slice paths, but no sanitizer/valgrind/leak-stress runs were recorded in this environment.
+- **Dedicated aliasing (shared storage identity):** current array assignment/copy operations use copy semantics for safety in the existing ownership model; true shared-reference aliasing semantics would require deeper runtime/ownership redesign.
+
+## Phases 4–13
 
 Pending. Each phase will be updated with: implemented features, changed files, test results (positive/negative/boundary/interaction/regression/memory where applicable), discovered bugs, and remaining limitations. No phase marked complete until all completion criteria are satisfied.

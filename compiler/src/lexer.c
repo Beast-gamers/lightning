@@ -211,6 +211,8 @@ static void lexer_read_identifier(Lexer *lexer, Token *token) {
         token->type = TOKEN_TO;
     } else if (strcmp(token->value, "step") == 0) {
         token->type = TOKEN_STEP;
+    } else if (strcmp(token->value, "in") == 0) {
+        token->type = TOKEN_IN;
     } else if (strcmp(token->value, "function") == 0) {
         token->type = TOKEN_FUNCTION;
     } else if (strcmp(token->value, "return") == 0) {
