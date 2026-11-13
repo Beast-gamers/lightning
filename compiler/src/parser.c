@@ -83,14 +83,6 @@ static void obj_build_all(ObjSchema *s) {
     }
 }
 
-static int is_object_var(SymbolTable *table, const char *mangled) {
-    /* check symbol table type OR registry */
-    if (symbol_table_has(table, mangled) && symbol_table_get(table, mangled) == TYPE_OBJECT) return 1;
-    if (obj_lookup(mangled)) return 1;
-    return 0;
-}
-
-
 static void register_function(const char *name, int param_count) {
     if (g_func_count >= MAX_FUNCS) return;
     char mangled[MAX_IDENTIFIER_LEN];
@@ -623,70 +615,7 @@ static int has_operator_ahead(Lexer *lexer) {
 }
 
 
-static void transform_string_concat(char *expr, int size) {
-    if (strstr(expr, "+") == NULL) return;
-    char parts[32][512];
-    int nparts = 0;
-    char tmp[2048];
-    strncpy(tmp, expr, 2047);
-    tmp[2047] = 0;
-    char *start = tmp;
-    for (char *p = tmp; *p && nparts < 32; p++) {
-        if (*p == '"') {
-            p++;
-            while (*p && *p != '"') {
-                if (*p == '\\') p++;
-                p++;
-            }
-            continue;
-        }
-        if (*p == '\'') {
-            p++;
-            while (*p && *p != '\'') {
-                if (*p == '\\') p++;
-                p++;
-            }
-            continue;
-        }
-        if (*p == '+') {
-            *p = 0;
-            char *s = start;
-            while (*s == ' ' || *s == '\t') s++;
-            char *e = s + strlen(s) - 1;
-            while (e >= s && (*e == ' ' || *e == '\t')) {
-                *e = 0;
-                e--;
-            }
-            strncpy(parts[nparts++], s, 511);
-            parts[nparts-1][511] = 0;
-            start = p + 1;
-        }
-    }
-    {
-        char *s = start;
-        while (*s == ' ' || *s == '\t') s++;
-        char *e = s + strlen(s) - 1;
-        while (e >= s && (*e == ' ' || *e == '\t')) {
-            *e = 0;
-            e--;
-        }
-        strncpy(parts[nparts++], s, 511);
-        parts[nparts-1][511] = 0;
-    }
-    char fmt[1024] = {0};
-    for (int i = 0; i < nparts; i++) {
-        strcat(fmt, "%s");
-    }
-    char result[2048] = {0};
-    snprintf(result, 2047, "({ char _ltc[512]; snprintf(_ltc,512,\"%s\",", fmt);
-    for (int i = 0; i < nparts; i++) {
-        strcat(result, parts[i]);
-        if (i < nparts - 1) strcat(result, ",");
-    }
-    strcat(result, "); _ltc; })");
-    strncpy(expr, result, size - 1);
-    expr[size - 1] = 0;
-}
+/* (reserved for future string-concat transform) */
 
 
 
@@ -872,8 +801,9 @@ static int is_add_operand(const char *p, char *content, int content_size) {
 }
 
 static int optimize_add_concat(char *out, int out_size, int pos) {
+    (void)pos;
     char result[4096] = {0};
-    char *src = out;
+    const char *src = out;
     char *dst = result;
     int replaced = 0;
 
@@ -954,6 +884,7 @@ static ASTNode *find_function_ast_by_name(const char *name);
 static VarType infer_function_return_type(const char *fname);
 
 static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
+    (void)table;
     /* The caller has already consumed the opening '['. Parse the remaining
        elements/nested arrays until the matching ']'. Arrays are stored as a
        flat, row-major list of values. Arrays may have any number of dimensions. */
@@ -1211,6 +1142,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             if (has_digit) is_num_lit = 1;
                         }
                     }
+                    (void)num_has_dot;
 
                     /* Helper: check if inner is a simple quoted string literal */
                     int is_simple_str_lit = 0;
@@ -1482,6 +1414,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     continue;
                 } else {
                 collect_ident_var:
+                    ; /* C99: declaration after label */
                     char mangled[MAX_IDENTIFIER_LEN];
                     mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                     if (!symbol_table_has(table, mangled)) {
@@ -1515,6 +1448,10 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             case TYPE_BOOL:
                                 pos += snprintf(out + pos, out_size - pos,
                                     "(%s[0]=='t'?1:0)", cname);
+                                break;
+                            case TYPE_NULL:
+                            default:
+                                pos += snprintf(out + pos, out_size - pos, "%s", cname);
                                 break;
                             case TYPE_ARRAY:
                                 /* Check for .length property and array method calls */
@@ -2358,7 +2295,7 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                         } else {
                             /* General expression - parse and use result */
                             char check[MAX_STRING_LEN];
-                            VarType etype = parse_expression_from_string(vname, table, check, sizeof(check));
+                            (void)parse_expression_from_string(vname, table, check, sizeof(check));
                             rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", check);
                         }
                     }
@@ -3637,6 +3574,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 case TYPE_BOOL: value.type = TOKEN_INT_LIT; strcpy(value.value, "false"); break;
                 case TYPE_OBJECT: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
                 case TYPE_ARRAY: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
+                case TYPE_NULL:
+                default: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
             }
             value.line = let_tok.line;
             value.col = equals.col;
@@ -4548,7 +4487,7 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                         if (ctype == TYPE_STRING)
                             pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "\"\"");
                         else
-                            pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "'\0'");
+                            pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "'\\0'");
                     }
                 } else if (ct.type == TOKEN_IDENT) {
                     if (is_bool_value(ct.value)) {
@@ -5601,6 +5540,14 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
 
 static void parse_statement(Lexer *lexer, SymbolTable *table) {
     Token token = lexer_peek(lexer);
+    if (token.type == TOKEN_LBRACE) {
+        /* Bare block: { ... } introduces a nested scope. */
+        lexer_next(lexer); /* consume { */
+        ASTNode *node = create_node(NODE_BLOCK, "", "");
+        node->body = parse_block(lexer, table, 0);
+        emit(node);
+        return;
+    }
     if (token.type == TOKEN_PLUS_PLUS || token.type == TOKEN_MINUS_MINUS) {
         transform_inc_dec_stmt(lexer, table);
         return;
@@ -5628,7 +5575,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 return;
             }
             lexer->current = saved;
-            Token fname = lexer_next(lexer);
+            lexer_next(lexer); /* consume fname */
             lexer_next(lexer); /* ( */
             ASTNode *call = create_node(NODE_CALL, "", "");
             strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);

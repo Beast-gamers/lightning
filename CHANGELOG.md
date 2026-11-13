@@ -13,7 +13,8 @@ All notable changes to the Lightning project in this development effort are docu
 - `tests/runtime/phase1_types_smoke.ltng`: smoke coverage for distinct type reporting and basic conversions.
 - Initial support for `tofloat(...)` and `tochar(...)` conversion-function recognition and partial handling in expression/type contexts.
 - Support for explicit type declarations `let x = float` and `let x = char` (with default initialization).
-- Phase 2 semantic/scope improvements: declarations allowed in control-flow blocks, switch cases, and nested blocks; variable shadowing support; inline block-local declarations in codegen; scope-aware unique C names for shadowed declarations.
+- `limitations.md`: consolidated limitations/gaps for Phases 0–3.
+- Phase 2 semantic/scope improvements: declarations allowed in control-flow blocks, switch cases, nested blocks, and standalone bare `{ ... }` blocks; variable shadowing support; inline block-local declarations in codegen; scope-aware unique C names for shadowed declarations.
 - Phase 3 arrays and collections: dynamic array storage (`char **data` + `len`/`cap` with automatic reallocation); array methods `push`, `pop`, `pop(index)`, `insert`, `remove`, `contains`, `index_of`, `sort`, `reverse`; `length` property; array copy/assignment in `let`/`set` forms (`a`, `a.copy()`, `a.slice(...)`); for-each iteration (`for (x in arr)`); 1-based positive / negative-from-end / 0-invalid indexing preserved; numeric-aware `sort` for fully numeric elements; `write(arr.length)` reports numeric length; methods usable in `write()` and as statements.
 
 ### Changed
@@ -27,6 +28,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Compiler now returns a non-zero exit code when backend C compilation fails (instead of reporting failure and exiting successfully in some paths).
 - Fixed object-literal `set` assignments to emit update semantics (not redeclarations) compatible with block-scope inline declaration behavior.
 - Corrected declaration/reference handling for block-scoped and shadowed variables in key parse/codegen paths.
+- Addressed several compiler-source warnings in feasible paths (unused functions/parameters/variables, missing switch/default handling in key cases, label/declaration formatting issue, embedded-NUL format issue, const-correctness in helper path, and increased output/path buffer sizing in `main.c`); format-truncation warnings remain in complex expression/codegen formatting paths.
 
 ### Compatibility / Breaking changes
 - `typeof` results are more precise for float values in covered cases (e.g. `3.14` now reports `float` instead of `int`). Existing programs/tests relying on previous merged reporting may need updates.

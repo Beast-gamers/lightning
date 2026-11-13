@@ -19,7 +19,7 @@ These limitations were identified in the initial audit and remain relevant acros
 ### Compiler implementation
 - **Integrated parse/semantic pipeline:** semantic analysis and type tracking are largely integrated into parsing/expression collection rather than separated into fully independent, unit-testable stages.
 - **Complex expression/codegen paths:** string-oriented expression collection and specialized code generation paths are fragile for new constructs and require careful regression testing.
-- **Build warnings remain:** compiler builds can emit warnings (e.g. format truncation, unused functions/switch handling in some cases) that have not all been eliminated.
+- **Build warnings partially addressed:** several compiler-source warnings were fixed (unused functions/parameters/variables, missing switch/default handling in key paths, label/declaration issues, embedded-NUL format issue, const-correctness in a helper path, and path buffer sizing in `main.c`). However, many format-truncation warnings still remain in complex expression/codegen formatting paths and require careful refactoring to eliminate safely.
 - **Generated C safety/visibility:** normal compile paths suppress backend C warnings in some workflows; generated code and helper usage still need ongoing safety/overflow/truncation auditing.
 
 ### Memory and ownership
@@ -46,7 +46,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Baseline coverage breadth is limited:** infrastructure and initial smokes/regression/negative coverage exist, but category-specific suites (lexer/parser/semantic/runtime/codegen/e2e/native/adversarial) require ongoing expansion.
 - **Negative classification edge cases:** some corpus files require special handling (e.g. `test_errors2.ltng` is comment-only/valid and excluded from negative classification).
 - **Environment/workspace execution constraints:** compiler binaries may require copying to an executable temp location (e.g. `/tmp/opencode/ltng`) in some environments.
-- **Build warnings not addressed in Phase 0:** warnings observed during builds were deferred to later phases where appropriate.
+- **Build warnings not fully eliminated:** some compiler-source warnings were addressed in later fixes, but format-truncation warnings in complex paths remain and are tracked as cross-cutting technical debt.
 
 ---
 
@@ -78,10 +78,12 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ## Phase 2 — Semantic analysis and scopes
 
-**Status:** Complete (implemented and regression-tested)
+**Status:** Complete (implemented and regression-tested; bare blocks now supported)
+
+### Implemented (additional)
+- **Bare blocks:** standalone `{ ... }` blocks are supported as scoped blocks (with local declarations/shadowing consistent with existing block-scope semantics).
 
 ### Limitations / notes
-- **Bare block syntax not supported:** standalone `{ ... }` blocks (not attached to control constructs/functions) are not part of current language syntax; nested scoping is validated through supported constructs.
 - **Scope/lifetime semantics tied to current runtime model:** block-scoped declarations and lifetimes are implemented within the existing string-buffer/runtime representation; further hardening may be required as later phases change runtime representations.
 - **No guarantee of full semantic pass separation:** semantic checks remain closely integrated with parsing/code generation architecture.
 - **Advanced scoping features not addressed in this phase:** closures/capture semantics and related lifetime/ownership concerns are outside Phase 2 scope and remain pending for later phases.

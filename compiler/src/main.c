@@ -125,15 +125,15 @@ int main(int argc, char *argv[]) {
         /* Create compiled folder in the directory containing the source file */
         char *src_copy = strdup(argv[file_arg]);
         char *src_dir = dirname(src_copy);
-        char compiled_dir[1024];
+        char compiled_dir[2048];
         snprintf(compiled_dir, sizeof(compiled_dir), "%s/compiled", src_dir);
         mkdir(compiled_dir, 0755);
         free(src_copy);
-        output_name = malloc(1024);
+        output_name = malloc(4096);
         if (emit_c) {
-            snprintf(output_name, 1024, "%s/%s.c", compiled_dir, base);
+            snprintf(output_name, 4096, "%s/%s.c", compiled_dir, base);
         } else {
-            snprintf(output_name, 1024, "%s/%s", compiled_dir, base);
+            snprintf(output_name, 4096, "%s/%s", compiled_dir, base);
         }
     }
 

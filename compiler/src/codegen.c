@@ -904,6 +904,13 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             fprintf(out, "_ltng_arr_reverse(%s, %s_len);\n", arrname, node->name);
             break;
         }
+        case NODE_BLOCK:
+            pad(out, indent);
+            fprintf(out, "{\n");
+            if (node->body) emit_block(out, node->body, table, indent + 1);
+            pad(out, indent);
+            fprintf(out, "}\n");
+            break;
         case NODE_READ:
             codegen_read(out, node, indent);
             break;

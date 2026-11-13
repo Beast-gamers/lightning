@@ -140,7 +140,8 @@ typedef enum {
     NODE_ARRAY_COPY,
     NODE_ARRAY_SLICE,
     NODE_ARRAY_SORT,
-    NODE_ARRAY_REVERSE
+    NODE_ARRAY_REVERSE,
+    NODE_BLOCK
 } NodeType;
 
 typedef struct ASTNode {

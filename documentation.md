@@ -67,6 +67,19 @@ write("world")
 
 One statement per line is the convention.
 
+### Blocks
+
+Standalone blocks `{ ... }` are supported and create a nested scope. Variables declared inside a block are local to that block and can shadow variables from outer scopes.
+
+```
+let x = 1
+{
+    let x = 2
+    write(x)  # 2
+}
+write(x)      # 1
+```
+
 ---
 
 ## Output

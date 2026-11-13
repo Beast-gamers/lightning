@@ -92,7 +92,7 @@
 - Fixed object-literal handling for `set` assignments (emit assignment/update semantics instead of redeclaration) to remain compatible with inline declaration changes.
 
 ### Verified
-- Declarations in loops/conditionals/switch cases/nested blocks: supported and tested.
+- Declarations in loops/conditionals/switch cases/nested blocks and standalone bare `{ ... }` blocks: supported and tested.
 - Shadowing: inner declarations shadow outer variables and outer values remain intact after block exit.
 - Same-scope duplicate declarations: rejected.
 - Undefined variable usage: rejected.
@@ -100,18 +100,11 @@
 - Existing language behavior: preserved across full regression suite.
 
 ### Test results
-- Full suite: **PASS=109 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`)
-- New Phase 2 tests:
-  - `tests/semantic/phase2_scope_block_let.ltng` (pass)
-  - `tests/semantic/phase2_shadowing.ltng` (pass)
-  - `tests/semantic/phase2_nested_blocks.ltng` (pass)
-  - `tests/semantic/phase2_switch_decl.ltng` (pass)
-  - `tests/semantic/phase2_duplicate_same_scope_neg.ltng` (expected fail, pass)
-  - `tests/semantic/phase2_const_enforcement_neg.ltng` (expected fail, pass)
-  - `tests/semantic/phase2_undefined_neg.ltng` (expected fail, pass)
+- Full suite: **PASS=111 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`)
+- Phase 2 semantic/runtime checks continue to pass (including block scope, nested scopes, shadowing, switch-case declarations, duplicate/const/undefined negatives).
 
 ### Changed files
-- `compiler/src/ltng.h`
+- `compiler/src/ltng.h` (added `NODE_BLOCK`)
 - `compiler/src/parser.c`
 - `compiler/src/codegen.c`
 - `compiler/src/main.c`
@@ -126,7 +119,6 @@
 - `CHANGELOG.md`
 
 ### Notes / limitations
-- Bare `{}` blocks (not attached to control constructs/functions) are not part of current language syntax; nested scoping is verified via supported block constructs.
 - Scope/lifetime semantics are implemented for the current string-buffer runtime model; further hardening may be needed as later phases change runtime representations.
 
 ## Phase 3 — Arrays and collections
