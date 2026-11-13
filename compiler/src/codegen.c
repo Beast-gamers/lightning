@@ -552,6 +552,35 @@ static void codegen_read(FILE *out, ASTNode *node, int indent) {
 }
 
 static void codegen_set(FILE *out, ASTNode *node, int indent) {
+    if (node->var_type == TYPE_ARRAY && !node->is_expr) {
+        /* Reassign array literal: clear existing elements and push new ones */
+        char arrname[MAX_IDENTIFIER_LEN];
+        snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+        pad(out, indent);
+        fprintf(out, "for (int _i = 0; _i < %s_len; _i++) { if (%s[_i]) free(%s[_i]); %s[_i] = NULL; }\n",
+            node->name, arrname, arrname, arrname);
+        pad(out, indent);
+        fprintf(out, "%s_len = 0;\n", node->name);
+        const char *val = node->value;
+        int elem_idx = 0;
+        while (*val && elem_idx < node->array_elem_count) {
+            if (*val == '|') val++;
+            const char *end = val;
+            while (*end && *end != '|') end++;
+            int vlen = (int)(end - val);
+            pad(out, indent);
+            fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, \"",
+                arrname, node->name, node->name);
+            for (int i = 0; i < vlen; i++) {
+                if (val[i] == '"' || val[i] == '\\') fputc('\\', out);
+                fputc(val[i], out);
+            }
+            fprintf(out, "\");\n");
+            val = end;
+            elem_idx++;
+        }
+        return;
+    }
     if (node->var_type == TYPE_OBJECT && !node->is_expr) {
         ObjSchema *sc = obj_lookup(node->name);
         if (sc) {

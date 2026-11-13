@@ -711,8 +711,13 @@ static void transform_string_multiply(char *expr, int size) {
         if (!hasdig) left_is_num = 0;
     }
     if (left_is_num && (right[0] == '"' || (right[0] == '\'' && strlen(right) >= 3))) {
-        snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", right, count_expr);
+        /* number * "string" */
+        snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", right, left);
+    } else if (right_is_num && (left[0] == '"' || (left[0] == '\'' && strlen(left) >= 3))) {
+        /* "string" * number */
+        snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", left, right);
     } else {
+        /* variable cases: assume left is string, right is count */
         snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", left, count_expr);
     }
     strncpy(expr, result, size - 1);
@@ -4233,9 +4238,31 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
-    /* Array assignment/copy/slice on existing array variable:
-       set a = b, set a = b.copy(), set a = b.slice(s,e) */
+    /* Array assignment/copy/slice/literal on existing array variable:
+       set a = b, set a = b.copy(), set a = b.slice(s,e), set a = [1,2,3] */
     if (symbol_table_get(table, mangled) == TYPE_ARRAY) {
+        if (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+            lexer_next(lexer); /* consume [ */
+            ASTNode *arr = create_node(NODE_ARRAY_LIT, mangled, "");
+            if (!parse_array_literal(lexer, table, arr)) {
+                error_state_add(parser_errors, set_tok.line, set_tok.col,
+                    "Invalid array literal");
+                skip_to_newline(lexer);
+                return;
+            }
+            if (!check_set_type_immutable(table, mangled, TYPE_ARRAY, set_tok.line, set_tok.col, lexer))
+                return;
+            symbol_table_set_array_dims(table, mangled, arr->array_dim_count, arr->array_dims);
+            ASTNode *node = create_node(NODE_SET, cname, arr->value);
+            node->var_type = TYPE_ARRAY;
+            node->array_dim_count = arr->array_dim_count;
+            node->array_dims = malloc(arr->array_dim_count * sizeof(int));
+            for (int d = 0; d < arr->array_dim_count; d++) node->array_dims[d] = arr->array_dims[d];
+            node->array_elem_count = arr->array_elem_count;
+            node->is_expr = 0;
+            emit(node);
+            return;
+        }
         Token src_tok = lexer_peek(lexer);
         if (src_tok.type == TOKEN_IDENT && !is_type_keyword(src_tok.value) && !is_bool_value(src_tok.value)) {
             char sm[MAX_IDENTIFIER_LEN];
