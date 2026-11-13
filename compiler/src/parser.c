@@ -4638,7 +4638,6 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
 
 static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
     Token kw = lexer_next(lexer);
-    (void)kw;
 
     Token lp = lexer_next(lexer);
     if (lp.type != TOKEN_LPAREN) {
@@ -4668,6 +4667,7 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
     }
 
     ASTNode *sw = create_node(NODE_SWITCH, "", cond);
+    sw->line = kw.line; sw->col = kw.col;
     sw->var_type = ctype;
     sw->is_expr = 1;
     ASTNode *last_case = NULL;
@@ -4963,6 +4963,7 @@ static ASTNode *parse_while(Lexer *lexer, SymbolTable *table) {
     }
 
     ASTNode *node = create_node(NODE_WHILE, "", cond);
+    node->line = kw.line; node->col = kw.col;
     node->var_type = ctype;
     node->is_expr = 1;
     g_break_depth++;
@@ -4984,6 +4985,7 @@ static ASTNode *parse_do_while(Lexer *lexer, SymbolTable *table) {
     }
 
     ASTNode *node = create_node(NODE_DO_WHILE, "", "");
+    node->line = kw.line; node->col = kw.col;
     g_break_depth++;
     node->body = parse_block(lexer, table, 1);
     g_break_depth--;
@@ -5100,6 +5102,7 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
         const char *cname = symbol_table_get_cname(loop_scope, mangled);
         const char *acname = symbol_table_get_cname(table, am);
         ASTNode *node = create_node(NODE_FOR, cname, "");
+    node->line = kw.line; node->col = kw.col;
         node->var_type = TYPE_STRING;
         strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
         node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
@@ -5200,6 +5203,7 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
     const char *cname = symbol_table_get_cname(loop_scope, mangled);
 
     ASTNode *node = create_node(NODE_FOR, cname, "");
+    node->line = kw.line; node->col = kw.col;
     node->var_type = var_type;
     strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
     node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
@@ -5235,6 +5239,7 @@ static ASTNode *parse_else_chain(Lexer *lexer, SymbolTable *table) {
             return NULL;
         }
         ASTNode *else_node = create_node(NODE_ELSE, "", "");
+        else_node->line = t.line; else_node->col = t.col;
         else_node->body = parse_block(lexer, table, 1);
         return else_node;
     }
@@ -5279,6 +5284,7 @@ static ASTNode *parse_if_core(Lexer *lexer, SymbolTable *table) {
     }
 
     ASTNode *node = create_node(NODE_IF, "", cond);
+    node->line = kw.line; node->col = kw.col;
     node->var_type = ctype;
     node->is_expr = 1;
     node->body = parse_block(lexer, table, 1);
@@ -5547,6 +5553,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 snprintf(expr, sizeof(expr), "\"%s\"", next.value);
                 etype = TYPE_STRING;
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
+    node->line = kw.line; node->col = kw.col;
                 node->var_type = etype;
                 node->is_expr = 1;
                 emit(node);
@@ -5632,6 +5639,7 @@ static void parse_exit(Lexer *lexer, SymbolTable *table) {
         return;
     }
     ASTNode *node = create_node(NODE_EXIT, "", expr);
+    node->line = kw.line; node->col = kw.col;
     node->var_type = etype;
     node->is_expr = 1;
     emit(node);
@@ -5775,6 +5783,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
         /* Bare block: { ... } introduces a nested scope. */
         lexer_next(lexer); /* consume { */
         ASTNode *node = create_node(NODE_BLOCK, "", "");
+        node->line = token.line; node->col = token.col;
         node->body = parse_block(lexer, table, 0);
         emit(node);
         return;
@@ -5809,6 +5818,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
             lexer_next(lexer); /* consume fname */
             lexer_next(lexer); /* ( */
             ASTNode *call = create_node(NODE_CALL, "", "");
+            call->line = t.line; call->col = t.col;
             strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
             /* parse args */
             ASTNode *args = NULL, *alast = NULL;
@@ -6125,6 +6135,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 "break statement not within a loop");
         } else {
             ASTNode *node = create_node(NODE_BREAK, "", "");
+            node->line = token.line; node->col = token.col;
             emit(node);
         }
     } else if (token.type == TOKEN_CONTINUE) {
@@ -6134,6 +6145,7 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 "continue statement not within a loop");
         } else {
             ASTNode *node = create_node(NODE_CONTINUE, "", "");
+            node->line = token.line; node->col = token.col;
             emit(node);
         }
     } else {
