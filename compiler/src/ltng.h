@@ -158,6 +158,8 @@ typedef struct ASTNode {
     char for_end[MAX_STRING_LEN];
     char for_step[MAX_STRING_LEN];
     char for_step_op; /* '+', '-', '*', '/' or 0 for default (+) */
+    int line;
+    int col;
     struct ASTNode *body;
     struct ASTNode *orelse;
     struct ASTNode *cases;
@@ -251,6 +253,13 @@ Token lexer_next(Lexer *lexer);
 Token lexer_peek(Lexer *lexer);
 
 Program *parse(Lexer *lexer, ErrorState *errors);
+typedef struct {
+    FILE *file;
+    const char *src_file;
+    int enabled;
+} CodegenLog;
+
+void codegen_set_log(CodegenLog *log);
 void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors);
 void codegen_free(Program *program);
 

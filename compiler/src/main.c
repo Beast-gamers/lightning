@@ -4,6 +4,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 
 static int mkdir_p(const char *path) {
     char tmp[4096];
@@ -71,7 +72,7 @@ static char *get_basename(const char *path) {
 static void run_cmd_capture(const char *cmd, const char *label) {
     FILE *fp = popen(cmd, "r");
     if (!fp) {
-        fprintf(stderr, "%s: failed to run command\n", label);
+        fprintf(stderr, "[%s] failed to run command\n", label);
         return;
     }
     char buf[4096];
@@ -85,10 +86,19 @@ static void run_cmd_capture(const char *cmd, const char *label) {
     }
     int status = pclose(fp);
     if (status != 0) {
-        fprintf(stderr, "%s exited with status %d\n", label, status);
+        fprintf(stderr, "[%s] exited with status %d\n", label, status);
     } else if (!any) {
-        fprintf(stderr, "%s: ok\n", label);
+        fprintf(stderr, "[%s] ok\n", label);
     }
+}
+
+static void log_stage(const char *stage, const char *msg) {
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+    char ts[32];
+    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_now);
+    fprintf(stderr, "[%s] [%s] %s\n", ts, stage, msg);
 }
 
 int main(int argc, char *argv[]) {
@@ -138,6 +148,9 @@ int main(int argc, char *argv[]) {
     char debug_c[4096] = "";
     char debug_src[4096] = "";
     char debug_log[4096] = "";
+    char debug_compiler_log[4096] = "";
+    FILE *compiler_log_fp = NULL;
+    CodegenLog cglog = {0};
     if (debug) {
         snprintf(debug_dir, sizeof(debug_dir), "%s/debug/%s", src_dir, base);
         mkdir_p(debug_dir);
@@ -145,7 +158,15 @@ int main(int argc, char *argv[]) {
         snprintf(debug_ir, sizeof(debug_ir), "%s/intermediete.ltng_ir", debug_dir);
         snprintf(debug_c, sizeof(debug_c), "%s/emitted.c", debug_dir);
         snprintf(debug_log, sizeof(debug_log), "%s/logs.txt", debug_dir);
+        snprintf(debug_compiler_log, sizeof(debug_compiler_log), "%s/compiler_log.txt", debug_dir);
         copy_file(argv[file_arg], debug_src);
+        compiler_log_fp = fopen(debug_compiler_log, "w");
+        if (compiler_log_fp) {
+            cglog.file = compiler_log_fp;
+            cglog.src_file = argv[file_arg];
+            cglog.enabled = 1;
+            codegen_set_log(&cglog);
+        }
         log_fd = open(debug_log, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (log_fd >= 0) {
             orig_stdout_fd = dup(STDOUT_FILENO);
@@ -155,17 +176,23 @@ int main(int argc, char *argv[]) {
             setvbuf(stdout, NULL, _IONBF, 0);
             setvbuf(stderr, NULL, _IONBF, 0);
         }
+        log_stage("start", "debug session started");
+        fprintf(stderr, "[info] source=%s\n", argv[file_arg]);
+        fprintf(stderr, "[info] debug_dir=%s\n", debug_dir);
     }
 
+    if (debug) log_stage("read", "reading source");
     char *source = read_file(argv[file_arg]);
 
     ErrorState errors;
     error_state_init(&errors, source, argv[file_arg], check_only);
 
+    if (debug) log_stage("lex", "tokenizing");
     Lexer lexer;
     lexer_init(&lexer, source);
     lexer_tokenize(&lexer, &errors);
 
+    if (debug) log_stage("parse", "parsing");
     Program *program = parse(&lexer, &errors);
 
     if (error_state_has_errors(&errors)) {
@@ -174,8 +201,10 @@ int main(int argc, char *argv[]) {
         codegen_free(program);
         free(src_copy);
         free(base);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 1;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 1;
     }
 
     char ir_path[4096];
@@ -188,9 +217,12 @@ int main(int argc, char *argv[]) {
         free(source);
         codegen_free(program);
         free(base);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 1;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 1;
     }
+    if (debug) log_stage("ir", "writing intermediate representation");
     ir_write(program, ir_out);
     fclose(ir_out);
     if (debug && debug_ir[0]) copy_file(ir_path, debug_ir);
@@ -202,8 +234,10 @@ int main(int argc, char *argv[]) {
         free(source);
         codegen_free(program);
         free(base);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 0;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 0;
     }
 
     char tmp_c[512];
@@ -216,12 +250,16 @@ int main(int argc, char *argv[]) {
         free(source);
         codegen_free(program);
         free(base);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 1;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 1;
     }
 
+    if (debug) log_stage("codegen", "generating C code");
     codegen(program, &program->symbol_table, out, &errors);
     fclose(out);
+    if (debug) log_stage("codegen", "C generation complete");
     if (debug && debug_c[0]) copy_file(tmp_c, debug_c);
 
     if (error_state_has_errors(&errors)) {
@@ -232,8 +270,10 @@ int main(int argc, char *argv[]) {
         free(source);
         codegen_free(program);
         free(base);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 1;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 1;
     }
 
     char *output_name;
@@ -288,13 +328,20 @@ int main(int argc, char *argv[]) {
         codegen_free(program);
         free(base);
         free(output_name);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 0;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 0;
     }
 
     char cmd[4096];
-    snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\" 2>&1", cc_cmd, output_name, tmp_c);
+    if (debug) {
+        snprintf(cmd, sizeof(cmd), "%s -static -o \"%s\" \"%s\" 2>&1", cc_cmd, output_name, tmp_c);
+    } else {
+        snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\" 2>&1", cc_cmd, output_name, tmp_c);
+    }
 
+    if (debug) log_stage("cc", "invoking C compiler");
     /* Run compiler and capture output */
     FILE *cfp = popen(cmd, "r");
     if (!cfp) {
@@ -306,8 +353,10 @@ int main(int argc, char *argv[]) {
         codegen_free(program);
         free(base);
         free(output_name);
-        if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
-        return 1;
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    return 1;
     }
 
     /* Read compiler output */
@@ -337,10 +386,12 @@ int main(int argc, char *argv[]) {
             snprintf(dbg_asm, sizeof(dbg_asm), "%s/%s.s", debug_dir, base);
             copy_file(output_name, dbg_bin);
             chmod(dbg_bin, 0755);
-            snprintf(cmd2, sizeof(cmd2), "%s -w -c -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_obj, tmp_c);
+            snprintf(cmd2, sizeof(cmd2), "%s -c -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_obj, tmp_c);
             run_cmd_capture(cmd2, "C compiler (object)");
-            snprintf(cmd2, sizeof(cmd2), "%s -w -S -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_asm, tmp_c);
+            snprintf(cmd2, sizeof(cmd2), "%s -S -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_asm, tmp_c);
             run_cmd_capture(cmd2, "C compiler (assembly)");
+            snprintf(cmd2, sizeof(cmd2), "%s -g -O0 -o \"%s.dbg\" \"%s\" 2>&1", cc_cmd, dbg_bin, tmp_c);
+            run_cmd_capture(cmd2, "C compiler (debug-symbol binary)");
         }
     } else {
         /* Hide C compiler errors unless --debug */
@@ -365,6 +416,8 @@ int main(int argc, char *argv[]) {
     free(base);
     free(output_name);
 
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
+    if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
+    if (debug) log_stage("end", "debug session finished");
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return rc;
 }

@@ -3,6 +3,8 @@
 static ErrorState *parser_errors = NULL;
 static int g_break_depth = 0;
 static ASTNode *g_list = NULL;
+static int g_stmt_line = 0;
+static int g_stmt_col = 0;
 
 #define MAX_FUNCS 128
 typedef struct { char name[MAX_IDENTIFIER_LEN]; int param_count; } FuncInfo;
@@ -169,6 +171,7 @@ static ASTNode *reverse_list(ASTNode *head) {
 
 static void emit(ASTNode *node) {
     if (!node) return;
+    if (node->line == 0 && g_stmt_line > 0) { node->line = g_stmt_line; node->col = g_stmt_col; }
     node->next = g_list;
     g_list = node;
 }
@@ -5746,6 +5749,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     }
 
     ASTNode *fn = create_node(NODE_FUNCTION, cname, "");
+    fn->line = kw.line; fn->col = kw.col;
     strncpy(fn->for_var, name.value, MAX_IDENTIFIER_LEN - 1);
     fn->params = params;
     char saved_enc[MAX_IDENTIFIER_LEN];
@@ -5765,6 +5769,8 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
 
 static void parse_statement(Lexer *lexer, SymbolTable *table) {
     Token token = lexer_peek(lexer);
+    g_stmt_line = token.line;
+    g_stmt_col = token.col;
     if (token.type == TOKEN_LBRACE) {
         /* Bare block: { ... } introduces a nested scope. */
         lexer_next(lexer); /* consume { */

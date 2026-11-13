@@ -2,9 +2,65 @@
 
 static ErrorState *codegen_errors = NULL;
 static SymbolTable *codegen_table = NULL;
+static CodegenLog *codegen_log = NULL;
+
+void codegen_set_log(CodegenLog *log) {
+    codegen_log = log;
+}
 
 ErrorState *codegen_get_errors(void) {
     return codegen_errors;
+}
+
+static const char *node_type_name_cg(NodeType t) {
+    switch (t) {
+        case NODE_WRITE: return "WRITE";
+        case NODE_READ: return "READ";
+        case NODE_LET: return "LET";
+        case NODE_CONST: return "CONST";
+        case NODE_SET: return "SET";
+        case NODE_IF: return "IF";
+        case NODE_ELSE: return "ELSE";
+        case NODE_SWITCH: return "SWITCH";
+        case NODE_CASE: return "CASE";
+        case NODE_BREAK: return "BREAK";
+        case NODE_CONTINUE: return "CONTINUE";
+        case NODE_WHILE: return "WHILE";
+        case NODE_DO_WHILE: return "DO_WHILE";
+        case NODE_FOR: return "FOR";
+        case NODE_FUNCTION: return "FUNCTION";
+        case NODE_RETURN: return "RETURN";
+        case NODE_EXIT: return "EXIT";
+        case NODE_CALL: return "CALL";
+        case NODE_PARAM: return "PARAM";
+        case NODE_PROGRAM: return "PROGRAM";
+        case NODE_ARRAY_LIT: return "ARRAY_LIT";
+        case NODE_ARRAY_ACCESS: return "ARRAY_ACCESS";
+        case NODE_ARRAY_PUSH: return "ARRAY_PUSH";
+        case NODE_ARRAY_POP: return "ARRAY_POP";
+        case NODE_ARRAY_SET: return "ARRAY_SET";
+        case NODE_ARRAY_INSERT: return "ARRAY_INSERT";
+        case NODE_ARRAY_REMOVE: return "ARRAY_REMOVE";
+        case NODE_ARRAY_COPY: return "ARRAY_COPY";
+        case NODE_ARRAY_SLICE: return "ARRAY_SLICE";
+        case NODE_ARRAY_SORT: return "ARRAY_SORT";
+        case NODE_ARRAY_REVERSE: return "ARRAY_REVERSE";
+        case NODE_BLOCK: return "BLOCK";
+        default: return "NODE";
+    }
+}
+
+static void log_emitted(const char *src_file, int line, int col, const char *kind, const char *name, const char *c_code) {
+    if (!codegen_log || !codegen_log->enabled || !codegen_log->file) return;
+    fprintf(codegen_log->file, "LTNG %s:%d:%d | %s", src_file ? src_file : "<input>", line, col, kind);
+    if (name && name[0]) fprintf(codegen_log->file, " (%s)", name);
+    fprintf(codegen_log->file, "\n");
+    fprintf(codegen_log->file, "---- C ----\n");
+    if (c_code && c_code[0]) {
+        fputs(c_code, codegen_log->file);
+        if (c_code[strlen(c_code)-1] != '\n') fputc('\n', codegen_log->file);
+    }
+    fprintf(codegen_log->file, "-----------\n\n");
 }
 
 static void pad(FILE *out, int indent) {
@@ -1043,7 +1099,27 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
 
 static void emit_block(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
     for (ASTNode *cur = node; cur; cur = cur->next) {
-        codegen_statement(out, cur, table, indent);
+        if (codegen_log && codegen_log->enabled && codegen_log->file) {
+            char *buf = NULL;
+            size_t buflen = 0;
+            FILE *mem = open_memstream(&buf, &buflen);
+            if (mem) {
+                codegen_statement(mem, cur, table, indent);
+                fflush(mem);
+                fclose(mem);
+                if (buf) {
+                    fputs(buf, out);
+                    log_emitted(codegen_log->src_file, cur->line, cur->col, node_type_name_cg(cur->type), cur->name, buf);
+                    free(buf);
+                } else {
+                    codegen_statement(out, cur, table, indent);
+                }
+            } else {
+                codegen_statement(out, cur, table, indent);
+            }
+        } else {
+            codegen_statement(out, cur, table, indent);
+        }
     }
 }
 
