@@ -161,6 +161,11 @@
 - **Memory validation:** runtime helpers free/replace elements on mutation/copy/slice paths, but no sanitizer/valgrind/leak-stress runs were recorded in this environment.
 - **Dedicated aliasing (shared storage identity):** current array assignment/copy operations use copy semantics for safety in the existing ownership model; true shared-reference aliasing semantics would require deeper runtime/ownership redesign.
 
+### Additional compiler pipeline update (post-Phase 3)
+
+- **Implemented:** IR stage added after parsing/before C code generation (`compiler/src/ir.c`, integrated in `compiler/src/main.c`, build updated). Generates `<source basename>.ltng_ir` and cleans it up on successful non-debug operations; `--debug` preserves artifacts in `debug/<source basename>/` (`source.ltng`, `intermediete.ltng_ir`, `emitted.c` when available).
+- **Verification:** targeted manual checks for normal compile, `--check`, `--emit-c`, and `--debug`; full suite `PASS=111 FAIL=0 SKIP=0`.
+
 ## Phases 4–13
 
 Pending. Each phase will be updated with: implemented features, changed files, test results (positive/negative/boundary/interaction/regression/memory where applicable), discovered bugs, and remaining limitations. No phase marked complete until all completion criteria are satisfied.

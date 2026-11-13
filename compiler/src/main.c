@@ -2,6 +2,39 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <libgen.h>
+#include <errno.h>
+
+static int mkdir_p(const char *path) {
+    char tmp[4096];
+    size_t len = strlen(path);
+    if (len == 0 || len >= sizeof(tmp)) return -1;
+    memcpy(tmp, path, len + 1);
+    if (tmp[len - 1] == '/') tmp[len - 1] = '\0';
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
+            *p = '/';
+        }
+    }
+    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
+    return 0;
+}
+
+static int copy_file(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    if (!in) return -1;
+    FILE *out = fopen(dst, "wb");
+    if (!out) { fclose(in); return -1; }
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) { fclose(in); fclose(out); return -1; }
+    }
+    fclose(in);
+    fclose(out);
+    return 0;
+}
 
 static char *read_file(const char *path) {
     FILE *file = fopen(path, "rb");
@@ -86,22 +119,56 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (check_only) {
-        printf("No errors found in '%s'\n", argv[file_arg]);
-        free(source);
-        codegen_free(program);
-        return 0;
-    }
-
     char *base = get_basename(argv[file_arg]);
     char *dot = strrchr(base, '.');
     if (dot) *dot = '\0';
+
+    char *src_copy = strdup(argv[file_arg]);
+    char *src_dir = dirname(src_copy);
+    char ir_path[4096];
+    snprintf(ir_path, sizeof(ir_path), "%s/%s.ltng_ir", src_dir, base);
+
+    FILE *ir_out = fopen(ir_path, "w");
+    if (!ir_out) {
+        fprintf(stderr, "Error: Cannot create IR file '%s'\n", ir_path);
+        free(src_copy);
+        free(source);
+        codegen_free(program);
+        free(base);
+        return 1;
+    }
+    ir_write(program, ir_out);
+    fclose(ir_out);
+
+    if (check_only) {
+        printf("No errors found in '%s'\n", argv[file_arg]);
+        if (debug) {
+            char debug_dir[4096];
+            snprintf(debug_dir, sizeof(debug_dir), "%s/debug/%s", src_dir, base);
+            if (mkdir_p(debug_dir) == 0) {
+                char debug_src[4096], debug_ir[4096];
+                snprintf(debug_src, sizeof(debug_src), "%s/source.ltng", debug_dir);
+                snprintf(debug_ir, sizeof(debug_ir), "%s/intermediete.ltng_ir", debug_dir);
+                copy_file(argv[file_arg], debug_src);
+                copy_file(ir_path, debug_ir);
+            }
+        } else {
+            remove(ir_path);
+        }
+        free(src_copy);
+        free(source);
+        codegen_free(program);
+        free(base);
+        return 0;
+    }
 
     char tmp_c[512];
     snprintf(tmp_c, sizeof(tmp_c), "/tmp/ltng_%d.c", getpid());
     FILE *out = fopen(tmp_c, "w");
     if (!out) {
         fprintf(stderr, "Error: Cannot create temporary C file\n");
+        if (!debug) remove(ir_path);
+        free(src_copy);
         free(source);
         codegen_free(program);
         free(base);
@@ -111,10 +178,30 @@ int main(int argc, char *argv[]) {
     codegen(program, &program->symbol_table, out, &errors);
     fclose(out);
 
+    char debug_dir[4096] = "";
+    char debug_ir[4096] = "";
+    char debug_c[4096] = "";
+    if (debug) {
+        snprintf(debug_dir, sizeof(debug_dir), "%s/debug/%s", src_dir, base);
+        if (mkdir_p(debug_dir) == 0) {
+            char debug_src[4096];
+            snprintf(debug_src, sizeof(debug_src), "%s/source.ltng", debug_dir);
+            snprintf(debug_ir, sizeof(debug_ir), "%s/intermediete.ltng_ir", debug_dir);
+            snprintf(debug_c, sizeof(debug_c), "%s/emitted.c", debug_dir);
+            copy_file(argv[file_arg], debug_src);
+            copy_file(ir_path, debug_ir);
+            copy_file(tmp_c, debug_c);
+        }
+    }
+
     if (error_state_has_errors(&errors)) {
         error_state_print(&errors);
+        remove(tmp_c);
+        if (!debug) remove(ir_path);
+        free(src_copy);
         free(source);
         codegen_free(program);
+        free(base);
         return 1;
     }
 
@@ -123,12 +210,9 @@ int main(int argc, char *argv[]) {
         output_name = strdup(argv[out_arg]);
     } else {
         /* Create compiled folder in the directory containing the source file */
-        char *src_copy = strdup(argv[file_arg]);
-        char *src_dir = dirname(src_copy);
-        char compiled_dir[2048];
+        char compiled_dir[4096];
         snprintf(compiled_dir, sizeof(compiled_dir), "%s/compiled", src_dir);
         mkdir(compiled_dir, 0755);
-        free(src_copy);
         output_name = malloc(4096);
         if (emit_c) {
             snprintf(output_name, 4096, "%s/%s.c", compiled_dir, base);
@@ -146,6 +230,8 @@ int main(int argc, char *argv[]) {
             if (cin) fclose(cin);
             if (cout) fclose(cout);
             remove(tmp_c);
+            if (!debug) remove(ir_path);
+            free(src_copy);
             free(source);
             codegen_free(program);
             free(base);
@@ -160,9 +246,12 @@ int main(int argc, char *argv[]) {
         fclose(cin);
         fclose(cout);
         remove(tmp_c);
+        if (!debug) remove(ir_path);
         if (debug) {
+            if (debug_c[0]) copy_file(output_name, debug_c);
             printf("Emitted C '%s' -> '%s'\n", argv[file_arg], output_name);
         }
+        free(src_copy);
         free(source);
         codegen_free(program);
         free(base);
@@ -178,6 +267,8 @@ int main(int argc, char *argv[]) {
     if (!cfp) {
         fprintf(stderr, "Error: Cannot run C compiler\n");
         remove(tmp_c);
+        if (!debug) remove(ir_path);
+        free(src_copy);
         free(source);
         codegen_free(program);
         free(base);
@@ -217,8 +308,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    if (compiler_exit == 0 && !debug) {
+        remove(ir_path);
+    }
+
     int rc = (compiler_exit == 0) ? 0 : 1;
 
+    free(src_copy);
     free(source);
     codegen_free(program);
     free(base);

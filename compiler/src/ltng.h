@@ -284,4 +284,6 @@ void obj_register(const char *mangled_var, ObjSchema *schema);
 ObjSchema *obj_lookup(const char *mangled_var);
 const char *obj_resolve_field(const char *mangled_var, const char *field, char *out, int out_size);
 
+void ir_write(Program *program, FILE *out);
+
 #endif

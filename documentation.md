@@ -1173,7 +1173,7 @@ bolt [--debug] [--check] [--compile] [--install] [--uninstall] [--reinstall] <fi
 | `--install` | Install ltng and bolt to /usr/local/bin/ |
 | `--uninstall` | Remove ltng and bolt from /usr/local/bin/ |
 | `--reinstall` | Uninstall then install |
-| `--debug` | Show compilation log |
+| `--debug` | Show compilation log and preserve debug artifacts (IR/emitted C) |
 | `--help` | Show help message |
 
 **Examples:**
@@ -1197,7 +1197,7 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 
 | Flag | Description |
 |------|-------------|
-| `--debug` | Show compilation log |
+| `--debug` | Show compilation log and preserve debug artifacts (IR/emitted C) |
 | `--check` | Only check for errors, don't compile |
 | `--emit-c` | Emit C source instead of compiling |
 | `--cc <compiler>` | Use a specific C compiler |
@@ -1422,6 +1422,17 @@ write(arr.pop())      # prints the popped value
 - Elements follow the current string-buffer runtime model (formatted storage/comparison), so operations like `sort`, `contains`, and `index_of` use string-form semantics.
 
 ---
+
+## Compilation Pipeline and Debug Artifacts
+
+Lightning parses source, emits an intermediate representation (IR), generates C, then invokes the system C compiler.
+
+- After successful parsing, the compiler writes `<source basename>.ltng_ir` next to the source file.
+- On successful check/emit/compile (when `--debug` is not used), this IR file is removed.
+- With `--debug`, the compiler creates `debug/<source basename>/` next to the source file containing:
+  - `source.ltng` (input source)
+  - `intermediete.ltng_ir` (IR dump)
+  - `emitted.c` (generated C, when available for the selected operation)
 
 ## Current Limitations
 
