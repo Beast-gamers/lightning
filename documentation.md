@@ -1191,7 +1191,7 @@ write(op(5))   # 25
 
 **Closures (capture)**
 
-Anonymous functions may capture variables from their enclosing function scope (parameters and local `let`/`const` variables). Captured values are bound at the time the function expression is created.
+Anonymous functions may capture variables from their enclosing function scope (parameters and local `let`/`const` variables). Captured variables use **shared, mutable** storage: a closure and its enclosing scope (and any other closures capturing the same variables) observe and can mutate the same underlying values. Captured variables remain valid for closures that outlive the creating call.
 
 ```
 function makeAdder(n) {
@@ -1203,9 +1203,37 @@ let add5 = makeAdder(5)
 write(add5(10))   # 15
 ```
 
+```
+# Shared/mutable capture
+function makeCounter() {
+    let n = 0
+    return function() {
+        set n = n + 1
+        return n
+    }
+}
+let c = makeCounter()
+write(c())   # 1
+write(c())   # 2
+```
+
+**Named function references as values**
+
+Existing named functions can be used as first-class values by referring to them by name (when not followed by a call). Named function references can be assigned to variables, passed as arguments, returned, and called through variables/parameters with dynamic dispatch.
+
+```
+function add1(x) { return x + 1 }
+
+let fn = add1
+write(fn(5))          # 6
+
+function apply(cb, v) { return cb(v) }
+write(apply(add1, 10)) # 11
+```
+
 **First-class use and dynamic dispatch**
 
-Function values (including closures) can be stored in variables, returned, and passed to other functions. Calls through function-valued parameters/variables are dispatched dynamically at runtime.
+Function values (anonymous functions, closures, and named function references) can be stored in variables, returned, and passed to other functions. Calls through function-valued parameters/variables are dispatched dynamically at runtime.
 
 ```
 function apply(fn, v) {
@@ -1220,8 +1248,6 @@ write(apply(off5, 10))   # 15
 
 **Current limitations**
 
-- **Capture semantics:** captures are by value at creation time; shared/mutable capture of outer variables is not yet implemented.
-- **Named function references:** taking a reference to an existing named function as a value (e.g. `let f = someFunc`) is not yet supported as dedicated syntax/semantics; anonymous function expressions are the primary function-value form.
 - Variadic arguments and function overloading remain pending.
 
 ### Method-style calls (UFCS)

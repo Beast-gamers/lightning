@@ -1562,10 +1562,16 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     char mangled[MAX_IDENTIFIER_LEN];
                     mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                     if (!symbol_table_has(table, mangled)) {
-                        char errmsg[256];
-                        snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", tok.value);
-                        error_state_add(parser_errors, tok.line, tok.col, errmsg);
-                        pos += snprintf(out + pos, out_size - pos, "0");
+                        ASTNode *fndef = find_function_ast_by_name(tok.value);
+                        if (fndef) {
+                            pos += snprintf(out + pos, out_size - pos, "\"%s\"", fndef->name);
+                            if (!type_locked) result_type = TYPE_STRING;
+                        } else {
+                            char errmsg[256];
+                            snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", tok.value);
+                            error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                            pos += snprintf(out + pos, out_size - pos, "0");
+                        }
                     } else {
                         VarType vtype = symbol_table_get(table, mangled);
                         const char *cname = symbol_table_get_cname(table, mangled);
@@ -3610,12 +3616,11 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             const char *cname = symbol_table_get_cname(table, mangled);
             char fval[MAX_STRING_LEN];
             if (fn && fn->capture_count > 0) {
-                /* Build closure value: "cname\x01cap0\x01cap1..." */
                 char expr[MAX_STRING_LEN];
                 snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
                 for (int ci = 0; ci < fn->capture_count; ci++) {
                     char tmp[MAX_STRING_LEN];
-                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),_ltng_ptr_to_str((void*)%s))", expr, fn->captures[ci]);
                     strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
                 }
                 snprintf(fval, sizeof(fval), "%s", expr);
@@ -3627,6 +3632,34 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             node->is_expr = 1;
             emit(node);
             return;
+        }
+    }
+
+    /* named function reference: let f = someFunc */
+    if (lexer_peek(lexer).type == TOKEN_IDENT) {
+        Token fnref_tok = lexer_peek(lexer);
+        Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : fnref_tok;
+        if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF ||
+            after_fnref.type == TOKEN_RBRACE) {
+            ASTNode *fndef = find_function_ast_by_name(fnref_tok.value);
+            char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(fnref_tok.value, mangled_ref, sizeof(mangled_ref));
+            int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, fnref_tok.value);
+            if (fndef && !is_var) {
+                lexer_next(lexer);
+                symbol_table_add_locked(table, mangled, TYPE_STRING);
+                {
+                    int pc = 0; for (ASTNode *p = fndef->params; p; p = p->next) pc++;
+                    symbol_table_set_func_ref(table, mangled, fndef->name, pc);
+                }
+                const char *cname = symbol_table_get_cname(table, mangled);
+                char fval[MAX_STRING_LEN];
+                snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                ASTNode *node = create_node(NODE_LET, cname, fval);
+                node->var_type = TYPE_STRING;
+                node->is_expr = 1;
+                emit(node);
+                return;
+            }
         }
     }
 
@@ -4040,7 +4073,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
-    /* anonymous function expression: let f = function(params) { ... } */
+    /* anonymous function expression: const f = function(params) { ... } */
     if (lexer_peek(lexer).type == TOKEN_FUNCTION) {
         Token after_fn = lexer->tokens[lexer->current + 1];
         if (after_fn.type == TOKEN_LPAREN) {
@@ -4063,7 +4096,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
                 snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
                 for (int ci = 0; ci < fn->capture_count; ci++) {
                     char tmp[MAX_STRING_LEN];
-                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),_ltng_ptr_to_str((void*)%s))", expr, fn->captures[ci]);
                     strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
                 }
                 snprintf(fval, sizeof(fval), "%s", expr);
@@ -4075,6 +4108,34 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
             node->is_expr = 1;
             emit(node);
             return;
+        }
+    }
+
+    /* named function reference: const f = someFunc */
+    if (lexer_peek(lexer).type == TOKEN_IDENT) {
+        Token fnref_tok = lexer_peek(lexer);
+        Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : fnref_tok;
+        if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF ||
+            after_fnref.type == TOKEN_RBRACE) {
+            ASTNode *fndef = find_function_ast_by_name(fnref_tok.value);
+            char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(fnref_tok.value, mangled_ref, sizeof(mangled_ref));
+            int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, fnref_tok.value);
+            if (fndef && !is_var) {
+                lexer_next(lexer);
+                symbol_table_add_locked(table, mangled, TYPE_STRING);
+                {
+                    int pc = 0; for (ASTNode *p = fndef->params; p; p = p->next) pc++;
+                    symbol_table_set_func_ref(table, mangled, fndef->name, pc);
+                }
+                const char *cname = symbol_table_get_cname(table, mangled);
+                char fval[MAX_STRING_LEN];
+                snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                ASTNode *node = create_node(NODE_CONST, cname, fval);
+                node->var_type = TYPE_STRING;
+                node->is_expr = 1;
+                emit(node);
+                return;
+            }
         }
     }
 
@@ -4633,7 +4694,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                 snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
                 for (int ci = 0; ci < fn->capture_count; ci++) {
                     char tmp[MAX_STRING_LEN];
-                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),_ltng_ptr_to_str((void*)%s))", expr, fn->captures[ci]);
                     strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
                 }
                 snprintf(fval, sizeof(fval), "%s", expr);
@@ -4645,6 +4706,34 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             node->is_expr = 1;
             emit(node);
             return;
+        }
+    }
+
+    /* named function reference: set f = someFunc */
+    if (next.type == TOKEN_IDENT) {
+        Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : next;
+        if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF ||
+            after_fnref.type == TOKEN_RBRACE) {
+            ASTNode *fndef = find_function_ast_by_name(next.value);
+            char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(next.value, mangled_ref, sizeof(mangled_ref));
+            int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, next.value);
+            if (fndef && !is_var) {
+                lexer_next(lexer);
+                if (!check_set_type_immutable(table, mangled, TYPE_STRING, set_tok.line, set_tok.col, lexer))
+                    return;
+                symbol_table_update(table, mangled, TYPE_STRING);
+                {
+                    int pc = 0; for (ASTNode *p = fndef->params; p; p = p->next) pc++;
+                    symbol_table_set_func_ref(table, mangled, fndef->name, pc);
+                }
+                char fval[MAX_STRING_LEN];
+                snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                ASTNode *node = create_node(NODE_SET, cname, fval);
+                node->var_type = TYPE_STRING;
+                node->is_expr = 1;
+                emit(node);
+                return;
+            }
         }
     }
 
@@ -6417,7 +6506,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                     snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
                     for (int ci = 0; ci < fn->capture_count; ci++) {
                         char tmp[MAX_STRING_LEN];
-                        snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                        snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),_ltng_ptr_to_str((void*)%s))", expr, fn->captures[ci]);
                         strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
                     }
                     snprintf(fval, sizeof(fval), "%s", expr);
@@ -6430,6 +6519,25 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 node->is_expr = 1;
                 emit(node);
                 return;
+            }
+        }
+        /* named function reference: return someFunc */
+        if (next.type == TOKEN_IDENT) {
+            Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : next;
+            if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF || after_fnref.type == TOKEN_RBRACE) {
+                ASTNode *fndef = find_function_ast_by_name(next.value);
+                char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(next.value, mangled_ref, sizeof(mangled_ref));
+                int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, next.value);
+                if (fndef && !is_var) {
+                    lexer_next(lexer);
+                    char fval[MAX_STRING_LEN]; snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                    ASTNode *node = create_node(NODE_RETURN, "", fval);
+                    node->line = kw.line; node->col = kw.col;
+                    node->var_type = TYPE_STRING;
+                    node->is_expr = 1;
+                    emit(node);
+                    return;
+                }
             }
         }
         /* sole string literal (only if nothing follows - otherwise full expression) */
@@ -6824,21 +6932,30 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
             /* check if this identifier exists in enclosing scope (as variable) */
             char mangled_u[MAX_IDENTIFIER_LEN];
             mangle_name(u, mangled_u, sizeof(mangled_u));
-            /* try both original and mangled forms as they appear */
             int in_enclosing = 0;
             const char *cap_cname = NULL;
-            if (table && symbol_table_has(table, mangled_u)) { in_enclosing = 1; cap_cname = symbol_table_get_cname(table, mangled_u); }
-            else if (table && symbol_table_has(table, u)) { in_enclosing = 1; cap_cname = symbol_table_get_cname(table, u); }
-            /* also check if u is already a mangled cname present in enclosing scope */
-            if (!in_enclosing && table && symbol_table_has(table, u)) { in_enclosing = 1; cap_cname = symbol_table_get_cname(table, u); }
+            if (table) {
+                /* try by symbol name (mangled key) */
+                for (Scope *s = table; s && !in_enclosing; s = s->parent) {
+                    for (int vi = 0; vi < s->count; vi++) {
+                        VarEntry *ve = &s->vars[vi];
+                        if (strcmp(ve->name, u) == 0 || strcmp(ve->name, mangled_u) == 0 ||
+                            strcmp(ve->cname, u) == 0 || strcmp(ve->cname, mangled_u) == 0) {
+                            in_enclosing = 1;
+                            cap_cname = ve->cname[0] ? ve->cname : ve->name;
+                            break;
+                        }
+                    }
+                }
+            }
             if (!in_enclosing) continue;
             /* avoid duplicate captures */
             int dup = 0;
             for (int c = 0; c < fn->capture_count; c++) {
-                if (strcmp(fn->captures[c], cap_cname ? cap_cname : mangled_u) == 0) dup = 1;
+                if (strcmp(fn->captures[c], cap_cname) == 0) dup = 1;
             }
             if (dup) continue;
-            strncpy(fn->captures[fn->capture_count], cap_cname ? cap_cname : mangled_u, MAX_IDENTIFIER_LEN - 1);
+            strncpy(fn->captures[fn->capture_count], cap_cname, MAX_IDENTIFIER_LEN - 1);
             fn->captures[fn->capture_count][MAX_IDENTIFIER_LEN - 1] = 0;
             fn->capture_count++;
         }

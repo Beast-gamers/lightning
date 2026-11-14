@@ -1,0 +1,22 @@
+# Named function references as first-class values
+function add1(x) {
+    return x + 1
+}
+
+let fn = add1
+write(fn(5))
+
+const g = add1
+write(g(9))
+
+function apply(cb, v) {
+    return cb(v)
+}
+write(apply(add1, 10))
+write(apply(fn, 20))
+
+function make() {
+    return add1
+}
+let h = make()
+write(h(3))

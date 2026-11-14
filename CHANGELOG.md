@@ -3,10 +3,11 @@
 - **Call argument validation:** compile-time errors for missing required arguments, too many arguments, unknown named parameters, and duplicate named arguments (safe placeholder emission prevents internal C compilation failures on bad calls).
 - **Return-type validation improvements:** compile-time error for clearly inconsistent return types within a function (e.g. string literal vs numeric), with compatibility for numeric mixing and current variable pass-through return representation.
 - **Anonymous functions:** `function(params) { ... }` expressions can be assigned to `let`/`const`, reassigned with `set`, called, used in expressions/arguments, returned, and passed as values.
-- **Closures (capture):** anonymous/nested functions capture enclosing-scope variables (parameters and locals) by value at creation time; closure values are encoded and supported across calls, returns, and passing.
-- **Dynamic dispatch:** runtime indirect-call dispatcher enables calling function values held in variables and parameters (including closures).
-- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`), `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`, `tests/semantic/phase5_inconsistent_return_neg.ltng`, `tests/runtime/phase5_anon_functions.ltng` (+ `.expected`), `tests/runtime/phase5_closures.ltng` (+ `.expected`).
-- **Suite:** PASS=138 FAIL=0 SKIP=0.
+- **Closures (capture):** anonymous/nested functions capture enclosing-scope variables (parameters and locals) with **shared, mutable** semantics (heap-allocated shared storage); mutations are visible to the closure, its creating scope, and other closures sharing the same captures. Closure values are encoded and supported across calls, returns, and passing.
+- **Named function references:** existing named functions can be used as first-class values (e.g. `let f = add1`), assigned, passed, returned, and called via dynamic dispatch.
+- **Dynamic dispatch:** runtime indirect-call dispatcher enables calling function values held in variables and parameters (including closures and named function references).
+- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`), `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`, `tests/semantic/phase5_inconsistent_return_neg.ltng`, `tests/runtime/phase5_anon_functions.ltng` (+ `.expected`), `tests/runtime/phase5_closures.ltng` (+ `.expected`), `tests/runtime/phase5_closure_mutable.ltng` (+ `.expected`), `tests/runtime/phase5_named_func_refs.ltng` (+ `.expected`).
+- **Suite:** PASS=140 FAIL=0 SKIP=0 (`bash tests/run_tests.sh`, native compile+execute validation). Also fixed exception trace field truncation in catch binding and related codegen snprintf/buffer issues found during validation.
 
 # Changelog
 

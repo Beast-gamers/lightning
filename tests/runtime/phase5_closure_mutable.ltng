@@ -1,0 +1,33 @@
+# Mutable/shared closure capture
+function makeCounter() {
+    let n = 0
+    let inc = function() {
+        set n = n + 1
+        return n
+    }
+    let get = function() {
+        return n
+    }
+    return inc
+}
+
+let c1 = makeCounter()
+write(c1())
+write(c1())
+write(c1())
+
+let c2 = makeCounter()
+write(c2())
+write(c1())
+
+function outer() {
+    let x = 10
+    let add = function(v) {
+        set x = x + v
+        return x
+    }
+    return add
+}
+let adder = outer()
+write(adder(5))
+write(adder(2))
