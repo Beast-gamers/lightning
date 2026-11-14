@@ -201,6 +201,9 @@ typedef struct {
     int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
     int array_dim_count;  /* number of array dimensions (0 if not an array) */
     int *array_dims;      /* dynamically allocated size of each array dimension */
+    int is_func_ref;     /* variable holds a known function reference (cname) */
+    char func_ref_cname[MAX_IDENTIFIER_LEN];
+    int func_ref_param_count;
 } VarEntry;
 
 #define MAX_OBJ_FIELDS 32

@@ -1,9 +1,10 @@
-## Phase 5 — Named arguments, call validation, and return-type checks (in progress)
+## Phase 5 — Named arguments, call validation, return-type checks, and anonymous functions (in progress)
 - **Named arguments:** function calls support `name = value` arguments; named arguments can be reordered and mixed with positional arguments (positional args bind left-to-right to parameters not supplied by name). Works with default parameters.
 - **Call argument validation:** compile-time errors for missing required arguments, too many arguments, unknown named parameters, and duplicate named arguments (safe placeholder emission prevents internal C compilation failures on bad calls).
 - **Return-type validation improvements:** compile-time error for clearly inconsistent return types within a function (e.g. string literal vs numeric), with compatibility for numeric mixing and current variable pass-through return representation.
-- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`), `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`, `tests/semantic/phase5_inconsistent_return_neg.ltng`.
-- **Suite:** PASS=135 FAIL=0 SKIP=0.
+- **Anonymous functions (initial, no capture):** `function(params) { ... }` expressions can be assigned to `let`/`const` or reassigned with `set`, and called through tracked function-reference variables (including in expressions/arguments). Anonymous function values can be passed as arguments; invoking a function value through an untracked parameter/variable (dynamic dispatch) is currently rejected with a compile-time error. Closures/capture semantics are not yet implemented.
+- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`), `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`, `tests/semantic/phase5_inconsistent_return_neg.ltng`, `tests/runtime/phase5_anon_functions.ltng` (+ `.expected`).
+- **Suite:** PASS=137 FAIL=0 SKIP=0.
 
 # Changelog
 

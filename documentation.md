@@ -1159,6 +1159,42 @@ write(add3(c = 3, b = 2, a = 1))  # 6
 
 - Unknown parameter names, duplicate named arguments, missing required arguments (no default provided), and too many arguments are compile-time errors.
 
+### Anonymous functions
+
+Anonymous functions are function expressions written without a name using the `function` keyword:
+
+```
+let dbl = function(x) {
+    return x * 2
+}
+write(dbl(5))   # 10
+
+const add = function(a, b) {
+    return a + b
+}
+write(add(3, 4))   # 7
+```
+
+**Syntax**
+
+- Expression form: `function(parameters) { ... }` (same parameter/body syntax as named functions, but no function name).
+- Common usage: assign to a variable with `let` or `const`, or reassign with `set`:
+
+```
+let op = function(x) { return x + 10 }
+set op = function(x) { return x + 20 }
+write(op(5))   # 25
+```
+
+- Anonymous functions can be called through the variable they are assigned to: `name(args)`.
+- They can be used in expressions and as call arguments (including nested calls), e.g. `write(add(dbl(2), inc(1)))`.
+
+**Current limitations**
+
+- **No closure capture:** anonymous functions do not capture variables from enclosing scopes (full capture semantics are pending).
+- **Indirect calls through untracked variables/parameters:** calls through variables that the compiler can track as function references (e.g. `let f = function(...)`; then `f(...)`) are supported. Invoking a function value received as an ordinary parameter/variable that is not tracked as a function reference (dynamic dispatch) is not yet supported and results in a compile-time error.
+- **First-class function references (general):** broader first-class function value semantics are still in progress.
+
 ### Method-style calls (UFCS)
 
 A function can also be called with method-style syntax: `receiver.func(args...)`. The receiver becomes the first argument, so `receiver.func(args...)` is equivalent to `func(receiver, args...)`. This works with any first parameter name (for example `base`).

@@ -16,6 +16,7 @@ static int g_in_catch = 0;
 static Program *g_program_ref = NULL;
 static char g_enclosing_cname[MAX_IDENTIFIER_LEN] = "";
 static int g_ret_obj_count = 0;
+static int g_anon_count = 0;
 
 #define MAX_OBJS 128
 static ObjSchema g_objs[MAX_OBJS];
@@ -156,6 +157,16 @@ const char *resolve_func_name(SymbolTable *table, const char *src, char *out, in
 int is_function_name_scoped(SymbolTable *table, const char *src) {
     char tmp[MAX_IDENTIFIER_LEN];
     return resolve_func_name(table, src, tmp, sizeof(tmp)) != NULL;
+}
+
+void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char *func_cname, int param_count);
+int symbol_table_get_func_ref(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_param_count);
+static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_cname);
+
+
+static int is_callable_ident(SymbolTable *table, const char *src) {
+    if (is_function_name_scoped(table, src)) return 1;
+    return symbol_table_get_func_ref(table, src, NULL, 0, NULL);
 }
 static ASTNode *parse_block(Lexer *lexer, SymbolTable *table, int is_control);
 static ASTNode *parse_try(Lexer *lexer, SymbolTable *table);
@@ -377,6 +388,9 @@ static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType
     for (int i = 0; i < table->count; i++) {
         if (strcmp(table->vars[i].name, name) == 0) {
             table->vars[i].type = type;
+            table->vars[i].is_func_ref = 0;
+            table->vars[i].func_ref_cname[0] = '\0';
+            table->vars[i].func_ref_param_count = -1;
             return;
         }
     }
@@ -400,6 +414,9 @@ static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType
     ve->is_locked = 0;
     ve->array_dim_count = 0;
     ve->array_dims = NULL;
+    ve->is_func_ref = 0;
+    ve->func_ref_cname[0] = '\0';
+    ve->func_ref_param_count = -1;
     table->count++;
 }
 
@@ -449,6 +466,9 @@ void symbol_table_update(SymbolTable *table, const char *name, VarType type) {
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0) {
                 s->vars[i].type = type;
+                s->vars[i].is_func_ref = 0;
+                s->vars[i].func_ref_cname[0] = '\0';
+                s->vars[i].func_ref_param_count = -1;
                 return;
             }
         }
@@ -465,6 +485,39 @@ VarType symbol_table_get(SymbolTable *table, const char *name) {
         }
     }
     return TYPE_STRING;
+}
+
+void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char *func_cname, int param_count) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                s->vars[i].is_func_ref = 1;
+                strncpy(s->vars[i].func_ref_cname, func_cname, MAX_IDENTIFIER_LEN - 1);
+                s->vars[i].func_ref_cname[MAX_IDENTIFIER_LEN - 1] = '\0';
+                s->vars[i].func_ref_param_count = param_count;
+                return;
+            }
+        }
+    }
+}
+
+int symbol_table_get_func_ref(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_param_count) {
+    char mangled[MAX_IDENTIFIER_LEN];
+    mangle_name(name, mangled, sizeof(mangled));
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0 || strcmp(s->vars[i].name, mangled) == 0) {
+                if (!s->vars[i].is_func_ref) return 0;
+                if (out_cname && out_size > 0) {
+                    strncpy(out_cname, s->vars[i].func_ref_cname, out_size - 1);
+                    out_cname[out_size - 1] = '\0';
+                }
+                if (out_param_count) *out_param_count = s->vars[i].func_ref_param_count;
+                return 1;
+            }
+        }
+    }
+    return 0;
 }
 
 const char *symbol_table_get_cname(SymbolTable *table, const char *name) {
@@ -1278,7 +1331,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         (strcmp(tok.value, "true") == 0 || strcmp(tok.value, "t") == 0) ? "1" : "0");
                 } else if (is_type_keyword(tok.value)) {
                     pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
-                } else if (is_function_name_scoped(table, tok.value) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                } else if (is_callable_ident(table, tok.value) && lexer_peek(lexer).type == TOKEN_LPAREN) {
                     lexer_next(lexer); /* consume ( */
                     ASTNode *call = parse_call_node(lexer, table, tok.value, tok.line, tok.col, NULL);
                     if (call->is_base_assign) {
@@ -1304,6 +1357,26 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     }
                     pos += snprintf(out + pos, out_size - pos, "))");
                     if (!type_locked) result_type = TYPE_INT;
+                } else if (lexer_peek(lexer).type == TOKEN_LPAREN && strcmp(tok.value, "typeof") != 0) {
+                    char mangled[MAX_IDENTIFIER_LEN];
+                    mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
+                    if (symbol_table_has(table, mangled) || symbol_table_has(table, tok.value)) {
+                        error_state_add(parser_errors, tok.line, tok.col,
+                            "Indirect function call through variable is not yet supported");
+                        /* consume call tokens to recover */
+                        lexer_next(lexer); /* ( */
+                        int depth = 1;
+                        while (lexer->current < lexer->count && depth > 0) {
+                            Token t = lexer_next(lexer);
+                            if (t.type == TOKEN_LPAREN) depth++;
+                            else if (t.type == TOKEN_RPAREN) depth--;
+                            else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) break;
+                        }
+                        pos += snprintf(out + pos, out_size - pos, "\"\"");
+                        if (!type_locked) result_type = TYPE_STRING;
+                    } else {
+                        goto collect_ident_var;
+                    }
                 } else if (lexer_peek(lexer).type == TOKEN_DOT) {
                     /* Check for array.push/pop - let TYPE_ARRAY case handle
                        these as inline C expressions */
@@ -2831,6 +2904,32 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
         }
     }
 
+    /* Direct callable call as sole write argument: write(f(x)) or write(func(x)) */
+    if (first.type == TOKEN_IDENT) {
+        Token second_tok = lexer->tokens[lexer->current + 1];
+        if (second_tok.type == TOKEN_LPAREN && is_callable_ident(table, first.value) &&
+            !is_type_conversion(first.value)) {
+            int saved_call = lexer->current;
+            Token fname = lexer_next(lexer);
+            lexer_next(lexer); /* consume ( */
+            ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
+            if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                /* sole call argument */
+                char cexpr[MAX_STRING_LEN];
+                build_call_cexpr(call, cexpr, sizeof(cexpr));
+                lexer_next(lexer); /* consume write's ) */
+                ASTNode *node = create_node(NODE_WRITE, "", cexpr);
+                node->is_variable = 0;
+                node->is_expr = 1;
+                node->var_type = TYPE_STRING;
+                emit(node);
+                return;
+            }
+            /* not a sole call (e.g. f(x) + 1) - backtrack and let expression parsing handle it */
+            lexer->current = saved_call;
+        }
+    }
+
     Token second = lexer->tokens[lexer->current + 1];
     int is_conv_call = (first.type == TOKEN_IDENT && is_type_conversion(first.value) &&
                         second.type == TOKEN_LPAREN);
@@ -3025,7 +3124,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             node = create_node(NODE_WRITE, "", bool_to_str(arg.value));
             node->is_variable = 0;
             node->var_type = TYPE_STRING;
-                } else if (is_function_name_scoped(table, arg.value) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                } else if (is_callable_ident(table, arg.value) && lexer_peek(lexer).type == TOKEN_LPAREN) {
             /* write(func(...)) */
             lexer_next(lexer); /* consume ( */
             ASTNode *call = parse_call_node(lexer, table, arg.value, arg.line, arg.col, NULL);
@@ -3249,7 +3348,7 @@ static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok) {
 static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign) {
     Token first = lexer_peek(lexer);
     int saved = lexer->current;
-    if (first.type == TOKEN_IDENT && !is_function_name_scoped(table, first.value)) {
+    if (first.type == TOKEN_IDENT && !is_callable_ident(table, first.value)) {
         /* method form? receiver.method( */
         lexer_next(lexer);
         if (lexer_peek(lexer).type == TOKEN_DOT) {
@@ -3275,7 +3374,7 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
         }
         lexer->current = saved;
     }
-    if (first.type == TOKEN_IDENT && is_function_name_scoped(table, first.value)) {
+    if (first.type == TOKEN_IDENT && is_callable_ident(table, first.value)) {
         Token fname = lexer_next(lexer);
         if (lexer_peek(lexer).type != TOKEN_LPAREN) { lexer->current = saved; return 0; }
         lexer_next(lexer); /* consume ( */
@@ -3445,6 +3544,34 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             "Expected '=' after variable name");
         skip_to_newline(lexer);
         return;
+    }
+
+    /* anonymous function expression: let f = function(params) { ... } */
+    if (lexer_peek(lexer).type == TOKEN_FUNCTION) {
+        Token after_fn = lexer->tokens[lexer->current + 1];
+        if (after_fn.type == TOKEN_LPAREN) {
+            ASTNode *fn = parse_function(lexer, table, g_enclosing_cname);
+            if (fn && g_program_ref) {
+                fn->next = g_program_ref->functions;
+                g_program_ref->functions = fn;
+            }
+            symbol_table_add_locked(table, mangled, TYPE_STRING);
+            symbol_table_set_func_ref(table, mangled, fn ? fn->name : "", -1);
+            if (fn) {
+                /* store actual param count */
+                int pc = 0;
+                for (ASTNode *p = fn->params; p; p = p->next) pc++;
+                symbol_table_set_func_ref(table, mangled, fn->name, pc);
+            }
+            const char *cname = symbol_table_get_cname(table, mangled);
+            char fval[MAX_STRING_LEN];
+            snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            ASTNode *node = create_node(NODE_LET, cname, fval);
+            node->var_type = TYPE_STRING;
+            node->is_expr = 1;
+            emit(node);
+            return;
+        }
     }
 
     /* object literal */
@@ -3855,6 +3982,34 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
             "Expected '=' after variable name");
         skip_to_newline(lexer);
         return;
+    }
+
+    /* anonymous function expression: let f = function(params) { ... } */
+    if (lexer_peek(lexer).type == TOKEN_FUNCTION) {
+        Token after_fn = lexer->tokens[lexer->current + 1];
+        if (after_fn.type == TOKEN_LPAREN) {
+            ASTNode *fn = parse_function(lexer, table, g_enclosing_cname);
+            if (fn && g_program_ref) {
+                fn->next = g_program_ref->functions;
+                g_program_ref->functions = fn;
+            }
+            symbol_table_add_locked(table, mangled, TYPE_STRING);
+            symbol_table_set_func_ref(table, mangled, fn ? fn->name : "", -1);
+            if (fn) {
+                /* store actual param count */
+                int pc = 0;
+                for (ASTNode *p = fn->params; p; p = p->next) pc++;
+                symbol_table_set_func_ref(table, mangled, fn->name, pc);
+            }
+            const char *cname = symbol_table_get_cname(table, mangled);
+            char fval[MAX_STRING_LEN];
+            snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            ASTNode *node = create_node(NODE_CONST, cname, fval);
+            node->var_type = TYPE_STRING;
+            node->is_expr = 1;
+            emit(node);
+            return;
+        }
     }
 
     /* object literal */
@@ -4386,6 +4541,35 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
     Token next = lexer_peek(lexer);
     VarType vtype;
     Token value;
+
+    /* anonymous function expression: set f = function(params) { ... } */
+    if (next.type == TOKEN_FUNCTION) {
+        Token after_fn = lexer->tokens[lexer->current + 1];
+        if (after_fn.type == TOKEN_LPAREN) {
+            ASTNode *fn = parse_function(lexer, table, g_enclosing_cname);
+            if (fn && g_program_ref) {
+                fn->next = g_program_ref->functions;
+                g_program_ref->functions = fn;
+            }
+            if (!check_set_type_immutable(table, mangled, TYPE_STRING, set_tok.line, set_tok.col, lexer))
+                return;
+            symbol_table_update(table, mangled, TYPE_STRING);
+            if (fn) {
+                int pc = 0;
+                for (ASTNode *p = fn->params; p; p = p->next) pc++;
+                symbol_table_set_func_ref(table, mangled, fn->name, pc);
+            } else {
+                symbol_table_set_func_ref(table, mangled, "", -1);
+            }
+            char fval[MAX_STRING_LEN];
+            snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            ASTNode *node = create_node(NODE_SET, cname, fval);
+            node->var_type = TYPE_STRING;
+            node->is_expr = 1;
+            emit(node);
+            return;
+        }
+    }
 
     /* object literal assignment */
     if (next.type == TOKEN_LBRACE) {
@@ -5682,7 +5866,7 @@ static void parse_throw(Lexer *lexer, SymbolTable *table) {
    Returns 0 if not a sole call arg (lexer restored). */
 static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size) {
     Token first = lexer_peek(lexer);
-    if (first.type != TOKEN_IDENT || !is_function_name_scoped(table, first.value)) return 0;
+    if (first.type != TOKEN_IDENT || !is_callable_ident(table, first.value)) return 0;
     int saved = lexer->current;
     Token fname = lexer_next(lexer);
     if (lexer_peek(lexer).type != TOKEN_LPAREN) { lexer->current = saved; return 0; }
@@ -5863,8 +6047,19 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     call->line = line;
     call->col = col;
     char fm[MAX_IDENTIFIER_LEN];
-    if (!resolve_func_name(table, fname_tok_val, fm, MAX_IDENTIFIER_LEN)) {
-        mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
+    int indirect = 0;
+    int fr_pc = -1;
+    char fr_cname[MAX_IDENTIFIER_LEN] = "";
+    /* indirect call through function-reference variable? */
+    if (!is_function_name_scoped(table, fname_tok_val) &&
+        symbol_table_get_func_ref(table, fname_tok_val, fr_cname, sizeof(fr_cname), &fr_pc)) {
+        indirect = 1;
+        strncpy(fm, fr_cname, MAX_IDENTIFIER_LEN - 1);
+        fm[MAX_IDENTIFIER_LEN - 1] = '\0';
+    } else {
+        if (!resolve_func_name(table, fname_tok_val, fm, MAX_IDENTIFIER_LEN)) {
+            mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
+        }
     }
     strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
     if (function_first_param_is_base(fm)) {
@@ -5898,6 +6093,28 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 an->var_type = TYPE_STRING;
                 an->is_expr = 1;
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
+            } else if (at.type == TOKEN_FUNCTION && !named_arg) {
+                Token after_fn = lexer->tokens[lexer->current + 1];
+                if (after_fn.type == TOKEN_LPAREN) {
+                    ASTNode *fn = parse_function(lexer, table, g_enclosing_cname);
+                    if (fn && g_program_ref) {
+                        fn->next = g_program_ref->functions;
+                        g_program_ref->functions = fn;
+                    }
+                    ASTNode *an = create_node(NODE_PARAM, "", "");
+                    snprintf(an->value, MAX_STRING_LEN, "\"%s\"", fn ? fn->name : "");
+                    an->var_type = TYPE_STRING;
+                    an->is_expr = 1;
+                    if (!args) args = alast = an; else { alast->next = an; alast = an; }
+                } else {
+                    /* named function ref not supported as expression here; fall through */
+                    char aexpr[MAX_STRING_LEN];
+                    VarType avt = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1, NULL, NULL, NULL, NULL);
+                    ASTNode *an = create_node(NODE_PARAM, "", aexpr);
+                    an->var_type = avt;
+                    an->is_expr = 1;
+                    if (!args) args = alast = an; else { alast->next = an; alast = an; }
+                }
             } else if (at.type == TOKEN_CHAR && !named_arg) {
                 lexer_next(lexer);
                 ASTNode *an = create_node(NODE_PARAM, "", "");
@@ -5906,7 +6123,7 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 an->var_type = TYPE_STRING;
                 an->is_expr = 1;
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
-            } else if (!named_arg && at.type == TOKEN_IDENT && is_function_name_scoped(table, at.value)) {
+            } else if (!named_arg && at.type == TOKEN_IDENT && is_callable_ident(table, at.value)) {
                 /* function call argument - pass result as string buffer */
                 char cexpr[MAX_STRING_LEN];
                 if (try_parse_call_arg(lexer, table, cexpr, sizeof(cexpr))) {
@@ -5951,7 +6168,8 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     else { error_state_add(parser_errors, line, col, "Expected ')' after function arguments"); }
 
     /* Fill in default values for parameters that were not supplied by the caller. */
-    ASTNode *fn_def = find_function_ast_by_name(fname_tok_val);
+    ASTNode *fn_def = find_function_ast_by_name(indirect ? fm : fname_tok_val);
+    if (!fn_def && indirect) fn_def = find_function_ast_by_name(fm);
     if (fn_def && fn_def->params) {
         int param_count = 0;
         for (ASTNode *p = fn_def->params; p; p = p->next) param_count++;
@@ -6196,19 +6414,30 @@ static void parse_exit(Lexer *lexer, SymbolTable *table) {
 }
 
 static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_cname) {
-    Token kw = lexer_next(lexer);
-    Token name = lexer_next(lexer);
-    if (!token_is_name(name)) {
-        error_state_add(parser_errors, name.line, name.col,
-            "Expected function name after 'function'");
-        skip_to_newline(lexer);
-        return NULL;
-    }
-    if (is_ltng_reserved(name.value) || is_ltng_keyword(name.value)) {
-        error_state_add(parser_errors, name.line, name.col,
-            "Cannot use reserved word as function name");
-        skip_to_newline(lexer);
-        return NULL;
+    Token kw = lexer_next(lexer); /* 'function' */
+    int is_anon = 0;
+    Token name = {0};
+    if (lexer_peek(lexer).type == TOKEN_LPAREN) {
+        /* anonymous function: function(params) { ... } */
+        is_anon = 1;
+        name.type = TOKEN_IDENT;
+        name.line = kw.line;
+        name.col = kw.col;
+        snprintf(name.value, sizeof(name.value), "__anon_%d", g_anon_count++);
+    } else {
+        name = lexer_next(lexer);
+        if (!token_is_name(name)) {
+            error_state_add(parser_errors, name.line, name.col,
+                "Expected function name or '(' after 'function'");
+            skip_to_newline(lexer);
+            return NULL;
+        }
+        if (is_ltng_reserved(name.value) || is_ltng_keyword(name.value)) {
+            error_state_add(parser_errors, name.line, name.col,
+                "Cannot use reserved word as function name");
+            skip_to_newline(lexer);
+            return NULL;
+        }
     }
 
     char fname_short[MAX_IDENTIFIER_LEN];
@@ -6220,8 +6449,8 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
         strncpy(cname, fname_short, MAX_IDENTIFIER_LEN - 1);
         cname[MAX_IDENTIFIER_LEN - 1] = 0;
     }
-    /* reject duplicate function definition in same scope */
-    if (g_program_ref) {
+    /* reject duplicate function definition in same scope (named functions) */
+    if (!is_anon && g_program_ref) {
         for (ASTNode *ex = g_program_ref->functions; ex; ex = ex->next) {
             if (strcmp(ex->name, cname) == 0) {
                 char msg[256];
@@ -6232,8 +6461,8 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
             }
         }
     }
-    /* bind short name in enclosing scope (so calls inside it resolve) */
-    if (table) symbol_table_add_func(table, name.value, cname, 0);
+    /* bind short name in enclosing scope (so calls inside it resolve) - named only */
+    if (!is_anon && table) symbol_table_add_func(table, name.value, cname, 0);
     /* register lifted C name globally for codegen/prototypes */
     {
         if (g_func_count < MAX_FUNCS) {
@@ -6247,7 +6476,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     Token lp = lexer_next(lexer);
     if (lp.type != TOKEN_LPAREN) {
         error_state_add(parser_errors, lp.line, lp.col,
-            "Expected '(' after function name");
+            is_anon ? "Expected '(' after 'function'" : "Expected '(' after function name");
         skip_to_newline(lexer);
         return NULL;
     }
@@ -6309,7 +6538,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     for (int i = 0; i < g_func_count; i++) {
         if (strcmp(g_funcs[i].name, cname) == 0) { g_funcs[i].param_count = pcount; break; }
     }
-    if (table) symbol_table_add_func(table, name.value, cname, pcount);
+    if (!is_anon && table) symbol_table_add_func(table, name.value, cname, pcount);
 
     Token rp = lexer_next(lexer);
     if (rp.type != TOKEN_RPAREN) {
@@ -6331,7 +6560,8 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
 
     ASTNode *fn = create_node(NODE_FUNCTION, cname, "");
     fn->line = kw.line; fn->col = kw.col;
-    strncpy(fn->for_var, name.value, MAX_IDENTIFIER_LEN - 1);
+    if (!is_anon) strncpy(fn->for_var, name.value, MAX_IDENTIFIER_LEN - 1);
+    else fn->for_var[0] = '\0';
     fn->params = params;
     char saved_enc[MAX_IDENTIFIER_LEN];
     strncpy(saved_enc, g_enclosing_cname, MAX_IDENTIFIER_LEN - 1);
@@ -6376,11 +6606,18 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
             transform_inc_dec_stmt(lexer, table);
             return;
         }
-        if (t2.type == TOKEN_LPAREN && is_function_name_scoped(table, t.value)) {
+        if (t2.type == TOKEN_LPAREN && is_callable_ident(table, t.value)) {
             /* function call statement: name(args) */
             char fm[MAX_IDENTIFIER_LEN];
-            if (!resolve_func_name(table, t.value, fm, MAX_IDENTIFIER_LEN)) {
-                mangle_name(t.value, fm, MAX_IDENTIFIER_LEN);
+            int indirect_stmt = 0;
+            int fr_pc = -1;
+            if (!is_function_name_scoped(table, t.value) &&
+                symbol_table_get_func_ref(table, t.value, fm, sizeof(fm), &fr_pc)) {
+                indirect_stmt = 1;
+            } else {
+                if (!resolve_func_name(table, t.value, fm, MAX_IDENTIFIER_LEN)) {
+                    mangle_name(t.value, fm, MAX_IDENTIFIER_LEN);
+                }
             }
             if (function_first_param_is_base(fm)) {
                 error_state_add(parser_errors, t.line, t.col,
@@ -6389,36 +6626,9 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 return;
             }
             lexer->current = saved;
-            lexer_next(lexer); /* consume fname */
-            lexer_next(lexer); /* ( */
-            ASTNode *call = create_node(NODE_CALL, "", "");
-            call->line = t.line; call->col = t.col;
-            strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
-            /* parse args */
-            ASTNode *args = NULL, *alast = NULL;
-            if (lexer_peek(lexer).type != TOKEN_RPAREN) {
-                while (1) {
-                    char aexpr[MAX_STRING_LEN];
-                    VarType at = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1, NULL, NULL, NULL, NULL);
-                    int esl=g_expr_sl,esc=g_expr_sc,eel=g_expr_el,eec=g_expr_ec;
-                    ASTNode *an = create_node(NODE_PARAM, "", aexpr);
-                    an->v_sl=esl; an->v_sc=esc; an->v_el=eel; an->v_ec=eec;
-                    an->var_type = at;
-                    an->is_expr = 1;
-                    if ((at == TYPE_STRING || at == TYPE_OBJECT) && aexpr[0] != '"' && aexpr[0] != '\0') {
-                        int simple = 1;
-                        for (char *p = aexpr; *p; p++) {
-                            if (*p==' '||*p=='\t'||*p=='('||*p==')'||*p=='+'||*p=='*'||*p=='-'||*p=='/'||*p=='%'||*p=='='||*p=='!'||*p=='<'||*p=='>'||*p=='&'||*p=='|'||*p=='?') { simple = 0; break; }
-                        }
-                        if (simple) an->is_variable = 1;
-                    }
-                    if (!args) args = alast = an; else { alast->next = an; alast = an; }
-                    if (lexer_peek(lexer).type == TOKEN_COMMA) { lexer_next(lexer); continue; }
-                    break;
-                }
-            }
-            if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
-            call->args = args;
+            Token fname = lexer_next(lexer); /* consume fname */
+            lexer_next(lexer); /* consume ( */
+            ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
             emit(call);
             return;
         }
