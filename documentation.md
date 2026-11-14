@@ -1232,7 +1232,7 @@ Add an optional `else` after `catch` to run code only when the `try` body comple
 ```ltng
 let result = ""
 try {
-    set result = parse(input)
+    set result = compute()
 } catch (e) {
     write("failed: " + e.message)
 } else {
