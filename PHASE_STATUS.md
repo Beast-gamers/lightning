@@ -230,11 +230,15 @@
 - **Return-type validation improvements:** compile-time error for clearly inconsistent return types within a function (e.g. string literal vs numeric), while remaining compatible with numeric mixing and current variable pass-through return representation. Tests: `tests/semantic/phase5_inconsistent_return_neg.ltng`.
 - **Anonymous functions:** `function(params) { ... }` expressions can be assigned to `let`/`const` variables or reassigned with `set`, called, used in expressions/arguments, returned, and passed as values. Tests: `tests/runtime/phase5_anon_functions.ltng`.
 - **Closures / shared mutable capture:** anonymous/nested functions capture enclosing-scope variables (parameters and locals) with **shared, mutable** semantics via heap-allocated storage; mutations are visible across the closure and creating scope, and captured state remains valid when closures escape. Tests: `tests/runtime/phase5_closures.ltng`, `tests/runtime/phase5_closure_mutable.ltng`.
-- **Named function references as first-class values:** existing named functions can be referenced as values (e.g. `let f = add1`), assigned, passed, returned, and invoked through variables/parameters. Tests: `tests/runtime/phase5_named_func_refs.ltng`.
-- **Function values / dynamic dispatch:** function values (closures and named function references) can be called through variables and parameters via runtime dispatch.
+- **Named function references as first-class values:** existing named functions can be referenced as values (e.g. `let f = add1`), assigned, passed, returned, and invoked through variables/parameters. Includes in-scope self-references (e.g. `let fn = fact` inside `fact`). Tests: `tests/runtime/phase5_named_func_refs.ltng`, `tests/runtime/phase5_nfr_self_ref.ltng`.
+- **Function values / dynamic dispatch:** function values (closures and named function references) can be called through variables and parameters via runtime dispatch. Tests: `tests/runtime/phase5_indirect_call_in_expr.ltng`.
+
+### Edge-case fixes (this pass)
+- Fixed indirect/dynamic function-call emission in numeric-expression contexts (correct `__ltng_call_indirect` handling for callable-identified function values), preventing generated C/internal compile failures when function values are called inside expressions (e.g. `sum + fn(10)`).
+- Fixed named function reference resolution for in-scope functions not yet linked in the AST (e.g. taking a self-reference inside the function body).
 
 ### Test results
-- Full suite: **PASS=140 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation), including mutable/shared capture, named function reference, and exception trace/buffer regression coverage.
+- Full suite: **PASS=142 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation), including mutable/shared capture, named function references/self-ref, indirect-call-in-expression, and exception trace/buffer regression coverage.
 
 ### Remaining for Phase 5
 - Variadic arguments.

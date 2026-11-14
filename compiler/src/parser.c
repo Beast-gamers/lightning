@@ -958,6 +958,7 @@ static void token_append_source(char *out, int *pos, int out_size, Token tok);
 
 /* Find a function AST node by its short source name or mangled C name. */
 static ASTNode *find_function_ast_by_name(const char *name);
+static int resolve_func_ref_info(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_pc);
 
 /* Infer the return type of a user-defined function by scanning its return statements. */
 static VarType infer_function_return_type(const char *fname);
@@ -1347,7 +1348,14 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         pos += snprintf(out + pos, out_size - pos, "0");
                         break;
                     }
-                    pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
+                    if (strcmp(call->name, "__ltng_indirect") == 0) {
+                        int argc = 0;
+                        for (ASTNode *a = call->args; a; a = a->next) argc++;
+                        pos += snprintf(out + pos, out_size - pos, "atof(__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d",
+                            call->for_var, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1, argc);
+                    } else {
+                        pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
+                    }
                     for (ASTNode *a = call->args; a; a = a->next) {
                         if (a->var_type == TYPE_STRING && a->value[0] == '"') {
                             pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
@@ -3641,19 +3649,16 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : fnref_tok;
         if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF ||
             after_fnref.type == TOKEN_RBRACE) {
-            ASTNode *fndef = find_function_ast_by_name(fnref_tok.value);
             char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(fnref_tok.value, mangled_ref, sizeof(mangled_ref));
             int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, fnref_tok.value);
-            if (fndef && !is_var) {
+            char ref_cname[MAX_IDENTIFIER_LEN]; int ref_pc = -1;
+            if (!is_var && resolve_func_ref_info(table, fnref_tok.value, ref_cname, sizeof(ref_cname), &ref_pc)) {
                 lexer_next(lexer);
                 symbol_table_add_locked(table, mangled, TYPE_STRING);
-                {
-                    int pc = 0; for (ASTNode *p = fndef->params; p; p = p->next) pc++;
-                    symbol_table_set_func_ref(table, mangled, fndef->name, pc);
-                }
+                symbol_table_set_func_ref(table, mangled, ref_cname, ref_pc);
                 const char *cname = symbol_table_get_cname(table, mangled);
                 char fval[MAX_STRING_LEN];
-                snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                snprintf(fval, sizeof(fval), "\"%s\"", ref_cname);
                 ASTNode *node = create_node(NODE_LET, cname, fval);
                 node->var_type = TYPE_STRING;
                 node->is_expr = 1;
@@ -4117,19 +4122,16 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : fnref_tok;
         if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF ||
             after_fnref.type == TOKEN_RBRACE) {
-            ASTNode *fndef = find_function_ast_by_name(fnref_tok.value);
             char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(fnref_tok.value, mangled_ref, sizeof(mangled_ref));
             int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, fnref_tok.value);
-            if (fndef && !is_var) {
+            char ref_cname[MAX_IDENTIFIER_LEN]; int ref_pc = -1;
+            if (!is_var && resolve_func_ref_info(table, fnref_tok.value, ref_cname, sizeof(ref_cname), &ref_pc)) {
                 lexer_next(lexer);
                 symbol_table_add_locked(table, mangled, TYPE_STRING);
-                {
-                    int pc = 0; for (ASTNode *p = fndef->params; p; p = p->next) pc++;
-                    symbol_table_set_func_ref(table, mangled, fndef->name, pc);
-                }
+                symbol_table_set_func_ref(table, mangled, ref_cname, ref_pc);
                 const char *cname = symbol_table_get_cname(table, mangled);
                 char fval[MAX_STRING_LEN];
-                snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                snprintf(fval, sizeof(fval), "\"%s\"", ref_cname);
                 ASTNode *node = create_node(NODE_CONST, cname, fval);
                 node->var_type = TYPE_STRING;
                 node->is_expr = 1;
@@ -4714,20 +4716,17 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : next;
         if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF ||
             after_fnref.type == TOKEN_RBRACE) {
-            ASTNode *fndef = find_function_ast_by_name(next.value);
             char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(next.value, mangled_ref, sizeof(mangled_ref));
             int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, next.value);
-            if (fndef && !is_var) {
+            char ref_cname[MAX_IDENTIFIER_LEN]; int ref_pc = -1;
+            if (!is_var && resolve_func_ref_info(table, next.value, ref_cname, sizeof(ref_cname), &ref_pc)) {
                 lexer_next(lexer);
                 if (!check_set_type_immutable(table, mangled, TYPE_STRING, set_tok.line, set_tok.col, lexer))
                     return;
                 symbol_table_update(table, mangled, TYPE_STRING);
-                {
-                    int pc = 0; for (ASTNode *p = fndef->params; p; p = p->next) pc++;
-                    symbol_table_set_func_ref(table, mangled, fndef->name, pc);
-                }
+                symbol_table_set_func_ref(table, mangled, ref_cname, ref_pc);
                 char fval[MAX_STRING_LEN];
-                snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                snprintf(fval, sizeof(fval), "\"%s\"", ref_cname);
                 ASTNode *node = create_node(NODE_SET, cname, fval);
                 node->var_type = TYPE_STRING;
                 node->is_expr = 1;
@@ -6078,6 +6077,39 @@ static ASTNode *find_function_ast_by_name(const char *name) {
     return NULL;
 }
 
+/* Resolve named function reference info (cname and param count). Falls back to
+   scope/global function registration when AST node is not yet linked (e.g.
+   self-reference inside function body during parsing). Returns 1 on success. */
+static int resolve_func_ref_info(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_pc) {
+    ASTNode *fndef = find_function_ast_by_name(name);
+    if (fndef) {
+        if (out_cname && out_size > 0) {
+            strncpy(out_cname, fndef->name, out_size - 1);
+            out_cname[out_size - 1] = '\0';
+        }
+        if (out_pc) {
+            int pc = 0;
+            for (ASTNode *p = fndef->params; p; p = p->next) pc++;
+            *out_pc = pc;
+        }
+        return 1;
+    }
+    char cname[MAX_IDENTIFIER_LEN];
+    if (!resolve_func_name(table, name, cname, sizeof(cname))) return 0;
+    if (out_cname && out_size > 0) {
+        strncpy(out_cname, cname, out_size - 1);
+        out_cname[out_size - 1] = '\0';
+    }
+    if (out_pc) {
+        int pc = -1;
+        for (int i = 0; i < g_func_count; i++) {
+            if (strcmp(g_funcs[i].name, cname) == 0) { pc = g_funcs[i].param_count; break; }
+        }
+        *out_pc = pc;
+    }
+    return 1;
+}
+
 static int is_string_literal_return(ASTNode *ret) {
     if (!ret || ret->var_type != TYPE_STRING) return 0;
     const char *v = ret->value;
@@ -6525,12 +6557,12 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
         if (next.type == TOKEN_IDENT) {
             Token after_fnref = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : next;
             if (after_fnref.type == TOKEN_NEWLINE || after_fnref.type == TOKEN_EOF || after_fnref.type == TOKEN_RBRACE) {
-                ASTNode *fndef = find_function_ast_by_name(next.value);
                 char mangled_ref[MAX_IDENTIFIER_LEN]; mangle_name(next.value, mangled_ref, sizeof(mangled_ref));
                 int is_var = symbol_table_has(table, mangled_ref) || symbol_table_has(table, next.value);
-                if (fndef && !is_var) {
+                char ref_cname[MAX_IDENTIFIER_LEN]; int ref_pc = -1;
+                if (!is_var && resolve_func_ref_info(table, next.value, ref_cname, sizeof(ref_cname), &ref_pc)) {
                     lexer_next(lexer);
-                    char fval[MAX_STRING_LEN]; snprintf(fval, sizeof(fval), "\"%s\"", fndef->name);
+                    char fval[MAX_STRING_LEN]; snprintf(fval, sizeof(fval), "\"%s\"", ref_cname);
                     ASTNode *node = create_node(NODE_RETURN, "", fval);
                     node->line = kw.line; node->col = kw.col;
                     node->var_type = TYPE_STRING;

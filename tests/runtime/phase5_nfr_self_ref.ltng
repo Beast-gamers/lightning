@@ -1,0 +1,8 @@
+# Named function reference to self (recursion via variable)
+function fact(n){
+    if (n <= 1) { return 1 }
+    let fn = fact
+    return n * fn(n - 1)
+}
+write(fact(5))
+write(fact(1))

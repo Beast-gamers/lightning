@@ -1,0 +1,13 @@
+# Indirect/dynamic function-value calls inside numeric expressions
+function make(){
+    return function(x){ return x + 1 }
+}
+let fn = make()
+let sum = 0
+set sum = sum + fn(10)
+set sum = sum + fn(20)
+write(sum)
+
+function add(a,b){ return a + b }
+let op = add
+write(1 + op(2,3))
