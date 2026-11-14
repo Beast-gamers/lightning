@@ -66,7 +66,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Explicit conversion coverage incomplete:** `tofloat`/`tochar` (and conversion behavior generally) not fully implemented/verified in all contexts (including interpolation/evaluation and all expression forms).
 - **Numeric promotion rules incomplete:** consistent promotion/coercion rules are not fully defined/implemented across all operations.
 - **Type compatibility checking incomplete:** comprehensive compatibility and enforcement across all assignment, operation, parameter, and return contexts is not complete.
-- **Return-type validation incomplete:** function return type checking/validation is not fully implemented.
+- **Return-type validation limited:** basic inconsistent-return detection is implemented (e.g. string literal vs numeric), but richer return-type checking/annotations are not yet implemented.
 - **Numeric semantics gaps:** overflow behavior, division semantics, precision behavior, and boundary handling are not fully specified/verified.
 - **Insufficient negative/boundary/interaction coverage:** required comprehensive tests for invalid conversions, mixed expressions, precision/boundary values, null behavior interactions, and memory checks (where available) are not complete.
 - **Runtime-model constraints:** underlying string-buffer/runtime representation limits how fully native numeric/type semantics can be realized without broader redesign.

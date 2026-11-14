@@ -5748,6 +5748,58 @@ static ASTNode *find_function_ast_by_name(const char *name) {
     return NULL;
 }
 
+static int is_string_literal_return(ASTNode *ret) {
+    if (!ret || ret->var_type != TYPE_STRING) return 0;
+    const char *v = ret->value;
+    while (*v == ' ' || *v == '\t') v++;
+    return v[0] == '"';
+}
+
+static int var_types_return_compatible_nodes(ASTNode *a, ASTNode *b) {
+    if (!a || !b) return 1;
+    VarType ta = a->var_type, tb = b->var_type;
+    if (ta == tb) return 1;
+    if ((ta == TYPE_INT || ta == TYPE_FLOAT) && (tb == TYPE_INT || tb == TYPE_FLOAT)) return 1;
+    /* Variable pass-through returns are represented as TYPE_STRING in current implementation;
+       treat them as compatible unless clearly conflicting string literals. */
+    int a_lit = is_string_literal_return(a);
+    int b_lit = is_string_literal_return(b);
+    if (ta == TYPE_STRING && !a_lit) return 1;
+    if (tb == TYPE_STRING && !b_lit) return 1;
+    /* both string literals or string-literal vs non-string - incompatible */
+    return 0;
+}
+
+static void collect_return_nodes(ASTNode *node, ASTNode **nodes, int *count, int max) {
+    if (!node || *count >= max) return;
+    if (node->type == NODE_RETURN) {
+        nodes[(*count)++] = node;
+        return;
+    }
+    collect_return_nodes(node->body, nodes, count, max);
+    collect_return_nodes(node->orelse, nodes, count, max);
+    collect_return_nodes(node->else_body, nodes, count, max);
+    collect_return_nodes(node->cases, nodes, count, max);
+    collect_return_nodes(node->next, nodes, count, max);
+}
+
+static void validate_function_return_types(ASTNode *fn) {
+    if (!fn) return;
+    ASTNode *nodes[64];
+    int count = 0;
+    collect_return_nodes(fn->body, nodes, &count, 64);
+    if (count <= 1) return;
+    for (int i = 1; i < count; i++) {
+        if (!var_types_return_compatible_nodes(nodes[0], nodes[i])) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Inconsistent return types in function '%s'", fn->for_var[0] ? fn->for_var : fn->name);
+            error_state_add(parser_errors, fn->line, fn->col, msg);
+            return;
+        }
+        /* also ensure pairwise consistency against accumulated base? first vs all is enough if compat is transitive in this model */
+    }
+}
+
 /* Recursively scan an AST subtree for NODE_RETURN nodes and tally their var_types.
    Returns the dominant return type, or TYPE_STRING if mixed/none. */
 static VarType analyze_function_returns(ASTNode *node, int *has_return) {
@@ -6280,6 +6332,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     strncpy(g_enclosing_cname, saved_enc, MAX_IDENTIFIER_LEN - 1);
     g_enclosing_cname[MAX_IDENTIFIER_LEN - 1] = 0;
     free(func_scope);
+    validate_function_return_types(fn);
     (void)kw;
     return fn;
 }
