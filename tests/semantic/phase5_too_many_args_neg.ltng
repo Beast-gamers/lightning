@@ -1,0 +1,4 @@
+function id1(a) {
+    return a
+}
+write(id1(1, 2))

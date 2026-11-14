@@ -1,0 +1,4 @@
+function add2(a, b) {
+    return a + b
+}
+write(add2(a = 1, c = 2))

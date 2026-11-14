@@ -226,9 +226,10 @@
 ### Delivered increments
 - **Default parameters:** `function f(a, b = 100) { ... }` — omitted call arguments use the declared default. Defaults may be numeric/string literals or expressions (including enclosing-scope references). Fill-missing logic applied in `parse_call_node` for all call paths (statement, expression, UFCS, nested call arguments). Tests: `tests/runtime/phase5_defaults.ltng`.
 - **Named arguments:** calls support `name = value` arguments in any order, mixed with positional arguments (positional args bind left-to-right to parameters not supplied by name). Works with default parameters. Tests: `tests/runtime/phase5_named_args.ltng`.
+- **Call argument validation:** compile-time errors for missing required arguments, too many arguments, unknown named parameters, and duplicate named arguments (with placeholder emission to avoid internal C errors). Tests: `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`.
 
 ### Test results
-- Full suite: **PASS=131 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
+- Full suite: **PASS=134 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
 
 ### Remaining for Phase 5
 - Anonymous functions and closures (capture of enclosing function locals, captured mutable variables, independent instances).

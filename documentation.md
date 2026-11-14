@@ -1157,6 +1157,8 @@ write(add3(1, c = 200))     # 211
 write(add3(c = 3, b = 2, a = 1))  # 6
 ```
 
+- Unknown parameter names, duplicate named arguments, missing required arguments (no default provided), and too many arguments are compile-time errors.
+
 ### Method-style calls (UFCS)
 
 A function can also be called with method-style syntax: `receiver.func(args...)`. The receiver becomes the first argument, so `receiver.func(args...)` is equivalent to `func(receiver, args...)`. This works with any first parameter name (for example `base`).

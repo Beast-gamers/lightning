@@ -5901,9 +5901,33 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     /* Fill in default values for parameters that were not supplied by the caller. */
     ASTNode *fn_def = find_function_ast_by_name(fname_tok_val);
     if (fn_def && fn_def->params) {
+        int param_count = 0;
+        for (ASTNode *p = fn_def->params; p; p = p->next) param_count++;
         ASTNode *eff = NULL;
         ASTNode *efflast = NULL;
         if (has_named_arg) {
+            /* Validate named args: unknown or duplicate parameter names. */
+            for (ASTNode *a = args; a; a = a->next) {
+                if (a->for_var[0] == '\0') continue;
+                int found = 0;
+                for (ASTNode *p = fn_def->params; p; p = p->next) {
+                    if (strcmp(a->for_var, p->for_var) == 0) { found = 1; break; }
+                }
+                if (!found) {
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Unknown argument '%s' in call to '%s'", a->for_var, fname_tok_val);
+                    error_state_add(parser_errors, line, col, msg);
+                }
+                int dup = 0;
+                for (ASTNode *b = args; b != a; b = b->next) {
+                    if (b->for_var[0] && strcmp(b->for_var, a->for_var) == 0) { dup = 1; break; }
+                }
+                if (dup) {
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Duplicate argument '%s' in call to '%s'", a->for_var, fname_tok_val);
+                    error_state_add(parser_errors, line, col, msg);
+                }
+            }
             /* Build positional list in order (do not mutate original arg links). */
             ASTNode *pos_list[64]; int pos_n = 0;
             for (ASTNode *a = args; a; a = a->next) {
@@ -5917,6 +5941,9 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 for (ASTNode *a = args; a; a = a->next) {
                     if (a->for_var[0] && strcmp(a->for_var, p->for_var) == 0) { outn = a; break; }
                 }
+                if (outn && pos_i < pos_n) {
+                    /* positional would also try to fill; check if too many positionals overall later */
+                }
                 if (!outn) {
                     if (pos_i < pos_n) { outn = pos_list[pos_i++]; }
                     else if (p->has_default) {
@@ -5929,20 +5956,39 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 if (outn) {
                     if (out_n < 64) out_list[out_n++] = outn;
                 } else {
-                    break;
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Missing required argument '%s' in call to '%s'", p->for_var, fname_tok_val);
+                    error_state_add(parser_errors, line, col, msg);
+                    /* create placeholder to keep arity consistent in emitted code */
+                    outn = create_node(NODE_PARAM, "", "\"\"");
+                    outn->var_type = TYPE_STRING;
+                    outn->is_expr = 1;
+                    if (out_n < 64) out_list[out_n++] = outn;
                 }
+            }
+            if (pos_i < pos_n) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Too many arguments in call to '%s'", fname_tok_val);
+                error_state_add(parser_errors, line, col, msg);
             }
             for (int i = 0; i < out_n; i++) {
                 out_list[i]->next = NULL;
                 if (!eff) eff = efflast = out_list[i]; else { efflast->next = out_list[i]; efflast = out_list[i]; }
             }
         } else {
+            /* Count supplied positional args */
+            int supplied = 0;
+            for (ASTNode *a = args; a; a = a->next) supplied++;
+            if (supplied > param_count) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Too many arguments in call to '%s'", fname_tok_val);
+                error_state_add(parser_errors, line, col, msg);
+            }
             ASTNode *src = args;
-            int idx = 0;
-            for (ASTNode *p = fn_def->params; p; p = p->next, idx++) {
+            for (ASTNode *p = fn_def->params; p; p = p->next) {
                 ASTNode *a = src;
                 if (a) src = a->next; else a = NULL;
-                ASTNode *outn;
+                ASTNode *outn = NULL;
                 if (a) {
                     outn = a;
                 } else if (p->has_default) {
@@ -5951,8 +5997,14 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                     outn->is_expr = 1;
                     outn->has_default = 1;
                 } else {
-                    break;
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Missing required argument '%s' in call to '%s'", p->for_var, fname_tok_val);
+                    error_state_add(parser_errors, line, col, msg);
+                    outn = create_node(NODE_PARAM, "", "\"\"");
+                    outn->var_type = TYPE_STRING;
+                    outn->is_expr = 1;
                 }
+                outn->next = NULL;
                 if (!eff) eff = efflast = outn; else { efflast->next = outn; efflast = outn; }
             }
         }

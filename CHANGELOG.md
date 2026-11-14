@@ -1,7 +1,8 @@
-## Phase 5 — Named arguments (in progress)
+## Phase 5 — Named arguments and call validation (in progress)
 - **Named arguments:** function calls support `name = value` arguments; named arguments can be reordered and mixed with positional arguments (positional args bind left-to-right to parameters not supplied by name). Works with default parameters.
-- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`).
-- **Suite:** PASS=131 FAIL=0 SKIP=0.
+- **Call argument validation:** compile-time errors for missing required arguments, too many arguments, unknown named parameters, and duplicate named arguments (safe placeholder emission prevents internal C compilation failures on bad calls).
+- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`), `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`.
+- **Suite:** PASS=134 FAIL=0 SKIP=0.
 
 # Changelog
 
