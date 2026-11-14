@@ -76,6 +76,8 @@ cp compiler/ltng /tmp/opencode/ltng && chmod +x /tmp/opencode/ltng
 
 - Prefer small, focused tests named by feature/behavior.
 - For positive runtime tests, include an `.expected` file (same basename) when deterministic stdout comparison is desired.
+- For tests that must exit non-zero, add a `.exitcode` file containing the expected integer exit status.
+- For tests with deterministic stderr (for example uncaught exceptions and stack traces), add a `.stderr` file; the harness normalizes absolute source paths to basenames before comparing.
 - For negative tests, ensure they fail with a non-zero compiler exit code; add comments describing the intended error.
 - Add a regression test for every bug fixed (see bug-fixing protocol).
 - When adding generated/native-executable tests, always compile and execute the produced binary (not just check/emit).

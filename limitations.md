@@ -1,8 +1,8 @@
-# Lightning Limitations (Phases 0–3)
+# Lightning Limitations (Phases 0–4)
 
-This document consolidates known limitations, gaps, and unresolved issues recorded so far for Phases 0–3 of the Lightning enhancement effort. It reflects the current repository state, implementation status, test coverage, and documented constraints.
+This document consolidates known limitations, gaps, and unresolved issues recorded so far for Phases 0–4 of the Lightning enhancement effort. It reflects the current repository state, implementation status, test coverage, and documented constraints.
 
-> Status context: Phase 0 complete, Phase 1 partially implemented, Phase 2 complete, Phase 3 complete (with key limitations reduced). Phases 4–13 are pending.
+> Status context: Phase 0 complete, Phase 1 partially implemented, Phase 2 complete, Phase 3 complete (with key limitations reduced), Phase 4 complete. Phases 5–13 are pending.
 
 ---
 
@@ -132,7 +132,38 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ---
 
-## Documentation and test-coverage limitations related to Phases 0–3
+## Phase 4 — Exception handling
+
+**Status:** Complete (implemented and regression-tested)
+
+### Implemented (relevant context)
+- `try`/`catch`/`finally`/`throw`, optional catch variable, custom error types, `error(type, message)`, and bare rethrow inside `catch`.
+- Catch object fields: `type`, `message`, `trace`, `line`, `column`, `function`, `value`, `obj`.
+- Propagation through nested `try` blocks and function calls; uncaught exceptions print to stderr and exit with status `1`.
+- Call-site-aware stack traces using hidden call-site line/column arguments.
+- `finally` runs on normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides pending control flow; new exceptions in `finally` replace pending ones.
+
+### Remaining limitations
+- **Bounded trace buffer:** exception traces are stored in `_ltng_exc_trace[8192]`; extremely deep or wide traces may be truncated.
+- **Bounded function stack:** trace capture records at most 256 frames (`LTNG_FN_MAX`).
+- **Fixed exception payload buffers:** type, message, value, and trace use fixed-size buffers, so very large payloads are truncated.
+- **No typed catch filtering:** there is no `catch (Type e)` syntax; a `catch` handles every exception thrown in its `try`. Type-based dispatch must be done manually on `e.type`.
+- **`exit` skips `finally`:** `exit` terminates the process immediately, so pending `finally` cleanup does not run.
+- **Inlined cleanup / code size:** `finally` bodies are inlined at each exit point (including exception unwinding), which can increase generated code size for deeply nested `try`/`finally` blocks.
+- **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values (each roughly 11 KB) during exception-path `finally` execution; very deep exception-path `finally` nesting consumes additional C stack.
+- **Exception object model:** catch values are object-like fixed-buffer values; they are not first-class exception instances with inheritance, custom fields, or user-defined exception classes.
+- **Memory validation:** ASan could not run in this environment and valgrind is unavailable; validation relied on UBSan and native execution, so memory-safety evidence is not comprehensive.
+
+### Behavior notes (defined)
+- A bare `throw` outside a `catch` block is a compile-time error.
+- `try` requires at least one of `catch` or `finally`.
+- `throw true` / `throw false` produce message `"true"` / `"false"`.
+- A `return` in `finally` overrides a pending `return` or exception; a new exception thrown in `finally` replaces a pending exception.
+- `break` / `continue` in `finally` leave the enclosing loop after cleanup, discarding any pending exception.
+
+---
+
+## Documentation and test-coverage limitations related to Phases 0–4
 
 - **Phase 1 requirements not fully met:** remaining type-system work and required comprehensive positive/negative/boundary/interaction/memory tests are incomplete.
 - **Phase 0 harness is foundational, not exhaustive:** category-specific and adversarial/fuzz/memory automation suites need continued expansion.
@@ -143,4 +174,4 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ## Summary
 
-Phases 0–3 established reproducible testing infrastructure, improved scope semantics, and delivered a substantially more capable dynamic array system with preserved indexing behavior. However, major limitations remain in **type-system completeness (Phase 1)**, **runtime/value representation and ownership**, **first-class collection/expression semantics**, and **comprehensive memory/tooling validation**. These are expected to be addressed incrementally in future phases where feasible, with compatibility preserved unless intentionally documented.
+Phases 0–4 established reproducible testing infrastructure, improved scope semantics, delivered a substantially more capable dynamic array system, and added structured exception handling with stack traces and `finally` cleanup while preserving existing behavior. However, major limitations remain in **type-system completeness (Phase 1)**, **runtime/value representation and ownership**, **first-class collection/expression semantics**, **bounded exception/trace buffers**, and **comprehensive memory/tooling validation**. These are expected to be addressed incrementally in future phases where feasible, with compatibility preserved unless intentionally documented.

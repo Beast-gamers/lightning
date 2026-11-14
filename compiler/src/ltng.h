@@ -70,6 +70,10 @@ typedef enum {
     TOKEN_FUNCTION,
     TOKEN_RETURN,
     TOKEN_EXIT,
+    TOKEN_TRY,
+    TOKEN_CATCH,
+    TOKEN_FINALLY,
+    TOKEN_THROW,
     TOKEN_COMMA,
     TOKEN_DOT,
     TOKEN_COLON,
@@ -141,7 +145,9 @@ typedef enum {
     NODE_ARRAY_SLICE,
     NODE_ARRAY_SORT,
     NODE_ARRAY_REVERSE,
-    NODE_BLOCK
+    NODE_BLOCK,
+    NODE_TRY,
+    NODE_THROW
 } NodeType;
 
 typedef struct ASTNode {
@@ -153,6 +159,8 @@ typedef struct ASTNode {
     int is_expr;
     int is_default;
     int is_base_assign; /* UFCS call whose return value is assigned to receiver (base param) */
+    int has_catch;      /* NODE_TRY: catch clause present */
+    int has_finally;    /* NODE_TRY: finally clause present */
     char for_var[MAX_IDENTIFIER_LEN];
     char for_start[MAX_STRING_LEN];
     char for_end[MAX_STRING_LEN];

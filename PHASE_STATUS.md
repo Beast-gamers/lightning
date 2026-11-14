@@ -166,6 +166,57 @@
 - **Implemented:** IR stage added after parsing/before C code generation (`compiler/src/ir.c`, integrated in `compiler/src/main.c`, build updated). Generates `<source basename>.ltng_ir` and cleans it up on successful non-debug operations; `--debug` preserves artifacts in `debug/<source basename>/` (`source.ltng`, `intermediete.ltng_ir`, `emitted.c` when available), captures timestamped/staged `logs.txt` (printed to console at end) and `compiler_log.txt` (best-effort Lightning source line to emitted C mapping), preserves real C compiler warnings/output in debug flows, and on successful native compilation produces a copied binary, debug-symbol binary (`.dbg`), object (`.o`), and assembly (`.s`) files.
 - **Verification:** targeted manual checks for normal compile, `--check`, `--emit-c`, and `--debug` (including debug artifacts, logs, compiler_log mapping, binary/obj/asm/dbg); full suite `PASS=111 FAIL=0 SKIP=0`.
 
-## Phases 4–13
+## Phase 4 — Exception handling
+
+**Status:** Complete (implemented and regression-tested)
+
+### Implemented
+- **Syntax:** `try { ... } catch (e) { ... } finally { ... }`, `catch e { ... }` without parentheses, optional catch variable, and `finally` with or without `catch`. `try` requires at least one of `catch`/`finally`.
+- **Throwing:** `throw <expression>` accepts strings, numbers, booleans, variables, and expressions; `throw error(type, message)` sets an explicit type/message; `throw CustomError("message")` (identifier ending in `Error`, when not a user-defined function) sets a custom type.
+- **Rethrow:** bare `throw` inside a `catch` rethrows the active exception; bare `throw` outside `catch` is a compile-time error.
+- **Catch objects:** catch variables expose `type`, `message`, `trace`, `line`, `column`, `function`, `value`, and `obj`. Catch variables are block-scoped, and nested catches with the same source name use unique emitted C names.
+- **Propagation:** exceptions propagate through nested `try` blocks and function calls to the nearest handler.
+- **Uncaught exceptions:** print `<Type>: <message>` followed by a stack trace to stderr, then `exit(1)`.
+- **Stack traces:** call-site-aware frames (`at <function> (<file>:<line>:<col>)`), with the first frame at the throw site and each subsequent frame at the caller's call site.
+- **`finally` semantics:** runs on normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides a pending return/exception; a new exception thrown in `finally` replaces a pending one; `break`/`continue` in `finally` leave the loop after cleanup.
+- **Runtime:** `setjmp`/`longjmp` try-frame chain, active exception state, stack-local saved-exception capture for rethrow, and a bounded function stack for trace capture.
+
+### Test results
+- Full suite: **PASS=125 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
+- Phase 4 positive/native tests: `tests/runtime/phase4_try_catch`, `phase4_custom_errors`, `phase4_finally_control`, `phase4_finally_throws`, `phase4_nested_rethrow`, `phase4_propagation`, `phase4_uncaught`, `phase4_catch_scope`, `phase4_finally_exit_exc` (with `.expected`, and `.exitcode`/`.stderr` where applicable).
+- Phase 4 negative tests: `tests/semantic/phase4_bare_throw_neg`, `phase4_catch_without_try_neg`, `phase4_finally_without_try_neg`, `phase4_throw_missing_message_neg`, `phase4_try_without_clause_neg`.
+- **UBSan:** all Phase 4 programs compiled with `-fsanitize=undefined -fno-sanitize-recover=all` and executed cleanly (9/9; `phase4_uncaught` exits 1 as expected).
+- **ASan/valgrind:** ASan could not run in this proot environment (`heap size ... exceeds max user virtual address`); valgrind is unavailable. Memory checks are therefore limited to UBSan plus native execution.
+
+### Bugs found and fixed during Phase 4
+- Pending-exception save/restore leak when `finally` exited via `return`/`break`/`continue` on the exception path; replaced the global depth-indexed saved-exception stack with stack-local `LtngExcSaved` captures.
+- `throw true` / `throw false` were emitted as internal numeric values; now preserved as `"true"`/`"false"`.
+- Stack traces initially reported the throw site for every frame; added hidden call-site line/column arguments so each caller frame reports its own call site.
+- Nested catch variables with the same source name could collide; catch variables now always receive unique emitted C names and schemas are registered under those names.
+
+### Changed files
+- `compiler/src/ltng.h`
+- `compiler/src/lexer.c`
+- `compiler/src/parser.c`
+- `compiler/src/codegen.c`
+- `compiler/src/ir.c`
+- `compiler/ltng` (rebuilt)
+- `tests/run_tests.sh`
+- `tests/runtime/phase4_*.ltng` + `.expected`/`.exitcode`/`.stderr`
+- `tests/semantic/phase4_*_neg.ltng`
+- `documentation.md`
+- `CHANGELOG.md`
+- `PHASE_STATUS.md`
+- `limitations.md`
+
+### Notes / remaining limitations
+- Trace text is bounded (`_ltng_exc_trace[8192]`); very deep traces may be truncated.
+- Function-stack capture is bounded to 256 frames.
+- Exception type/message/value/trace storage uses fixed buffers, so very large payloads are truncated.
+- `exit` terminates the process without running pending `finally` blocks.
+- No typed catch filtering (`catch (Type e)`); every `catch` handles all exceptions from its `try`.
+- `finally` is implemented by inlining cleanup code at exit points; very deeply nested `try`/`finally` blocks increase generated code size.
+
+## Phases 5–13
 
 Pending. Each phase will be updated with: implemented features, changed files, test results (positive/negative/boundary/interaction/regression/memory where applicable), discovered bugs, and remaining limitations. No phase marked complete until all completion criteria are satisfied.

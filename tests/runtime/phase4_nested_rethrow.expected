@@ -1,0 +1,7 @@
+outer
+inner
+inner-catch boom
+inner-finally
+outer-catch boom
+outer-finally
+end

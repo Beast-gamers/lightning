@@ -4,6 +4,21 @@ static ErrorState *codegen_errors = NULL;
 static SymbolTable *codegen_table = NULL;
 static CodegenLog *codegen_log = NULL;
 
+/* -------- Phase 4 exception-codegen bookkeeping -------- */
+#define CG_MAX_CLEANUPS 128
+#define CG_MAX_LOOPS 64
+typedef struct {
+    char top_expr[64];        /* assignment such as _ltng_tf0.prev */
+    ASTNode *finally_body;    /* NULL when the try has no finally */
+} CgCleanup;
+
+static CgCleanup g_cleanups[CG_MAX_CLEANUPS];
+static int g_cleanup_count = 0;
+static int g_loop_bases[CG_MAX_LOOPS];
+static int g_loop_depth = 0;
+static int g_try_uid = 0;
+static int g_codegen_in_function = 0;
+
 void codegen_set_log(CodegenLog *log) {
     codegen_log = log;
 }
@@ -46,6 +61,8 @@ static const char *node_type_name_cg(NodeType t) {
         case NODE_ARRAY_SORT: return "ARRAY_SORT";
         case NODE_ARRAY_REVERSE: return "ARRAY_REVERSE";
         case NODE_BLOCK: return "BLOCK";
+        case NODE_TRY: return "TRY";
+        case NODE_THROW: return "THROW";
         default: return "NODE";
     }
 }
@@ -128,6 +145,21 @@ static void write_c_string(FILE *out, const char *str) {
             case '\n': fputc('\\', out); fputc('n', out); break;
             case '\t': fputc('\\', out); fputc('t', out); break;
             case '%': fputc('%', out); fputc('%', out); break;
+            default: fputc(*p, out); break;
+        }
+    }
+}
+
+/* Emit a C string literal body without doubling percent signs (used for
+   constants that are never interpreted as printf format strings). */
+static void write_c_string_raw(FILE *out, const char *str) {
+    for (const char *p = str; *p; p++) {
+        switch (*p) {
+            case '\\': fputs("\\\\", out); break;
+            case '"': fputs("\\\"", out); break;
+            case '\n': fputs("\\n", out); break;
+            case '\r': fputs("\\r", out); break;
+            case '\t': fputs("\\t", out); break;
             default: fputc(*p, out); break;
         }
     }
@@ -810,19 +842,25 @@ static void codegen_if(FILE *out, ASTNode *node, SymbolTable *table, int indent,
 }
 
 static void codegen_while(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
+    int base = g_cleanup_count;
+    if (g_loop_depth < CG_MAX_LOOPS) g_loop_bases[g_loop_depth++] = base;
     pad(out, indent);
     fprintf(out, "while (%s) {\n", node->value);
     if (node->body) emit_block(out, node->body, table, indent + 1);
     pad(out, indent);
     fprintf(out, "}\n");
+    if (g_loop_depth > 0) g_loop_depth--;
 }
 
 static void codegen_do_while(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
+    int base = g_cleanup_count;
+    if (g_loop_depth < CG_MAX_LOOPS) g_loop_bases[g_loop_depth++] = base;
     pad(out, indent);
     fprintf(out, "do {\n");
     if (node->body) emit_block(out, node->body, table, indent + 1);
     pad(out, indent);
     fprintf(out, "} while (%s);\n", node->value);
+    if (g_loop_depth > 0) g_loop_depth--;
 }
 
 static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
@@ -832,6 +870,8 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
     const char *end = node->for_end;
     const char *step = node->for_step;
     char op = node->for_step_op ? node->for_step_op : '+';
+    int base = g_cleanup_count;
+    if (g_loop_depth < CG_MAX_LOOPS) g_loop_bases[g_loop_depth++] = base;
     /* Use a C for loop so that 'continue' jumps to the step expression */
     pad(out, indent);
     fprintf(out, "{\n");
@@ -851,6 +891,7 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
         fprintf(out, "}\n");
         pad(out, indent);
         fprintf(out, "}\n");
+        if (g_loop_depth > 0) g_loop_depth--;
         return;
     }
     pad(out, indent + 1);
@@ -883,6 +924,7 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
     fprintf(out, "}\n");
     pad(out, indent);
     fprintf(out, "}\n");
+    if (g_loop_depth > 0) g_loop_depth--;
 }
 
 static void codegen_switch(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
@@ -918,6 +960,192 @@ static void codegen_switch(FILE *out, ASTNode *node, SymbolTable *table, int ind
         }
     }
     if (!first) fprintf(out, "\n");
+}
+
+static void emit_cleanup_unwind(FILE *out, SymbolTable *table, int indent, int target) {
+    int saved = g_cleanup_count;
+    for (int i = saved - 1; i >= target; i--) {
+        CgCleanup *c = &g_cleanups[i];
+        pad(out, indent);
+        fprintf(out, "_ltng_try_top = %s;\n", c->top_expr);
+        if (c->finally_body) {
+            g_cleanup_count = i; /* a return/throw in finally must not re-run itself */
+            emit_block(out, c->finally_body, table, indent);
+            g_cleanup_count = saved;
+        }
+    }
+}
+
+static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
+    if (!node->name[0]) return;
+    const char *cname = node->name;
+    ObjSchema *sc = obj_lookup(cname);
+
+    pad(out, indent);
+    fprintf(out, "char %s[256] = \"\";\n", cname);
+    pad(out, indent);
+    fprintf(out, "snprintf(%s, sizeof(%s), \"%%s: %%s\", _ltng_exc_type, _ltng_exc_msg);\n",
+        cname, cname);
+
+    if (!sc) return;
+    for (int i = 0; i < sc->count; i++) {
+        char fv[MAX_IDENTIFIER_LEN*2+8];
+        obj_resolve_field(cname, sc->fields[i].name, fv, sizeof(fv));
+        const char *fname = sc->fields[i].name;
+        int bsz = 256;
+        if (strcmp(fname, "trace") == 0) bsz = 4096;
+        else if (strcmp(fname, "obj") == 0) bsz = 512;
+        pad(out, indent);
+        fprintf(out, "char %s[%d] = \"\";\n", fv, bsz);
+        pad(out, indent);
+        if (strcmp(fname, "type") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", _ltng_exc_type);\n", fv, fv);
+        } else if (strcmp(fname, "message") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", _ltng_exc_msg);\n", fv, fv);
+        } else if (strcmp(fname, "trace") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", _ltng_exc_trace);\n", fv, fv);
+        } else if (strcmp(fname, "line") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%d\", _ltng_exc_line);\n", fv, fv);
+        } else if (strcmp(fname, "column") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%d\", _ltng_exc_col);\n", fv, fv);
+        } else if (strcmp(fname, "function") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", _ltng_exc_func);\n", fv, fv);
+        } else if (strcmp(fname, "value") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", _ltng_exc_value);\n", fv, fv);
+        } else if (strcmp(fname, "obj") == 0) {
+            fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s);\n", fv, fv, cname);
+        } else {
+            fprintf(out, "%s[0] = '\\0';\n", fv);
+        }
+    }
+}
+
+static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
+    int id = g_try_uid++;
+    char tf[64], tr[64], cf[64], cr[64], es[64], ec[64];
+    snprintf(tf, sizeof(tf), "_ltng_tf%d", id);
+    snprintf(tr, sizeof(tr), "_ltng_tr%d", id);
+    snprintf(cf, sizeof(cf), "_ltng_cf%d", id);
+    snprintf(cr, sizeof(cr), "_ltng_cr%d", id);
+    snprintf(es, sizeof(es), "_ltng_es%d", id);
+    snprintf(ec, sizeof(ec), "_ltng_ec%d", id);
+    int base = g_cleanup_count;
+
+    pad(out, indent); fprintf(out, "{\n");
+    pad(out, indent + 1); fprintf(out, "LtngTryFrame %s;\n", tf);
+    pad(out, indent + 1); fprintf(out, "%s.prev = _ltng_try_top;\n", tf);
+    pad(out, indent + 1); fprintf(out, "%s.stack_depth = _ltng_stack_depth;\n", tf);
+    pad(out, indent + 1); fprintf(out, "_ltng_try_top = &%s;\n", tf);
+    pad(out, indent + 1); fprintf(out, "int %s = setjmp(%s.env);\n", tr, tf);
+    pad(out, indent + 1); fprintf(out, "if (%s == 0) {\n", tr);
+
+    if (g_cleanup_count < CG_MAX_CLEANUPS) {
+        CgCleanup *c = &g_cleanups[g_cleanup_count++];
+        snprintf(c->top_expr, sizeof(c->top_expr), "%s.prev", tf);
+        c->finally_body = node->has_finally ? node->cases : NULL;
+    }
+
+    if (node->body) emit_block(out, node->body, table, indent + 2);
+    if (g_cleanup_count > base) g_cleanup_count--;
+    pad(out, indent + 2); fprintf(out, "_ltng_try_top = %s.prev;\n", tf);
+
+    if (node->has_finally && node->cases) {
+        int saved = g_cleanup_count;
+        g_cleanup_count = base;
+        emit_block(out, node->cases, table, indent + 2);
+        g_cleanup_count = saved;
+    }
+
+    pad(out, indent + 1); fprintf(out, "} else {\n");
+    pad(out, indent + 2); fprintf(out, "_ltng_try_top = %s.prev;\n", tf);
+    pad(out, indent + 2); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", tf);
+
+    if (node->has_catch) {
+        if (node->has_finally) {
+            codegen_catch_bind(out, node, indent + 2);
+            pad(out, indent + 2); fprintf(out, "LtngTryFrame %s;\n", cf);
+            pad(out, indent + 2); fprintf(out, "%s.prev = _ltng_try_top;\n", cf);
+            pad(out, indent + 2); fprintf(out, "%s.stack_depth = _ltng_stack_depth;\n", cf);
+            pad(out, indent + 2); fprintf(out, "_ltng_try_top = &%s;\n", cf);
+            pad(out, indent + 2); fprintf(out, "int %s = setjmp(%s.env);\n", cr, cf);
+            pad(out, indent + 2); fprintf(out, "if (%s == 0) {\n", cr);
+
+            if (g_cleanup_count < CG_MAX_CLEANUPS) {
+                CgCleanup *c = &g_cleanups[g_cleanup_count++];
+                snprintf(c->top_expr, sizeof(c->top_expr), "%s.prev", cf);
+                c->finally_body = node->cases;
+            }
+            if (node->orelse) emit_block(out, node->orelse, table, indent + 3);
+            if (g_cleanup_count > base) g_cleanup_count--;
+            pad(out, indent + 3); fprintf(out, "_ltng_try_top = %s.prev;\n", cf);
+
+            {
+                int saved = g_cleanup_count;
+                g_cleanup_count = base;
+                if (node->cases) emit_block(out, node->cases, table, indent + 3);
+                g_cleanup_count = saved;
+            }
+
+            pad(out, indent + 2); fprintf(out, "} else {\n");
+            pad(out, indent + 3); fprintf(out, "_ltng_try_top = %s.prev;\n", cf);
+            pad(out, indent + 3); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", cf);
+            pad(out, indent + 3); fprintf(out, "LtngExcSaved %s;\n", ec);
+            pad(out, indent + 3); fprintf(out, "_ltng_exc_save_to(&%s);\n", ec);
+            {
+                int saved = g_cleanup_count;
+                g_cleanup_count = base;
+                if (node->cases) emit_block(out, node->cases, table, indent + 3);
+                g_cleanup_count = saved;
+            }
+            pad(out, indent + 3); fprintf(out, "_ltng_exc_restore_from(&%s);\n", ec);
+            pad(out, indent + 3); fprintf(out, "_ltng_rethrow();\n");
+            pad(out, indent + 2); fprintf(out, "}\n");
+        } else {
+            codegen_catch_bind(out, node, indent + 2);
+            if (node->orelse) emit_block(out, node->orelse, table, indent + 2);
+        }
+    } else {
+        pad(out, indent + 2); fprintf(out, "LtngExcSaved %s;\n", es);
+        pad(out, indent + 2); fprintf(out, "_ltng_exc_save_to(&%s);\n", es);
+        {
+            int saved = g_cleanup_count;
+            g_cleanup_count = base;
+            if (node->cases) emit_block(out, node->cases, table, indent + 2);
+            g_cleanup_count = saved;
+        }
+        pad(out, indent + 2); fprintf(out, "_ltng_exc_restore_from(&%s);\n", es);
+        pad(out, indent + 2); fprintf(out, "_ltng_rethrow();\n");
+    }
+
+    pad(out, indent + 1); fprintf(out, "}\n");
+    pad(out, indent); fprintf(out, "}\n");
+}
+
+static void emit_return_value(FILE *out, ASTNode *node, const char *target, int indent) {
+    if (node->value[0] == '\0' && node->is_expr == 0) {
+        pad(out, indent); fprintf(out, "%s[0] = '\\0';\n", target);
+        return;
+    }
+    if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+        node->var_type == TYPE_NULL ||
+        strstr(node->value, "_ltng_add_sn") == node->value) {
+        pad(out, indent);
+        fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n",
+            target, node->value[0] ? node->value : "\"\"");
+    } else if (node->var_type == TYPE_FLOAT) {
+        pad(out, indent);
+        fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+            target, node->value[0] ? node->value : "0");
+    } else {
+        pad(out, indent);
+        if (strchr(node->value, '.')) {
+            fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+                target, node->value[0] ? node->value : "0");
+        } else {
+            fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(%s));\n",
+                target, node->value[0] ? node->value : "0");
+        }
+    }
 }
 
 static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
@@ -1067,27 +1295,71 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
         case NODE_SWITCH:
             codegen_switch(out, node, table, indent);
             break;
-        case NODE_BREAK:
-            pad(out, indent); fprintf(out, "break;\n");
-            break;
-        case NODE_CONTINUE:
-            pad(out, indent); fprintf(out, "continue;\n");
-            break;
-        case NODE_RETURN: {
-            if (node->value[0] == '\0' && node->is_expr == 0) {
-                pad(out, indent); fprintf(out, "return _ret;\n");
-            } else if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
-                       node->var_type == TYPE_NULL ||
-                       strstr(node->value, "_ltng_add_sn") == node->value) {
-                pad(out, indent); fprintf(out, "snprintf(_ret, 256, \"%%s\", %s); return _ret;\n", node->value[0] ? node->value : "\"\"");
-            } else if (node->var_type == TYPE_FLOAT) {
-                pad(out, indent); fprintf(out, "snprintf(_ret, 256, \"%%g\", (double)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
+        case NODE_BREAK: {
+            int base = (g_loop_depth > 0) ? g_loop_bases[g_loop_depth - 1] : 0;
+            if (g_cleanup_count > base) {
+                pad(out, indent); fprintf(out, "{\n");
+                emit_cleanup_unwind(out, table, indent + 1, base);
+                pad(out, indent + 1); fprintf(out, "break;\n");
+                pad(out, indent); fprintf(out, "}\n");
             } else {
-                pad(out, indent);
-                if (strchr(node->value, '.')) {
-                    fprintf(out, "snprintf(_ret, 256, \"%%g\", (double)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
+                pad(out, indent); fprintf(out, "break;\n");
+            }
+            break;
+        }
+        case NODE_CONTINUE: {
+            int base = (g_loop_depth > 0) ? g_loop_bases[g_loop_depth - 1] : 0;
+            if (g_cleanup_count > base) {
+                pad(out, indent); fprintf(out, "{\n");
+                emit_cleanup_unwind(out, table, indent + 1, base);
+                pad(out, indent + 1); fprintf(out, "continue;\n");
+                pad(out, indent); fprintf(out, "}\n");
+            } else {
+                pad(out, indent); fprintf(out, "continue;\n");
+            }
+            break;
+        }
+        case NODE_RETURN: {
+            if (g_cleanup_count > 0) {
+                pad(out, indent); fprintf(out, "{\n");
+                pad(out, indent + 1); fprintf(out, "char _ltng_rv[256] = \"\";\n");
+                emit_return_value(out, node, "_ltng_rv", indent + 1);
+                emit_cleanup_unwind(out, table, indent + 1, 0);
+                if (g_codegen_in_function) {
+                    pad(out, indent + 1); fprintf(out, "_ltng_fn_pop();\n");
+                }
+                pad(out, indent + 1); fprintf(out, "snprintf(_ret, 256, \"%%s\", _ltng_rv); return _ret;\n");
+                pad(out, indent); fprintf(out, "}\n");
+            } else {
+                if (g_codegen_in_function) {
+                    pad(out, indent); fprintf(out, "_ltng_fn_pop();\n");
+                }
+                emit_return_value(out, node, "_ret", indent);
+                pad(out, indent); fprintf(out, "return _ret;\n");
+            }
+            break;
+        }
+        case NODE_TRY:
+            codegen_try(out, node, table, indent);
+            break;
+        case NODE_THROW: {
+            if (!node->is_expr) {
+                pad(out, indent); fprintf(out, "_ltng_rethrow();\n");
+            } else {
+                const char *type_expr = node->name[0] ? node->name : "\"Error\"";
+                const char *msg_expr = node->value[0] ? node->value : "\"\"";
+                if (node->var_type == TYPE_INT) {
+                    pad(out, indent);
+                    fprintf(out, "{ char _ltng_tm[256]; snprintf(_ltng_tm, sizeof(_ltng_tm), \"%%lld\", (long long)(%s)); _ltng_throw_value(%s, _ltng_tm, %d, %d); }\n",
+                        msg_expr, type_expr, node->line, node->col);
+                } else if (node->var_type == TYPE_FLOAT) {
+                    pad(out, indent);
+                    fprintf(out, "{ char _ltng_tm[256]; snprintf(_ltng_tm, sizeof(_ltng_tm), \"%%g\", (double)(%s)); _ltng_throw_value(%s, _ltng_tm, %d, %d); }\n",
+                        msg_expr, type_expr, node->line, node->col);
                 } else {
-                    fprintf(out, "snprintf(_ret, 256, \"%%lld\", (long long)(%s)); return _ret;\n", node->value[0] ? node->value : "0");
+                    pad(out, indent);
+                    fprintf(out, "_ltng_throw_value(%s, %s, %d, %d);\n",
+                        type_expr, msg_expr, node->line, node->col);
                 }
             }
             break;
@@ -1109,7 +1381,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             if (node->is_base_assign && node->args && node->args->value[0] != '\0') {
                 const char *recv = node->args->value;
                 pad(out, indent);
-                fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s(_ltng_retbuf()", recv, recv, node->name);
+                fprintf(out, "snprintf(%s, sizeof(%s), \"%%s\", %s(_ltng_retbuf(), %d, %d", recv, recv, node->name, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1);
                 for (ASTNode *a = node->args; a; a = a->next) {
                     if (a->var_type == TYPE_STRING && a->value[0] == '"') {
                         fprintf(out, ", %s", a->value);
@@ -1128,7 +1400,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             }
             /* call statement - invoke and discard result */
             pad(out, indent);
-            fprintf(out, "%s(_ltng_retbuf()", node->name);
+            fprintf(out, "%s(_ltng_retbuf(), %d, %d", node->name, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1);
             for (ASTNode *a = node->args; a; a = a->next) {
                 if (a->var_type == TYPE_STRING && a->value[0] == '"') {
                     fprintf(out, ", %s", a->value);
@@ -1276,6 +1548,103 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "#include <stdlib.h>\n");
     fprintf(out, "#include <stdarg.h>\n");
     fprintf(out, "#include <ctype.h>\n");
+    fprintf(out, "#include <setjmp.h>\n");
+    fprintf(out, "static const char *_ltng_src_file = \"");
+    write_c_string_raw(out, (errors && errors->filename) ? errors->filename : "<input>");
+    fprintf(out, "\";\n");
+    fputs(
+        "typedef struct LtngTryFrame {\n"
+        "    jmp_buf env;\n"
+        "    struct LtngTryFrame *prev;\n"
+        "    int stack_depth;\n"
+        "} LtngTryFrame;\n"
+        "static LtngTryFrame *_ltng_try_top = NULL;\n"
+        "#define LTNG_FN_MAX 256\n"
+        "static const char *_ltng_fn_name[LTNG_FN_MAX];\n"
+        "static int _ltng_fn_line[LTNG_FN_MAX];\n"
+        "static int _ltng_fn_col[LTNG_FN_MAX];\n"
+        "static int _ltng_stack_depth = 0;\n"
+        "static char _ltng_exc_type[128] = \"\";\n"
+        "static char _ltng_exc_msg[1024] = \"\";\n"
+        "static char _ltng_exc_value[2048] = \"\";\n"
+        "static char _ltng_exc_trace[8192] = \"\";\n"
+        "static int _ltng_exc_line = 0;\n"
+        "static int _ltng_exc_col = 0;\n"
+        "static char _ltng_exc_func[256] = \"\";\n"
+        "typedef struct {\n"
+        "    char type[128];\n"
+        "    char msg[1024];\n"
+        "    char value[2048];\n"
+        "    char trace[8192];\n"
+        "    int line;\n"
+        "    int col;\n"
+        "    char func[256];\n"
+        "} LtngExcSaved;\n"
+        "static void _ltng_fn_push(const char *name, int line, int col) {\n"
+        "    if (_ltng_stack_depth < LTNG_FN_MAX) {\n"
+        "        _ltng_fn_name[_ltng_stack_depth] = name ? name : \"?\";\n"
+        "        _ltng_fn_line[_ltng_stack_depth] = line;\n"
+        "        _ltng_fn_col[_ltng_stack_depth] = col;\n"
+        "        _ltng_stack_depth++;\n"
+        "    }\n"
+        "}\n"
+        "static void _ltng_fn_pop(void) { if (_ltng_stack_depth > 0) _ltng_stack_depth--; }\n"
+        "static void _ltng_capture_trace(int line, int col) {\n"
+        "    char ln[512];\n"
+        "    _ltng_exc_line = line;\n"
+        "    _ltng_exc_col = col;\n"
+        "    _ltng_exc_func[0] = 0;\n"
+        "    _ltng_exc_trace[0] = 0;\n"
+        "    if (_ltng_stack_depth > 0) {\n"
+        "        snprintf(_ltng_exc_func, sizeof(_ltng_exc_func), \"%s\", _ltng_fn_name[_ltng_stack_depth - 1]);\n"
+        "        snprintf(ln, sizeof(ln), \"  at %s (%s:%d:%d)\\n\", _ltng_fn_name[_ltng_stack_depth - 1], _ltng_src_file, line, col);\n"
+        "        strncat(_ltng_exc_trace, ln, sizeof(_ltng_exc_trace) - strlen(_ltng_exc_trace) - 1);\n"
+        "        for (int i = _ltng_stack_depth - 2; i >= 0; i--) {\n"
+        "            snprintf(ln, sizeof(ln), \"  at %s (%s:%d:%d)\\n\", _ltng_fn_name[i], _ltng_src_file, _ltng_fn_line[i + 1], _ltng_fn_col[i + 1]);\n"
+        "            strncat(_ltng_exc_trace, ln, sizeof(_ltng_exc_trace) - strlen(_ltng_exc_trace) - 1);\n"
+        "        }\n"
+        "    } else {\n"
+        "        snprintf(ln, sizeof(ln), \"  at <top-level> (%s:%d:%d)\\n\", _ltng_src_file, line, col);\n"
+        "        strncat(_ltng_exc_trace, ln, sizeof(_ltng_exc_trace) - strlen(_ltng_exc_trace) - 1);\n"
+        "    }\n"
+        "}\n"
+        "static void _ltng_exc_save_to(LtngExcSaved *s) {\n"
+        "    snprintf(s->type, sizeof(s->type), \"%s\", _ltng_exc_type);\n"
+        "    snprintf(s->msg, sizeof(s->msg), \"%s\", _ltng_exc_msg);\n"
+        "    snprintf(s->value, sizeof(s->value), \"%s\", _ltng_exc_value);\n"
+        "    snprintf(s->trace, sizeof(s->trace), \"%s\", _ltng_exc_trace);\n"
+        "    s->line = _ltng_exc_line; s->col = _ltng_exc_col;\n"
+        "    snprintf(s->func, sizeof(s->func), \"%s\", _ltng_exc_func);\n"
+        "}\n"
+        "static void _ltng_exc_restore_from(const LtngExcSaved *s) {\n"
+        "    snprintf(_ltng_exc_type, sizeof(_ltng_exc_type), \"%s\", s->type);\n"
+        "    snprintf(_ltng_exc_msg, sizeof(_ltng_exc_msg), \"%s\", s->msg);\n"
+        "    snprintf(_ltng_exc_value, sizeof(_ltng_exc_value), \"%s\", s->value);\n"
+        "    snprintf(_ltng_exc_trace, sizeof(_ltng_exc_trace), \"%s\", s->trace);\n"
+        "    _ltng_exc_line = s->line; _ltng_exc_col = s->col;\n"
+        "    snprintf(_ltng_exc_func, sizeof(_ltng_exc_func), \"%s\", s->func);\n"
+        "}\n"
+        "static void _ltng_uncaught(void) {\n"
+        "    if (_ltng_exc_msg[0]) fprintf(stderr, \"%s: %s\\n\", _ltng_exc_type[0] ? _ltng_exc_type : \"Error\", _ltng_exc_msg);\n"
+        "    else fprintf(stderr, \"%s\\n\", _ltng_exc_type[0] ? _ltng_exc_type : \"Error\");\n"
+        "    if (_ltng_exc_trace[0]) fputs(_ltng_exc_trace, stderr);\n"
+        "    fflush(stderr);\n"
+        "    exit(1);\n"
+        "}\n"
+        "static void _ltng_throw_value(const char *type, const char *msg, int line, int col) {\n"
+        "    snprintf(_ltng_exc_type, sizeof(_ltng_exc_type), \"%s\", (type && type[0]) ? type : \"Error\");\n"
+        "    snprintf(_ltng_exc_msg, sizeof(_ltng_exc_msg), \"%s\", msg ? msg : \"\");\n"
+        "    snprintf(_ltng_exc_value, sizeof(_ltng_exc_value), \"%s\", msg ? msg : \"\");\n"
+        "    _ltng_capture_trace(line, col);\n"
+        "    if (!_ltng_try_top) _ltng_uncaught();\n"
+        "    longjmp(_ltng_try_top->env, 1);\n"
+        "}\n"
+        "static void _ltng_rethrow(void) {\n"
+        "    if (!_ltng_try_top) _ltng_uncaught();\n"
+        "    longjmp(_ltng_try_top->env, 1);\n"
+        "}\n",
+        out);
+    fprintf(out, "\n");
     fprintf(out, "static char *_ltng_concat(char *buf, size_t sz, int n, ...) { va_list ap; va_start(ap,n); buf[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); strncat(buf,s,sz-strlen(buf)-1); } va_end(ap); return buf; }\n");
     fprintf(out, "static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { buf[0]=0; if (n < 0) n = 0; for (long long i=0; i<n && strlen(buf) < sz-1; i++) { strncat(buf, s, sz-strlen(buf)-1); } return buf; }\n");
     /* Dynamic array runtime helpers. Arrays are represented as char **data plus
@@ -1321,7 +1690,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         /* prototypes */
         for (int i = fncount - 1; i >= 0; i--) {
             ASTNode *fn = fns[i];
-            fprintf(out, "static char *%s(char *_ret", fn->name);
+            fprintf(out, "static char *%s(char *_ret, int _ltng_cl, int _ltng_cc", fn->name);
             for (ASTNode *p = fn->params; p; p = p->next)
                 fprintf(out, ", const char *_a_%s", p->name);
             fprintf(out, ");\n");
@@ -1329,11 +1698,14 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         fprintf(out, "\n");
         for (int i = fncount - 1; i >= 0; i--) {
             ASTNode *fn = fns[i];
-            fprintf(out, "static char *%s(char *_ret", fn->name);
+            fprintf(out, "static char *%s(char *_ret, int _ltng_cl, int _ltng_cc", fn->name);
             for (ASTNode *p = fn->params; p; p = p->next)
                 fprintf(out, ", const char *_a_%s", p->name);
             fprintf(out, ") {\n");
             fprintf(out, "    if(!_ret) _ret=_ltng_retbuf(); _ret[0]=0;\n");
+            fprintf(out, "    _ltng_fn_push(\"");
+            write_c_string_raw(out, fn->for_var[0] ? fn->for_var : fn->name);
+            fprintf(out, "\", _ltng_cl, _ltng_cc);\n");
             for (ASTNode *p = fn->params; p; p = p->next) {
                 fprintf(out, "    char %s[256] = \"\"; if(_a_%s) { strncpy(%s, _a_%s, 255); %s[255]=0; }\n",
                     p->name, p->name, p->name, p->name, p->name);
@@ -1358,13 +1730,29 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 }
             }
             /* Locals are declared inline at let/const emission to support block scopes/shadowing. */
-            if (fn->body) emit_block(out, fn->body, table, 1);
+            {
+                int saved_cleanup = g_cleanup_count;
+                int saved_loop = g_loop_depth;
+                int saved_infn = g_codegen_in_function;
+                g_cleanup_count = 0;
+                g_loop_depth = 0;
+                g_codegen_in_function = 1;
+                if (fn->body) emit_block(out, fn->body, table, 1);
+                g_cleanup_count = saved_cleanup;
+                g_loop_depth = saved_loop;
+                g_codegen_in_function = saved_infn;
+            }
+            fprintf(out, "    _ltng_fn_pop();\n");
             fprintf(out, "    return _ret;\n");
             fprintf(out, "}\n\n");
         }
     }
 
     fprintf(out, "int main(void) {\n");
+    fprintf(out, "    _ltng_fn_push(\"main\", 1, 1);\n");
+    g_cleanup_count = 0;
+    g_loop_depth = 0;
+    g_codegen_in_function = 0;
 
     for (int i = 0; i < table->count; i++) {
         if (table->vars[i].type == TYPE_ARRAY) {

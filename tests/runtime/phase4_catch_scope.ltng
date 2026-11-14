@@ -1,0 +1,12 @@
+let e = "outer"
+try {
+    try {
+        throw error("Inner", "in")
+    } catch (e) {
+        write(e.type + "/" + e.message)
+    }
+    throw error("Outer", "out")
+} catch (e) {
+    write(e.type + "/" + e.message)
+}
+write(e)

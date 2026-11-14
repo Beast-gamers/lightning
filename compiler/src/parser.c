@@ -12,6 +12,7 @@ typedef struct { char name[MAX_IDENTIFIER_LEN]; int param_count; } FuncInfo;
 static FuncInfo g_funcs[MAX_FUNCS];
 static int g_func_count = 0;
 static int g_in_function = 0;
+static int g_in_catch = 0;
 static Program *g_program_ref = NULL;
 static char g_enclosing_cname[MAX_IDENTIFIER_LEN] = "";
 static int g_ret_obj_count = 0;
@@ -157,6 +158,8 @@ int is_function_name_scoped(SymbolTable *table, const char *src) {
     return resolve_func_name(table, src, tmp, sizeof(tmp)) != NULL;
 }
 static ASTNode *parse_block(Lexer *lexer, SymbolTable *table, int is_control);
+static ASTNode *parse_try(Lexer *lexer, SymbolTable *table);
+static void parse_throw(Lexer *lexer, SymbolTable *table);
 
 static ASTNode *reverse_list(ASTNode *head) {
     ASTNode *prev = NULL;
@@ -261,6 +264,10 @@ static int is_ltng_reserved(const char *name) {
            strcmp(name, "if") == 0 ||
            strcmp(name, "else") == 0 ||
            strcmp(name, "null") == 0 ||
+           strcmp(name, "try") == 0 ||
+           strcmp(name, "catch") == 0 ||
+           strcmp(name, "finally") == 0 ||
+           strcmp(name, "throw") == 0 ||
            is_type_keyword(name) ||
            is_bool_value(name);
 }
@@ -281,7 +288,11 @@ static int is_ltng_keyword(const char *name) {
            strcmp(name, "in") == 0 ||
            strcmp(name, "and") == 0 ||
            strcmp(name, "or") == 0 ||
-           strcmp(name, "not") == 0;
+           strcmp(name, "not") == 0 ||
+           strcmp(name, "try") == 0 ||
+           strcmp(name, "catch") == 0 ||
+           strcmp(name, "finally") == 0 ||
+           strcmp(name, "throw") == 0;
 }
 
 /* Tokens that can serve as identifier names in declaration/reference contexts.
@@ -1277,7 +1288,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         pos += snprintf(out + pos, out_size - pos, "0");
                         break;
                     }
-                    pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf()", call->name);
+                    pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
                     for (ASTNode *a = call->args; a; a = a->next) {
                         if (a->var_type == TYPE_STRING && a->value[0] == '"') {
                             pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
@@ -1337,7 +1348,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "0");
                             break;
                         }
-                        pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf()", call->name);
+                        pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
                         for (ASTNode *a = call->args; a; a = a->next) {
                             if (a->var_type == TYPE_STRING && a->value[0] == '"') {
                                 pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
@@ -1360,9 +1371,12 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         char mangled[MAX_IDENTIFIER_LEN];
                         mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                         char fv[MAX_IDENTIFIER_LEN*2+8];
-                        obj_resolve_field(mangled, mname.value, fv, sizeof(fv));
+                        const char *field_base = symbol_table_get_cname(table, mangled);
+                        if (!field_base || !field_base[0]) field_base = mangled;
+                        obj_resolve_field(field_base, mname.value, fv, sizeof(fv));
                         VarType ftype = TYPE_STRING;
-                        ObjSchema *osc = obj_lookup(mangled);
+                        ObjSchema *osc = obj_lookup(field_base);
+                        if (!osc) osc = obj_lookup(mangled);
                         if (osc) {
                             for (int oi = 0; oi < osc->count; oi++) {
                                 if (strcmp(osc->fields[oi].name, mname.value) == 0) { ftype = osc->fields[oi].type; break; }
@@ -3066,7 +3080,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     node->var_type = TYPE_INT;
                 } else {
                     char fv[MAX_IDENTIFIER_LEN*2+8];
-                    obj_resolve_field(mwname, mname.value, fv, sizeof(fv));
+                    obj_resolve_field(cwname, mname.value, fv, sizeof(fv));
                     node = create_node(NODE_WRITE, fv, "");
                     node->is_variable = 1;
                     node->var_type = TYPE_STRING; /* fields stored as strings */
@@ -3190,7 +3204,9 @@ static void parse_read(Lexer *lexer, SymbolTable *table) {
    On failure, restores lexer and returns 0. */
 static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
     int cpos = 0;
-    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf()", call->name);
+    int cline = call->line > 0 ? call->line : 1;
+    int ccol = call->col > 0 ? call->col : 1;
+    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
     for (ASTNode *a = call->args; a; a = a->next) {
         if (a->var_type == TYPE_STRING && a->value[0] == '"') {
             cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
@@ -5358,6 +5374,282 @@ static ASTNode *parse_block(Lexer *lexer, SymbolTable *table, int is_control) {
     return reverse_list(result);
 }
 
+/* -------- Phase 4: structured exception handling -------- */
+
+static void skip_newlines(Lexer *lexer) {
+    while (lexer_peek(lexer).type == TOKEN_NEWLINE) lexer_next(lexer);
+}
+
+static void build_catch_schema(const char *cname) {
+    ObjSchema schema;
+    memset(&schema, 0, sizeof(schema));
+    static const char *field_names[] = {
+        "type", "message", "trace", "line", "column", "function", "value"
+    };
+    static const VarType field_types[] = {
+        TYPE_STRING, TYPE_STRING, TYPE_STRING, TYPE_INT, TYPE_INT, TYPE_STRING, TYPE_STRING
+    };
+    int n = (int)(sizeof(field_names) / sizeof(field_names[0]));
+    if (n > MAX_OBJ_FIELDS) n = MAX_OBJ_FIELDS;
+    for (int i = 0; i < n; i++) {
+        strncpy(schema.fields[i].name, field_names[i], MAX_IDENTIFIER_LEN - 1);
+        schema.fields[i].name[MAX_IDENTIFIER_LEN - 1] = '\0';
+        schema.fields[i].type = field_types[i];
+        schema.fields[i].value[0] = '\0';
+    }
+    schema.count = n;
+    strncpy(schema.var, cname, MAX_IDENTIFIER_LEN - 1);
+    schema.var[MAX_IDENTIFIER_LEN - 1] = '\0';
+    obj_build_all(&schema);
+    obj_register(cname, &schema);
+}
+
+static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
+    Token kw = lexer_next(lexer); /* try */
+
+    skip_newlines(lexer);
+    Token lb = lexer_next(lexer);
+    if (lb.type != TOKEN_LBRACE) {
+        error_state_add(parser_errors, lb.line, lb.col,
+            "Expected '{' after 'try'");
+        skip_to_newline(lexer);
+        return NULL;
+    }
+
+    ASTNode *node = create_node(NODE_TRY, "", "");
+    node->line = kw.line; node->col = kw.col;
+    node->body = parse_block(lexer, table, 0);
+
+    int have_catch = 0;
+    int have_finally = 0;
+
+    /* Optional catch clause. Newlines between '}' and 'catch' are allowed. */
+    skip_newlines(lexer);
+    if (lexer_peek(lexer).type == TOKEN_CATCH) {
+        lexer_next(lexer); /* catch */
+        have_catch = 1;
+
+        char catch_var_src[MAX_IDENTIFIER_LEN];
+        catch_var_src[0] = '\0';
+        int has_var = 0;
+
+        Token t = lexer_peek(lexer);
+        if (t.type == TOKEN_LPAREN) {
+            lexer_next(lexer); /* ( */
+            Token var = lexer_next(lexer);
+            if (!token_is_name(var) || is_ltng_reserved(var.value)) {
+                error_state_add(parser_errors, var.line, var.col,
+                    "Expected catch variable name");
+            } else {
+                strncpy(catch_var_src, var.value, MAX_IDENTIFIER_LEN - 1);
+                catch_var_src[MAX_IDENTIFIER_LEN - 1] = '\0';
+                has_var = 1;
+            }
+            Token rp = lexer_next(lexer);
+            if (rp.type != TOKEN_RPAREN) {
+                error_state_add(parser_errors, rp.line, rp.col,
+                    "Expected ')' after catch variable");
+            }
+        } else if (token_is_name(t) && t.type != TOKEN_LBRACE) {
+            /* catch e { ... } */
+            Token var = lexer_next(lexer);
+            if (is_ltng_reserved(var.value)) {
+                error_state_add(parser_errors, var.line, var.col,
+                    "Expected catch variable name");
+            } else {
+                strncpy(catch_var_src, var.value, MAX_IDENTIFIER_LEN - 1);
+                catch_var_src[MAX_IDENTIFIER_LEN - 1] = '\0';
+                has_var = 1;
+            }
+        }
+
+        skip_newlines(lexer);
+        Token clb = lexer_next(lexer);
+        if (clb.type != TOKEN_LBRACE) {
+            error_state_add(parser_errors, clb.line, clb.col,
+                "Expected '{' after 'catch'");
+            skip_to_newline(lexer);
+            node->has_catch = 1;
+            return node;
+        }
+
+        Scope *catch_scope = (Scope *)malloc(sizeof(Scope));
+        if (!catch_scope) {
+            error_state_add(parser_errors, kw.line, kw.col, "Memory allocation failed");
+            return node;
+        }
+        scope_init(catch_scope, table, 0);
+
+        if (has_var) {
+            char mangled[MAX_IDENTIFIER_LEN];
+            mangle_name(catch_var_src, mangled, MAX_IDENTIFIER_LEN);
+            /* Catch variables always receive a unique emitted C name so nested
+               catches with the same source name cannot collide. */
+            symbol_table_add_in_ex(catch_scope, mangled, TYPE_OBJECT, 1);
+            const char *cname = symbol_table_get_cname(catch_scope, mangled);
+            strncpy(node->name, cname, MAX_IDENTIFIER_LEN - 1);
+            node->name[MAX_IDENTIFIER_LEN - 1] = '\0';
+            strncpy(node->for_var, catch_var_src, MAX_IDENTIFIER_LEN - 1);
+            node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            build_catch_schema(cname);
+        }
+
+        g_in_catch++;
+        node->orelse = parse_block(lexer, catch_scope, 0);
+        g_in_catch--;
+        free(catch_scope);
+
+        skip_newlines(lexer);
+    }
+
+    if (lexer_peek(lexer).type == TOKEN_FINALLY) {
+        lexer_next(lexer); /* finally */
+        have_finally = 1;
+        skip_newlines(lexer);
+        Token flb = lexer_next(lexer);
+        if (flb.type != TOKEN_LBRACE) {
+            error_state_add(parser_errors, flb.line, flb.col,
+                "Expected '{' after 'finally'");
+            skip_to_newline(lexer);
+            node->has_catch = have_catch;
+            node->has_finally = have_finally;
+            return node;
+        }
+        node->cases = parse_block(lexer, table, 0);
+    }
+
+    if (!have_catch && !have_finally) {
+        error_state_add(parser_errors, kw.line, kw.col,
+            "'try' requires a 'catch' or 'finally' clause");
+    }
+
+    node->has_catch = have_catch;
+    node->has_finally = have_finally;
+    return node;
+}
+
+static int ltng_ident_ends_with(const char *s, const char *suffix) {
+    size_t ls = strlen(s), lf = strlen(suffix);
+    if (lf > ls) return 0;
+    return strcmp(s + (ls - lf), suffix) == 0;
+}
+
+static void parse_throw(Lexer *lexer, SymbolTable *table) {
+    Token kw = lexer_next(lexer); /* throw */
+
+    Token next = lexer_peek(lexer);
+    if (next.type == TOKEN_NEWLINE || next.type == TOKEN_EOF ||
+        next.type == TOKEN_RBRACE) {
+        if (g_in_catch <= 0) {
+            error_state_add(parser_errors, kw.line, kw.col,
+                "bare 'throw' can only be used inside a catch block");
+            return;
+        }
+        ASTNode *node = create_node(NODE_THROW, "", "");
+        node->line = kw.line; node->col = kw.col;
+        node->is_expr = 0; /* rethrow active exception */
+        emit(node);
+        return;
+    }
+
+    char type_expr[MAX_STRING_LEN];
+    char msg_expr[MAX_STRING_LEN];
+    snprintf(type_expr, sizeof(type_expr), "\"Error\"");
+    msg_expr[0] = '\0';
+    VarType mtype = TYPE_STRING;
+    int handled = 0;
+
+    if (next.type == TOKEN_IDENT &&
+        lexer->current + 1 < lexer->count &&
+        lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN) {
+        int is_error_fn = (strcmp(next.value, "error") == 0) &&
+                          !is_function_name_scoped(table, next.value);
+        int is_custom = ltng_ident_ends_with(next.value, "Error") &&
+                        !is_function_name_scoped(table, next.value);
+
+        if (is_error_fn || is_custom) {
+            lexer_next(lexer); /* name */
+            lexer_next(lexer); /* ( */
+
+            char first[MAX_STRING_LEN];
+            VarType ftype = collect_expression(lexer, table, first, sizeof(first), 1, 1,
+                                               NULL, NULL, NULL, NULL);
+
+            if (is_error_fn) {
+                Token comma = lexer_next(lexer);
+                if (comma.type != TOKEN_COMMA) {
+                    error_state_add(parser_errors, comma.line, comma.col,
+                        "Expected ',' after error type in error(type, message)");
+                    skip_to_newline(lexer);
+                    return;
+                }
+                char second[MAX_STRING_LEN];
+                VarType stype = collect_expression(lexer, table, second, sizeof(second), 1, 0,
+                                                   NULL, NULL, NULL, NULL);
+                if (ftype != TYPE_STRING && ftype != TYPE_CHAR && ftype != TYPE_OBJECT) {
+                    error_state_add(parser_errors, kw.line, kw.col,
+                        "error(type, message) requires a string error type");
+                }
+                snprintf(type_expr, sizeof(type_expr), "%s", first[0] ? first : "\"Error\"");
+                snprintf(msg_expr, sizeof(msg_expr), "%s", second[0] ? second : "\"\"");
+                mtype = stype;
+            } else {
+                snprintf(type_expr, sizeof(type_expr), "\"%s\"", next.value);
+                snprintf(msg_expr, sizeof(msg_expr), "%s", first[0] ? first : "\"\"");
+                mtype = ftype;
+                /* Tolerate and ignore additional custom-error arguments. */
+                while (lexer_peek(lexer).type != TOKEN_RPAREN &&
+                       lexer_peek(lexer).type != TOKEN_NEWLINE &&
+                       lexer_peek(lexer).type != TOKEN_EOF) {
+                    lexer_next(lexer);
+                }
+            }
+
+            Token rp = lexer_next(lexer);
+            if (rp.type != TOKEN_RPAREN) {
+                error_state_add(parser_errors, rp.line, rp.col,
+                    "Expected ')' after throw expression");
+                skip_to_newline(lexer);
+                return;
+            }
+            handled = 1;
+        }
+    }
+
+    /* Preserve boolean literals as "true"/"false" instead of their internal
+       numeric representation when they are the entire thrown expression. */
+    if (!handled &&
+        next.type == TOKEN_IDENT &&
+        (strcmp(next.value, "true") == 0 || strcmp(next.value, "false") == 0) &&
+        lexer->current + 1 < lexer->count &&
+        (lexer->tokens[lexer->current + 1].type == TOKEN_NEWLINE ||
+         lexer->tokens[lexer->current + 1].type == TOKEN_EOF ||
+         lexer->tokens[lexer->current + 1].type == TOKEN_RBRACE)) {
+        lexer_next(lexer);
+        snprintf(msg_expr, sizeof(msg_expr), "\"%s\"", next.value);
+        mtype = TYPE_STRING;
+        handled = 1;
+    }
+
+    if (!handled) {
+        mtype = collect_expression(lexer, table, msg_expr, sizeof(msg_expr), 0, 0,
+                                   NULL, NULL, NULL, NULL);
+    }
+
+    if (msg_expr[0] == '\0') {
+        error_state_add(parser_errors, kw.line, kw.col,
+            "Expected expression after 'throw'");
+        skip_to_newline(lexer);
+        return;
+    }
+
+    ASTNode *node = create_node(NODE_THROW, type_expr, msg_expr);
+    node->line = kw.line; node->col = kw.col;
+    node->is_expr = 1;
+    node->var_type = mtype;
+    emit(node);
+}
+
 
 
 
@@ -5382,7 +5674,9 @@ static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int
         return 0;
     }
     int cpos = 0;
-    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf()", call->name);
+    int cline = call->line > 0 ? call->line : 1;
+    int ccol = call->col > 0 ? call->col : 1;
+    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
     for (ASTNode *a = call->args; a; a = a->next) {
         if (a->var_type == TYPE_STRING && a->value[0] == '"') {
             cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
@@ -5484,6 +5778,8 @@ static VarType infer_function_return_type(const char *fname) {
 static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok_val, int line, int col, ASTNode *first_arg) {
     /* assumes fname IDENT consumed, '(' consumed */
     ASTNode *call = create_node(NODE_CALL, "", "");
+    call->line = line;
+    call->col = col;
     char fm[MAX_IDENTIFIER_LEN];
     if (!resolve_func_name(table, fname_tok_val, fm, MAX_IDENTIFIER_LEN)) {
         mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
@@ -6169,6 +6465,11 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
     } else if (token.type == TOKEN_SWITCH) {
         ASTNode *node = parse_switch(lexer, table);
         if (node) emit(node);
+    } else if (token.type == TOKEN_TRY) {
+        ASTNode *node = parse_try(lexer, table);
+        if (node) emit(node);
+    } else if (token.type == TOKEN_THROW) {
+        parse_throw(lexer, table);
     } else if (token.type == TOKEN_BREAK) {
         lexer_next(lexer);
         if (g_break_depth <= 0) {
@@ -6202,6 +6503,7 @@ Program *parse(Lexer *lexer, ErrorState *errors) {
     g_func_count = 0;
     g_obj_count = 0;
     g_in_function = 0;
+    g_in_catch = 0;
     g_enclosing_cname[0] = 0;
 
     Program *program = (Program *)malloc(sizeof(Program));

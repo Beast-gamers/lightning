@@ -1,0 +1,35 @@
+function early_return() {
+    try {
+        throw "inner"
+    } finally {
+        return "early"
+    }
+}
+
+function early_control() {
+    for (i from 0 to 3) {
+        try {
+            throw "loop"
+        } finally {
+            if (i == 0) {
+                continue
+            }
+            break
+        }
+    }
+    return "done"
+}
+
+write(early_return())
+write(early_control())
+
+function deep() {
+    throw error("After", "still works")
+}
+
+try {
+    deep()
+} catch (e) {
+    write(e.type + ": " + e.message)
+    write(e.function)
+}

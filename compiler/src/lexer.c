@@ -219,6 +219,14 @@ static void lexer_read_identifier(Lexer *lexer, Token *token) {
         token->type = TOKEN_RETURN;
     } else if (strcmp(token->value, "exit") == 0) {
         token->type = TOKEN_EXIT;
+    } else if (strcmp(token->value, "try") == 0) {
+        token->type = TOKEN_TRY;
+    } else if (strcmp(token->value, "catch") == 0) {
+        token->type = TOKEN_CATCH;
+    } else if (strcmp(token->value, "finally") == 0) {
+        token->type = TOKEN_FINALLY;
+    } else if (strcmp(token->value, "throw") == 0) {
+        token->type = TOKEN_THROW;
     } else if (strcmp(token->value, "and") == 0) {
         token->type = TOKEN_AMP_AMP;
     } else if (strcmp(token->value, "or") == 0) {

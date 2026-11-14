@@ -1,0 +1,17 @@
+try {
+    write("outer")
+    try {
+        write("inner")
+        throw "boom"
+    } catch (e) {
+        write("inner-catch " + e.message)
+        throw
+    } finally {
+        write("inner-finally")
+    }
+} catch (e2) {
+    write("outer-catch " + e2.message)
+} finally {
+    write("outer-finally")
+}
+write("end")

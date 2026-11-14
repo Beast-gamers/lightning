@@ -1,0 +1,30 @@
+try {
+    throw CustomError("custom message")
+} catch (e) {
+    write(e.type)
+    write(e.message)
+}
+
+try {
+    throw error("RangeError", "out of range")
+} catch (e) {
+    write(e.type + ": " + e.message)
+}
+
+try {
+    throw "plain"
+} catch (e) {
+    write(e.type + ": " + e.message)
+}
+
+try {
+    throw 42
+} catch (e) {
+    write(e.type + ": " + e.message + " (" + e.value + ")")
+}
+
+try {
+    throw true
+} catch (e) {
+    write(e.type + ": " + e.message)
+}

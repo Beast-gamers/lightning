@@ -1084,7 +1084,7 @@ sayhi()
 
 ### Locals and scoping
 
-Use `let` and `const` inside function bodies to declare local variables. As with other code, `let`/`const` declarations are **not allowed** inside `if`/`else`, `switch`/`case`/`default`, or loop bodies (including when those appear inside a function) — declare variables before those control blocks.
+Use `let` and `const` inside function bodies to declare local variables. Declarations are also allowed inside `if`/`else`, `switch`/`case`/`default`, loop bodies, and nested blocks, where they are scoped to that block.
 
 ```
 function compute(x) {
@@ -1155,6 +1155,175 @@ write(two())  # 2
 - Nested function declarations follow the same placement rule as `let`/`const`: they are **not allowed** inside `if`/`else`, `switch`/`case`/`default`, or loop bodies (allowed in function bodies).
 - A nested function must be **defined before it is called** within its enclosing scope (nested functions do not have local forward-reference pre-scanning).
 - Nested functions are **non-capturing**: they can use their own parameters/locals, but they cannot access the enclosing function's locals or parameters.
+
+---
+
+## Exception Handling
+
+Lightning provides structured exceptions with `try`, `catch`, `finally`, and `throw`.
+
+### `try` / `catch`
+
+A `try` block runs normally until a `throw` occurs inside it (directly or in any function it calls). Control then jumps to the matching `catch` block.
+
+```
+try {
+    throw error("ValueError", "bad value")
+} catch (e) {
+    write(e.type)      # ValueError
+    write(e.message)   # bad value
+}
+```
+
+The `catch` variable is optional. `catch (e) { ... }` and `catch e { ... }` are both accepted.
+
+```
+try {
+    throw "something went wrong"
+} catch {
+    write("handled")
+}
+```
+
+### The catch variable
+
+The catch variable is an object-like value describing the active exception. It exposes these fields:
+
+| Field | Description |
+|-------|-------------|
+| `type` | Error type name (defaults to `Error`) |
+| `message` | Error message text |
+| `trace` | Multi-line stack trace |
+| `line`, `column` | Source location of the `throw` |
+| `function` | Name of the function that threw |
+| `value` | Raw thrown value |
+| `obj` | The formatted `type: message` string |
+
+```
+try {
+    deep_call()
+} catch (e) {
+    write(e.type + ": " + e.message)
+    write(e.function)
+    write(e.trace)
+}
+```
+
+A catch variable is scoped to its catch block, so nested catches may reuse the same name without conflict. If no catch variable is declared, the exception details are still available through `finally` and rethrow behavior.
+
+### `throw`
+
+`throw` accepts any expression. Common forms are:
+
+```
+throw "plain message"                    # type Error
+throw 42                                 # type Error, value 42
+throw true                               # type Error, message "true"
+throw error("RangeError", "out of range")# explicit type and message
+throw CustomError("custom message")      # custom type name
+```
+
+`error(type, message)` requires both a string type and a message. A bare identifier ending in `Error` followed by a call is treated as a custom error type when it is not a user-defined function; the type name is the identifier itself and the first argument is the message. Additional arguments to a custom error are ignored.
+
+### `finally`
+
+`finally` runs when control leaves the associated `try`/`catch` — whether normally, by `throw`, or by `return`, `break`, or `continue`. This makes it suitable for cleanup.
+
+```
+try {
+    write("work")
+} finally {
+    write("cleanup")
+}
+```
+
+`try` requires at least one of `catch` or `finally`; `try { ... }` alone is an error. A `finally` block runs after a matching `catch` when both are present.
+
+### Propagation, rethrow, and uncaught exceptions
+
+An exception propagates outward through nested `try` blocks and function calls until a matching `catch` is found. If no handler exists, the program prints `<Type>: <message>` and a stack trace to stderr, then exits with status `1`.
+
+```
+before
+Fatal: unhandled
+  at main (program.ltng:2:1)
+```
+
+Inside a `catch` block, a bare `throw` rethrows the active exception:
+
+```
+try {
+    risky()
+} catch (e) {
+    write("logging: " + e.message)
+    throw
+}
+```
+
+A bare `throw` outside a `catch` block is a compile-time error.
+
+### Control flow inside `finally`
+
+`finally` interacts with control flow as follows:
+
+- `return` in `finally` overrides a pending `return` or exception.
+- `break` / `continue` in `finally` leave the enclosing loop after the cleanup runs.
+- If `finally` throws a new exception while handling an older one, the new exception replaces the pending one.
+- `exit` terminates the process immediately and does **not** run pending `finally` blocks.
+
+```
+function f() {
+    try {
+        return "try"
+    } finally {
+        return "finally"    # f() returns "finally"
+    }
+}
+
+for (i from 0 to 3) {
+    try {
+        throw "loop"
+    } finally {
+        if (i == 0) {
+            continue        # pending exception is discarded
+        }
+        break
+    }
+}
+```
+
+### Nested functions and returns
+
+Exceptions thrown inside nested functions propagate to the caller normally. Stack traces record the throw location and the call site of each caller, so the trace shows where each frame called the next.
+
+```
+function level3() { throw error("DeepError", "deep") }
+function level2() { level3() }
+function level1() { level2() }
+
+try {
+    level1()
+} catch (e) {
+    write(e.trace)
+}
+```
+
+Output:
+
+```
+  at level3 (program.ltng:1:20)
+  at level2 (program.ltng:2:20)
+  at level1 (program.ltng:3:20)
+  at main (program.ltng:6:5)
+```
+
+### Current limitations
+
+- Exception trace text is bounded (8192 bytes) and very deep traces may be truncated.
+- The function stack used for traces is bounded to 256 frames.
+- Exception state uses fixed-size buffers, so very large messages/values are truncated.
+- `exit` does not execute pending `finally` blocks.
+- There is no `catch (Type e)` filtering; a `catch` handles every exception thrown in its `try`.
 
 ---
 

@@ -1,0 +1,17 @@
+function level3() {
+    throw error("DeepError", "deep")
+}
+function level2() {
+    level3()
+}
+function level1() {
+    level2()
+}
+
+try {
+    level1()
+} catch (e) {
+    write(e.type + ": " + e.message)
+    write(e.function)
+    write(e.trace)
+}

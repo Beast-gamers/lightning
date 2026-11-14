@@ -5,6 +5,12 @@ All notable changes to the Lightning project in this development effort are docu
 ## [Unreleased]
 
 ### Added
+- Phase 4 exception handling: `try`/`catch`/`finally`/`throw` with optional catch variable, custom error types (`throw CustomError("message")`), `error(type, message)`, bare rethrow inside `catch`, exception propagation through nested functions, and uncaught-exception reporting with a stack trace to stderr and exit status `1`.
+- Catch objects expose `type`, `message`, `trace`, `line`, `column`, `function`, `value`, and `obj`; catch variables are block-scoped and nested catches may reuse names.
+- Call-site-aware stack traces: generated functions carry hidden call-site line/column arguments, and traces report the throw location plus each caller's call site.
+- `finally` cleanup semantics for normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides a pending return/exception, and a new exception thrown in `finally` replaces a pending one.
+- Phase 4 tests: `tests/runtime/phase4_*.ltng` (try/catch, custom errors, finally control flow, finally throws, nested rethrow, propagation, uncaught, catch scope, and exception-path finally exits) plus `tests/semantic/phase4_*_neg.ltng` negative cases.
+- Test harness support for optional `.exitcode` and `.stderr` expectations, and source-path normalization for stable traceback comparisons.
 - `DEVELOPMENT_AUDIT.md`: initial repository and architecture audit, baseline status, risks, and limitations.
 - `TESTING.md`: testing infrastructure documentation and conventions.
 - `PHASE_STATUS.md`: phase-by-phase implementation and verification tracking.
@@ -25,6 +31,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Updated `code/t_null_set_type_change.expected` to expect `float` typeof for `3.14` (distinct float typing).
 
 ### Fixed
+- Fixed a pending-exception save/restore leak when a `finally` block exited via `return`, `break`, or `continue` during exception unwinding by capturing the saved exception in a stack-local value instead of a global depth-indexed slot.
 - Improved float variable handling in expression type inference to avoid incorrect type regressions in set/locked-variable checks for existing numeric cases.
 - Compiler now returns a non-zero exit code when backend C compilation fails (instead of reporting failure and exiting successfully in some paths).
 - Fixed object-literal `set` assignments to emit update semantics (not redeclarations) compatible with block-scope inline declaration behavior.

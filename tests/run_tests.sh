@@ -18,7 +18,9 @@ pass() { PASS=$((PASS+1)); }
 run_case() {
   local name="$1" src="$2" expect="${3:-}" mode="${4:-run}"
   local base="$TMP/$(echo "$name" | tr '/ ' '__')"
-  rm -f "$base" "$base.c" "$base.out" "$base.err"
+  local exitfile="${src%.ltng}.exitcode"
+  local stderrfile="${src%.ltng}.stderr"
+  rm -f "$base" "$base.c" "$base.out" "$base.err" "$base.run.out" "$base.run.err"
   if [ "$mode" = "check" ]; then
     if "$LTNG" --check "$src" >"$base.out" 2>"$base.err"; then
       pass
@@ -57,15 +59,34 @@ run_case() {
   "$base" >"$base.run.out" 2>"$base.run.err"
   rc=$?
   set -e
+  local expected_rc=""
+  if [ -f "$exitfile" ]; then
+    expected_rc="$(tr -dc '0-9-' <"$exitfile")"
+  fi
+  if [ -n "$expected_rc" ] && [ "$rc" -ne "$expected_rc" ]; then
+    fail "$name" "expected exit $expected_rc but got $rc"
+    return
+  fi
+  # Normalize the compiled source path so tracebacks are stable across checkouts.
+  local norm_out="$base.run.out.norm" norm_err="$base.run.err.norm"
+  sed "s|$src|$(basename "$src")|g" "$base.run.out" >"$norm_out"
+  sed "s|$src|$(basename "$src")|g" "$base.run.err" >"$norm_err"
+  if [ -f "$stderrfile" ]; then
+    if ! diff -u "$stderrfile" "$norm_err" >/dev/null 2>&1; then
+      fail "$name" "stderr mismatch (rc=$rc)"
+      diff -u "$stderrfile" "$norm_err" | head -40 || true
+      return
+    fi
+  fi
   if [ -n "$expect" ]; then
-    if diff -u "$expect" "$base.run.out" >/dev/null 2>&1; then
+    if diff -u "$expect" "$norm_out" >/dev/null 2>&1; then
       pass
     else
       fail "$name" "output mismatch (rc=$rc)"
-      diff -u "$expect" "$base.run.out" | head -40 || true
+      diff -u "$expect" "$norm_out" | head -40 || true
     fi
   else
-    if [ $rc -eq 0 ]; then pass; else fail "$name" "runtime exit $rc"; fi
+    if [ $rc -eq 0 ] || [ -n "$expected_rc" ]; then pass; else fail "$name" "runtime exit $rc"; fi
   fi
 }
 

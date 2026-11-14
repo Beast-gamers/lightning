@@ -1,0 +1,3 @@
+write("before")
+throw error("Fatal", "unhandled")
+write("after")

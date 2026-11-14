@@ -34,6 +34,8 @@ static const char *node_type_name(NodeType t) {
         case NODE_ARRAY_SORT: return "ARRAY_SORT";
         case NODE_ARRAY_REVERSE: return "ARRAY_REVERSE";
         case NODE_BLOCK: return "BLOCK";
+        case NODE_TRY: return "TRY";
+        case NODE_THROW: return "THROW";
         default: return "UNKNOWN";
     }
 }
@@ -91,6 +93,10 @@ static void ir_write_node(FILE *out, ASTNode *node, int indent) {
     ir_indent(out, indent + 1); fprintf(out, "is_expr: %d\n", node->is_expr);
     ir_indent(out, indent + 1); fprintf(out, "is_default: %d\n", node->is_default);
     ir_indent(out, indent + 1); fprintf(out, "is_base_assign: %d\n", node->is_base_assign);
+    if (node->type == NODE_TRY) {
+        ir_indent(out, indent + 1); fprintf(out, "has_catch: %d\n", node->has_catch);
+        ir_indent(out, indent + 1); fprintf(out, "has_finally: %d\n", node->has_finally);
+    }
     if (node->for_var[0]) { ir_indent(out, indent + 1); fprintf(out, "for_var: "); ir_print_escaped(out, node->for_var); fputc('\n', out); }
     if (node->for_start[0]) { ir_indent(out, indent + 1); fprintf(out, "for_start: "); ir_print_escaped(out, node->for_start); fputc('\n', out); }
     if (node->for_end[0]) { ir_indent(out, indent + 1); fprintf(out, "for_end: "); ir_print_escaped(out, node->for_end); fputc('\n', out); }

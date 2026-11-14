@@ -1,0 +1,7 @@
+DeepError: deep
+level3
+  at level3 (phase4_propagation.ltng:2:5)
+  at level2 (phase4_propagation.ltng:5:5)
+  at level1 (phase4_propagation.ltng:8:5)
+  at main (phase4_propagation.ltng:12:5)
+

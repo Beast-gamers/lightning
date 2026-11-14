@@ -1,0 +1,24 @@
+try {
+    try {
+        throw "original"
+    } finally {
+        write("cleanup")
+        throw "replacement"
+    }
+} catch (e) {
+    write("caught " + e.message)
+}
+
+function override_value() {
+    try {
+        return "ret"
+    } finally {
+        throw "override"
+    }
+}
+
+try {
+    write(override_value())
+} catch (e) {
+    write("caught2 " + e.message)
+}

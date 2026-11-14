@@ -1,0 +1,11 @@
+write("start")
+try {
+    write("try")
+    throw error("ValueError", "bad value")
+    write("unreachable")
+} catch (e) {
+    write("caught")
+    write(e.type)
+    write(e.message)
+}
+write("end")

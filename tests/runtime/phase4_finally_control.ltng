@@ -1,0 +1,32 @@
+function retval() {
+    try {
+        write("try-return")
+        return "value"
+    } finally {
+        write("finally-return")
+    }
+}
+write(retval())
+
+for (i from 0 to 3) {
+    try {
+        if (i == 1) {
+            continue
+        }
+        write("loop " + tostring(i))
+        if (i == 2) {
+            break
+        }
+    } finally {
+        write("fin " + tostring(i))
+    }
+}
+
+function override() {
+    try {
+        return "try"
+    } finally {
+        return "finally"
+    }
+}
+write(override())

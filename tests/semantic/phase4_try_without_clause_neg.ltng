@@ -1,0 +1,3 @@
+try {
+    write("no handler")
+}
