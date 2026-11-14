@@ -6220,6 +6220,18 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
         strncpy(cname, fname_short, MAX_IDENTIFIER_LEN - 1);
         cname[MAX_IDENTIFIER_LEN - 1] = 0;
     }
+    /* reject duplicate function definition in same scope */
+    if (g_program_ref) {
+        for (ASTNode *ex = g_program_ref->functions; ex; ex = ex->next) {
+            if (strcmp(ex->name, cname) == 0) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Function '%s' already defined", name.value);
+                error_state_add(parser_errors, name.line, name.col, msg);
+                skip_to_newline(lexer);
+                return NULL;
+            }
+        }
+    }
     /* bind short name in enclosing scope (so calls inside it resolve) */
     if (table) symbol_table_add_func(table, name.value, cname, 0);
     /* register lifted C name globally for codegen/prototypes */
