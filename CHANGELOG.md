@@ -1,3 +1,8 @@
+## Phase 5 — Named arguments (in progress)
+- **Named arguments:** function calls support `name = value` arguments; named arguments can be reordered and mixed with positional arguments (positional args bind left-to-right to parameters not supplied by name). Works with default parameters.
+- **Tests:** `tests/runtime/phase5_named_args.ltng` (+ `.expected`).
+- **Suite:** PASS=131 FAIL=0 SKIP=0.
+
 # Changelog
 
 All notable changes to the Lightning project in this development effort are documented here.

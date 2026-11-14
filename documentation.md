@@ -1137,6 +1137,26 @@ write(greet("World", "Hi"))  # Hi, World
 - Defaults may be numeric or string literals, or expressions (including references to enclosing-scope variables, as in `function abc(a = x) { ... }`).
 - Omitted arguments before a defaulted argument are not allowed; supply earlier arguments first.
 
+### Named arguments
+
+Function calls may pass arguments by parameter name using `name = value` syntax. Named arguments can be provided in any order and can be mixed with positional arguments; positional arguments bind left-to-right to parameters not supplied by name.
+
+```
+function sub(a, b) {
+    return a - b
+}
+
+write(sub(b = 3, a = 10))   # 7
+
+function add3(a, b = 10, c = 100) {
+    return a + b + c
+}
+
+write(add3(1))              # 111
+write(add3(1, c = 200))     # 211
+write(add3(c = 3, b = 2, a = 1))  # 6
+```
+
 ### Method-style calls (UFCS)
 
 A function can also be called with method-style syntax: `receiver.func(args...)`. The receiver becomes the first argument, so `receiver.func(args...)` is equivalent to `func(receiver, args...)`. This works with any first parameter name (for example `base`).

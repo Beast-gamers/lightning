@@ -221,19 +221,18 @@
 
 ## Phase 5 — Function system
 
-**Status:** In progress (first increment landed: default parameters)
+**Status:** In progress
 
-### Implemented so far
-- **Default parameters:** `function f(a, b = 100) { ... }` — omitted call arguments use the declared default. Defaults may be numeric or string literals. Fill-missing logic applied in `parse_call_node` for all call paths (statement, expression, UFCS, nested call arguments).
+### Delivered increments
+- **Default parameters:** `function f(a, b = 100) { ... }` — omitted call arguments use the declared default. Defaults may be numeric/string literals or expressions (including enclosing-scope references). Fill-missing logic applied in `parse_call_node` for all call paths (statement, expression, UFCS, nested call arguments). Tests: `tests/runtime/phase5_defaults.ltng`.
+- **Named arguments:** calls support `name = value` arguments in any order, mixed with positional arguments (positional args bind left-to-right to parameters not supplied by name). Works with default parameters. Tests: `tests/runtime/phase5_named_args.ltng`.
 
 ### Test results
-- Full suite: **PASS=130 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
-- New: `tests/runtime/phase5_defaults.ltng` (+ `.expected`) covering numeric/string defaults and multiple defaults.
+- Full suite: **PASS=131 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
 
 ### Remaining for Phase 5
 - Anonymous functions and closures (capture of enclosing function locals, captured mutable variables, independent instances).
 - Function references / first-class function values.
-- Named arguments.
 - Variadic arguments.
 - Function overloading.
 - Return-type checking/validation.

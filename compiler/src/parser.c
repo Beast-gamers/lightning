@@ -5819,19 +5819,34 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
         call->is_base_assign = 1;
     }
     ASTNode *args = NULL, *alast = NULL;
+    int has_named_arg = 0;
     if (first_arg) { args = alast = first_arg; first_arg->next = NULL; }
     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
         while (1) {
             Token at = lexer_peek(lexer);
+            int named_arg = 0;
+            char named_key[MAX_IDENTIFIER_LEN] = {0};
+            if (at.type == TOKEN_IDENT) {
+                int saved = lexer->current;
+                Token idtok = lexer_next(lexer);
+                Token eq = lexer_peek(lexer);
+                if (eq.type == TOKEN_EQUALS) {
+                    lexer_next(lexer); /* consume '=' */
+                    named_arg = 1;
+                    strncpy(named_key, idtok.value, MAX_IDENTIFIER_LEN - 1);
+                } else {
+                    lexer->current = saved;
+                }
+            }
             /* String literals passed directly */
-            if (at.type == TOKEN_STRING) {
+            if (at.type == TOKEN_STRING && !named_arg) {
                 lexer_next(lexer);
                 ASTNode *an = create_node(NODE_PARAM, "", "");
                 snprintf(an->value, MAX_STRING_LEN, "\"%s\"", at.value);
                 an->var_type = TYPE_STRING;
                 an->is_expr = 1;
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
-            } else if (at.type == TOKEN_CHAR) {
+            } else if (at.type == TOKEN_CHAR && !named_arg) {
                 lexer_next(lexer);
                 ASTNode *an = create_node(NODE_PARAM, "", "");
                 if (at.value[0]) snprintf(an->value, MAX_STRING_LEN, "'%s'", at.value);
@@ -5839,7 +5854,7 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 an->var_type = TYPE_STRING;
                 an->is_expr = 1;
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
-            } else if (at.type == TOKEN_IDENT && is_function_name_scoped(table, at.value)) {
+            } else if (!named_arg && at.type == TOKEN_IDENT && is_function_name_scoped(table, at.value)) {
                 /* function call argument - pass result as string buffer */
                 char cexpr[MAX_STRING_LEN];
                 if (try_parse_call_arg(lexer, table, cexpr, sizeof(cexpr))) {
@@ -5857,7 +5872,7 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 }
             } else {
-                /* Parse as expression */
+                /* Parse as expression (or named arg value) */
                 char aexpr[MAX_STRING_LEN];
                 VarType avt = collect_expression(lexer, table, aexpr, sizeof(aexpr), 1, 1, NULL, NULL, NULL, NULL);
                 ASTNode *an = create_node(NODE_PARAM, "", aexpr);
@@ -5869,6 +5884,10 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                         if (*p==' '||*p=='\t'||*p=='('||*p==')'||*p=='+'||*p=='*'||*p=='-'||*p=='/'||*p=='%'||*p=='='||*p=='!'||*p=='<'||*p=='>'||*p=='&'||*p=='|'||*p=='?') { simple = 0; break; }
                     }
                     if (simple) an->is_variable = 1;
+                }
+                if (named_arg) {
+                    strncpy(an->for_var, named_key, MAX_IDENTIFIER_LEN - 1);
+                    has_named_arg = 1;
                 }
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
             }
@@ -5884,23 +5903,58 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     if (fn_def && fn_def->params) {
         ASTNode *eff = NULL;
         ASTNode *efflast = NULL;
-        ASTNode *src = args;
-        int idx = 0;
-        for (ASTNode *p = fn_def->params; p; p = p->next, idx++) {
-            ASTNode *a = src;
-            if (a) src = a->next; else a = NULL;
-            ASTNode *outn;
-            if (a) {
-                outn = a;
-            } else if (p->has_default) {
-                outn = create_node(NODE_PARAM, "", p->value);
-                outn->var_type = p->var_type;
-                outn->is_expr = 1;
-                outn->has_default = 1;
-            } else {
-                break;
+        if (has_named_arg) {
+            /* Build positional list in order (do not mutate original arg links). */
+            ASTNode *pos_list[64]; int pos_n = 0;
+            for (ASTNode *a = args; a; a = a->next) {
+                if (a->for_var[0] == '\0' && pos_n < 64) pos_list[pos_n++] = a;
             }
-            if (!eff) eff = efflast = outn; else { efflast->next = outn; efflast = outn; }
+            ASTNode *out_list[64]; int out_n = 0;
+            int pos_i = 0;
+            for (ASTNode *p = fn_def->params; p; p = p->next) {
+                ASTNode *outn = NULL;
+                /* named arg for this param? */
+                for (ASTNode *a = args; a; a = a->next) {
+                    if (a->for_var[0] && strcmp(a->for_var, p->for_var) == 0) { outn = a; break; }
+                }
+                if (!outn) {
+                    if (pos_i < pos_n) { outn = pos_list[pos_i++]; }
+                    else if (p->has_default) {
+                        outn = create_node(NODE_PARAM, "", p->value);
+                        outn->var_type = p->var_type;
+                        outn->is_expr = 1;
+                        outn->has_default = 1;
+                    }
+                }
+                if (outn) {
+                    if (out_n < 64) out_list[out_n++] = outn;
+                } else {
+                    break;
+                }
+            }
+            for (int i = 0; i < out_n; i++) {
+                out_list[i]->next = NULL;
+                if (!eff) eff = efflast = out_list[i]; else { efflast->next = out_list[i]; efflast = out_list[i]; }
+            }
+        } else {
+            ASTNode *src = args;
+            int idx = 0;
+            for (ASTNode *p = fn_def->params; p; p = p->next, idx++) {
+                ASTNode *a = src;
+                if (a) src = a->next; else a = NULL;
+                ASTNode *outn;
+                if (a) {
+                    outn = a;
+                } else if (p->has_default) {
+                    outn = create_node(NODE_PARAM, "", p->value);
+                    outn->var_type = p->var_type;
+                    outn->is_expr = 1;
+                    outn->has_default = 1;
+                } else {
+                    break;
+                }
+                if (!eff) eff = efflast = outn; else { efflast->next = outn; efflast = outn; }
+            }
         }
         call->args = eff;
     } else {
