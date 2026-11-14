@@ -1134,7 +1134,7 @@ write(greet("World", "Hi"))  # Hi, World
 ```
 
 - Defaults are positional: omitted arguments take the value of the first parameter that has a default and has not been supplied yet.
-- Defaults may be numeric or string literals (or expressions evaluated at the call site).
+- Defaults may be numeric or string literals, or expressions (including references to enclosing-scope variables, as in `function abc(a = x) { ... }`).
 - Omitted arguments before a defaulted argument are not allowed; supply earlier arguments first.
 
 ### Method-style calls (UFCS)
