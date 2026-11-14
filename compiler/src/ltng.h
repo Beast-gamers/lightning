@@ -163,6 +163,8 @@ typedef struct ASTNode {
     int has_else;       /* NODE_TRY: else (success) clause present */
     int has_finally;    /* NODE_TRY: finally clause present */
     int has_default;    /* NODE_PARAM: default value expression supplied */
+    int capture_count;  /* NODE_FUNCTION: number of captured variables from enclosing scope */
+    char captures[8][MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: cnames of captured variables */
     char for_var[MAX_IDENTIFIER_LEN];
     char for_start[MAX_STRING_LEN];
     char for_end[MAX_STRING_LEN];

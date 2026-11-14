@@ -166,7 +166,13 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
 
 static int is_callable_ident(SymbolTable *table, const char *src) {
     if (is_function_name_scoped(table, src)) return 1;
-    return symbol_table_get_func_ref(table, src, NULL, 0, NULL);
+    if (symbol_table_get_func_ref(table, src, NULL, 0, NULL)) return 1;
+    {
+        char mangled[MAX_IDENTIFIER_LEN];
+        mangle_name(src, mangled, sizeof(mangled));
+        if (symbol_table_has(table, mangled) || symbol_table_has(table, src)) return 1;
+    }
+    return 0;
 }
 static ASTNode *parse_block(Lexer *lexer, SymbolTable *table, int is_control);
 static ASTNode *parse_try(Lexer *lexer, SymbolTable *table);
@@ -1361,18 +1367,53 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     char mangled[MAX_IDENTIFIER_LEN];
                     mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                     if (symbol_table_has(table, mangled) || symbol_table_has(table, tok.value)) {
-                        error_state_add(parser_errors, tok.line, tok.col,
-                            "Indirect function call through variable is not yet supported");
-                        /* consume call tokens to recover */
-                        lexer_next(lexer); /* ( */
-                        int depth = 1;
-                        while (lexer->current < lexer->count && depth > 0) {
-                            Token t = lexer_next(lexer);
-                            if (t.type == TOKEN_LPAREN) depth++;
-                            else if (t.type == TOKEN_RPAREN) depth--;
-                            else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) break;
+                        /* dynamic indirect call through variable */
+                        lexer_next(lexer); /* consume ( */
+                        ASTNode *call = parse_call_node(lexer, table, tok.value, tok.line, tok.col, NULL);
+                        if (call->is_base_assign) {
+                            error_state_add(parser_errors, tok.line, tok.col,
+                                "function with 'base' parameter must be called with method syntax (receiver.method(args))");
+                            skip_to_newline(lexer);
+                            pos += snprintf(out + pos, out_size - pos, "0");
+                            break;
                         }
-                        pos += snprintf(out + pos, out_size - pos, "\"\"");
+                        if (strcmp(call->name, "__ltng_indirect") == 0) {
+                            /* emit indirect call: __ltng_call_indirect(target, _ret, cl, cc, argc, args...) */
+                            int argc = 0;
+                            for (ASTNode *a = call->args; a; a = a->next) argc++;
+                            pos += snprintf(out + pos, out_size - pos, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d",
+                                call->for_var, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1, argc);
+                            for (ASTNode *a = call->args; a; a = a->next) {
+                                if (a->var_type == TYPE_STRING && a->value[0] == '"') {
+                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
+                                } else if (a->is_variable && a->value[0] != '\0') {
+                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
+                                } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
+                                } else if (a->value[0] == '\0') {
+                                    pos += snprintf(out + pos, out_size - pos, ", \"\"");
+                                } else {
+                                    pos += snprintf(out + pos, out_size - pos, ", _ltng_ad((double)(%s))", a->value);
+                                }
+                            }
+                            pos += snprintf(out + pos, out_size - pos, ")");
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, "%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
+                            for (ASTNode *a = call->args; a; a = a->next) {
+                                if (a->var_type == TYPE_STRING && a->value[0] == '"') {
+                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
+                                } else if (a->is_variable && a->value[0] != '\0') {
+                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
+                                } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
+                                } else if (a->value[0] == '\0') {
+                                    pos += snprintf(out + pos, out_size - pos, ", \"\"");
+                                } else {
+                                    pos += snprintf(out + pos, out_size - pos, ", _ltng_ad((double)(%s))", a->value);
+                                }
+                            }
+                            pos += snprintf(out + pos, out_size - pos, ")");
+                        }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else {
                         goto collect_ident_var;
@@ -3305,7 +3346,13 @@ static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
     int cpos = 0;
     int cline = call->line > 0 ? call->line : 1;
     int ccol = call->col > 0 ? call->col : 1;
-    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
+    if (strcmp(call->name, "__ltng_indirect") == 0) {
+        int argc = 0;
+        for (ASTNode *a = call->args; a; a = a->next) argc++;
+        cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d", call->for_var, cline, ccol, argc);
+    } else {
+        cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
+    }
     for (ASTNode *a = call->args; a; a = a->next) {
         if (a->var_type == TYPE_STRING && a->value[0] == '"') {
             cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
@@ -3313,13 +3360,11 @@ static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
             cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
         } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
             cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
-            } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
-            } else if (a->value[0] == '\0') {
-                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", \"\"");
-            } else {
-                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", _ltng_ad((double)(%s))", a->value);
-            }
+        } else if (a->value[0] == '\0') {
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", \"\"");
+        } else {
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", _ltng_ad((double)(%s))", a->value);
+        }
     }
     cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ")");
     cexpr[cexpr_size - 1] = '\0';
@@ -3558,14 +3603,25 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             symbol_table_add_locked(table, mangled, TYPE_STRING);
             symbol_table_set_func_ref(table, mangled, fn ? fn->name : "", -1);
             if (fn) {
-                /* store actual param count */
                 int pc = 0;
                 for (ASTNode *p = fn->params; p; p = p->next) pc++;
                 symbol_table_set_func_ref(table, mangled, fn->name, pc);
             }
             const char *cname = symbol_table_get_cname(table, mangled);
             char fval[MAX_STRING_LEN];
-            snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            if (fn && fn->capture_count > 0) {
+                /* Build closure value: "cname\x01cap0\x01cap1..." */
+                char expr[MAX_STRING_LEN];
+                snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
+                for (int ci = 0; ci < fn->capture_count; ci++) {
+                    char tmp[MAX_STRING_LEN];
+                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                    strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
+                }
+                snprintf(fval, sizeof(fval), "%s", expr);
+            } else {
+                snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            }
             ASTNode *node = create_node(NODE_LET, cname, fval);
             node->var_type = TYPE_STRING;
             node->is_expr = 1;
@@ -3996,14 +4052,24 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
             symbol_table_add_locked(table, mangled, TYPE_STRING);
             symbol_table_set_func_ref(table, mangled, fn ? fn->name : "", -1);
             if (fn) {
-                /* store actual param count */
                 int pc = 0;
                 for (ASTNode *p = fn->params; p; p = p->next) pc++;
                 symbol_table_set_func_ref(table, mangled, fn->name, pc);
             }
             const char *cname = symbol_table_get_cname(table, mangled);
             char fval[MAX_STRING_LEN];
-            snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            if (fn && fn->capture_count > 0) {
+                char expr[MAX_STRING_LEN];
+                snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
+                for (int ci = 0; ci < fn->capture_count; ci++) {
+                    char tmp[MAX_STRING_LEN];
+                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                    strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
+                }
+                snprintf(fval, sizeof(fval), "%s", expr);
+            } else {
+                snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            }
             ASTNode *node = create_node(NODE_CONST, cname, fval);
             node->var_type = TYPE_STRING;
             node->is_expr = 1;
@@ -4562,7 +4628,18 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                 symbol_table_set_func_ref(table, mangled, "", -1);
             }
             char fval[MAX_STRING_LEN];
-            snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            if (fn && fn->capture_count > 0) {
+                char expr[MAX_STRING_LEN];
+                snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
+                for (int ci = 0; ci < fn->capture_count; ci++) {
+                    char tmp[MAX_STRING_LEN];
+                    snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                    strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
+                }
+                snprintf(fval, sizeof(fval), "%s", expr);
+            } else {
+                snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+            }
             ASTNode *node = create_node(NODE_SET, cname, fval);
             node->var_type = TYPE_STRING;
             node->is_expr = 1;
@@ -5881,27 +5958,7 @@ static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int
         lexer->current = saved;
         return 0;
     }
-    int cpos = 0;
-    int cline = call->line > 0 ? call->line : 1;
-    int ccol = call->col > 0 ? call->col : 1;
-    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
-    for (ASTNode *a = call->args; a; a = a->next) {
-        if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
-        } else if (a->is_variable && a->value[0] != '\0') {
-            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
-        } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
-            } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", %s", a->value);
-            } else if (a->value[0] == '\0') {
-                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", \"\"");
-            } else {
-                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", _ltng_ad((double)(%s))", a->value);
-            }
-    }
-    cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ")");
-    cexpr[cexpr_size - 1] = '\0';
+    build_call_cexpr(call, cexpr, cexpr_size);
     return 1;
 }
 
@@ -6048,21 +6105,57 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     call->col = col;
     char fm[MAX_IDENTIFIER_LEN];
     int indirect = 0;
+    int indirect_dynamic = 0;
     int fr_pc = -1;
     char fr_cname[MAX_IDENTIFIER_LEN] = "";
-    /* indirect call through function-reference variable? */
+    /* indirect call through tracked function-reference variable? */
     if (!is_function_name_scoped(table, fname_tok_val) &&
         symbol_table_get_func_ref(table, fname_tok_val, fr_cname, sizeof(fr_cname), &fr_pc)) {
         indirect = 1;
         strncpy(fm, fr_cname, MAX_IDENTIFIER_LEN - 1);
         fm[MAX_IDENTIFIER_LEN - 1] = '\0';
+    } else if (!is_function_name_scoped(table, fname_tok_val)) {
+        /* dynamic indirect call through plain variable holding function name */
+        char mangled[MAX_IDENTIFIER_LEN];
+        mangle_name(fname_tok_val, mangled, sizeof(mangled));
+        if (symbol_table_has(table, mangled) || symbol_table_has(table, fname_tok_val)) {
+            indirect_dynamic = 1;
+            const char *vcname = symbol_table_get_cname(table, mangled);
+            if (!vcname || !vcname[0]) vcname = symbol_table_get_cname(table, fname_tok_val);
+            strncpy(call->for_var, vcname ? vcname : mangled, MAX_IDENTIFIER_LEN - 1);
+            call->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            strncpy(fm, "__ltng_indirect", MAX_IDENTIFIER_LEN - 1);
+            fm[MAX_IDENTIFIER_LEN - 1] = '\0';
+        } else {
+            if (!resolve_func_name(table, fname_tok_val, fm, MAX_IDENTIFIER_LEN)) {
+                mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
+            }
+        }
     } else {
         if (!resolve_func_name(table, fname_tok_val, fm, MAX_IDENTIFIER_LEN)) {
             mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
         }
     }
+    /* If calling a tracked function-ref that is actually a closure (has captures),
+       we must dispatch through the variable's closure value (encoded). */
+    if (indirect && !indirect_dynamic) {
+        ASTNode *tfn = find_function_ast_by_name(fm);
+        if (!tfn) tfn = find_function_ast_by_name(fr_cname);
+        if (tfn && tfn->capture_count > 0) {
+            char mangled_v[MAX_IDENTIFIER_LEN];
+            mangle_name(fname_tok_val, mangled_v, sizeof(mangled_v));
+            const char *vcname = symbol_table_get_cname(table, mangled_v);
+            if (!vcname || !vcname[0]) vcname = symbol_table_get_cname(table, fname_tok_val);
+            if (!vcname || !vcname[0]) vcname = mangled_v;
+            strncpy(call->for_var, vcname, MAX_IDENTIFIER_LEN - 1);
+            call->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            strncpy(fm, "__ltng_indirect", MAX_IDENTIFIER_LEN - 1);
+            fm[MAX_IDENTIFIER_LEN - 1] = '\0';
+            indirect_dynamic = 1;
+        }
+    }
     strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
-    if (function_first_param_is_base(fm)) {
+    if (!indirect_dynamic && function_first_param_is_base(fm)) {
         call->is_base_assign = 1;
     }
     ASTNode *args = NULL, *alast = NULL;
@@ -6133,11 +6226,22 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                     an->is_variable = 1; /* pass pointer directly */
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 } else {
-                    /* complex expression involving call */
+                    /* complex expression involving call, or plain variable (since is_callable_ident now includes vars) */
                     VarType avt = collect_expression(lexer, table, cexpr, sizeof(cexpr), 1, 1, NULL, NULL, NULL, NULL);
                     ASTNode *an = create_node(NODE_PARAM, "", cexpr);
                     an->var_type = avt;
                     an->is_expr = 1;
+                    if ((avt == TYPE_STRING || avt == TYPE_OBJECT) && cexpr[0] != '"' && cexpr[0] != '\0') {
+                        int simple = 1;
+                        for (char *p = cexpr; *p; p++) {
+                            if (*p==' '||*p=='\t'||*p=='('||*p==')'||*p=='+'||*p=='*'||*p=='-'||*p=='/'||*p=='%'||*p=='='||*p=='!'||*p=='<'||*p=='>'||*p=='&'||*p=='|'||*p=='?') { simple = 0; break; }
+                        }
+                        if (simple) an->is_variable = 1;
+                    }
+                    if (named_arg) {
+                        strncpy(an->for_var, named_key, MAX_IDENTIFIER_LEN - 1);
+                        has_named_arg = 1;
+                    }
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 }
             } else {
@@ -6168,8 +6272,11 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     else { error_state_add(parser_errors, line, col, "Expected ')' after function arguments"); }
 
     /* Fill in default values for parameters that were not supplied by the caller. */
-    ASTNode *fn_def = find_function_ast_by_name(indirect ? fm : fname_tok_val);
-    if (!fn_def && indirect) fn_def = find_function_ast_by_name(fm);
+    ASTNode *fn_def = NULL;
+    if (!indirect_dynamic) {
+        fn_def = find_function_ast_by_name(indirect ? fm : fname_tok_val);
+        if (!fn_def && indirect) fn_def = find_function_ast_by_name(fm);
+    }
     if (fn_def && fn_def->params) {
         int param_count = 0;
         for (ASTNode *p = fn_def->params; p; p = p->next) param_count++;
@@ -6298,6 +6405,33 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
     VarType etype = TYPE_INT;
     Token next = lexer_peek(lexer);
     if (next.type != TOKEN_NEWLINE && next.type != TOKEN_EOF && next.type != TOKEN_RBRACE) {
+        /* anonymous function expression: return function(params) { ... } */
+        if (next.type == TOKEN_FUNCTION) {
+            Token after_fn = lexer->tokens[lexer->current + 1];
+            if (after_fn.type == TOKEN_LPAREN) {
+                ASTNode *fn = parse_function(lexer, table, g_enclosing_cname);
+                if (fn && g_program_ref) { fn->next = g_program_ref->functions; g_program_ref->functions = fn; }
+                char fval[MAX_STRING_LEN];
+                if (fn && fn->capture_count > 0) {
+                    char expr[MAX_STRING_LEN];
+                    snprintf(expr, sizeof(expr), "\"%s\"", fn->name);
+                    for (int ci = 0; ci < fn->capture_count; ci++) {
+                        char tmp[MAX_STRING_LEN];
+                        snprintf(tmp, sizeof(tmp), "_ltng_add_sn(_ltng_add_sn(%s,\"\\001\"),%s)", expr, fn->captures[ci]);
+                        strncpy(expr, tmp, sizeof(expr)-1); expr[sizeof(expr)-1]=0;
+                    }
+                    snprintf(fval, sizeof(fval), "%s", expr);
+                } else {
+                    snprintf(fval, sizeof(fval), "\"%s\"", fn ? fn->name : "");
+                }
+                ASTNode *node = create_node(NODE_RETURN, "", fval);
+                node->line = kw.line; node->col = kw.col;
+                node->var_type = TYPE_STRING;
+                node->is_expr = 1;
+                emit(node);
+                return;
+            }
+        }
         /* sole string literal (only if nothing follows - otherwise full expression) */
         if (next.type == TOKEN_STRING) {
             int saved = lexer->current;
@@ -6411,6 +6545,90 @@ static void parse_exit(Lexer *lexer, SymbolTable *table) {
     node->var_type = etype;
     node->is_expr = 1;
     emit(node);
+}
+
+
+static int is_ident_start_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+static int is_ident_char(char c) { return is_ident_start_char(c) || (c >= '0' && c <= '9'); }
+
+static void add_capture_name(char names[][MAX_IDENTIFIER_LEN], int *count, int max, const char *name) {
+    if (!name || !name[0] || *count >= max) return;
+    /* skip internal/runtime names */
+    if (strncmp(name, "_ltng", 5) == 0) return;
+    if (strncmp(name, "_v", 2) == 0) { /* scoped var cname prefix - but we want to track by mangled/original; keep */ }
+    for (int i = 0; i < *count; i++) if (strcmp(names[i], name) == 0) return;
+    strncpy(names[*count], name, MAX_IDENTIFIER_LEN - 1);
+    names[*count][MAX_IDENTIFIER_LEN - 1] = 0;
+    (*count)++;
+}
+
+static void collect_idents_from_str(const char *s, char names[][MAX_IDENTIFIER_LEN], int *count, int max) {
+    if (!s) return;
+    for (int i = 0; s[i]; ) {
+        if (is_ident_start_char(s[i])) {
+            char buf[MAX_IDENTIFIER_LEN]; int j = 0;
+            while (s[i] && is_ident_char(s[i]) && j < MAX_IDENTIFIER_LEN - 1) buf[j++] = s[i++];
+            buf[j] = 0;
+            add_capture_name(names, count, max, buf);
+        } else if (s[i] == '"' ) {
+            i++; while (s[i] && s[i] != '"') { if (s[i] == '\\' && s[i+1]) i += 2; else i++; }
+            if (s[i] == '"') i++;
+        } else if (s[i] == '\'') {
+            i++; while (s[i] && s[i] != '\'') { if (s[i] == '\\' && s[i+1]) i += 2; else i++; }
+            if (s[i] == '\'') i++;
+        } else {
+            i++;
+        }
+    }
+}
+
+static void collect_declared_locals(ASTNode *node, char names[][MAX_IDENTIFIER_LEN], int *count, int max, int depth) {
+    if (!node || depth > 128) return;
+    if (node->type == NODE_LET || node->type == NODE_CONST) {
+        if (node->name[0]) add_capture_name(names, count, max, node->name);
+    }
+    /* don't descend into nested function bodies - they have separate scopes */
+    if (node->type == NODE_FUNCTION) return;
+    collect_declared_locals(node->body, names, count, max, depth + 1);
+    collect_declared_locals(node->orelse, names, count, max, depth + 1);
+    collect_declared_locals(node->else_body, names, count, max, depth + 1);
+    collect_declared_locals(node->cases, names, count, max, depth + 1);
+    collect_declared_locals(node->next, names, count, max, depth + 1);
+}
+
+static void collect_used_idents(ASTNode *node, char names[][MAX_IDENTIFIER_LEN], int *count, int max, int depth) {
+    if (!node || depth > 128) return;
+    /* don't descend into nested function bodies */
+    if (node->type == NODE_FUNCTION) { collect_used_idents(node->next, names, count, max, depth); return; }
+    /* NODE_READ stores variable name in node->name */
+    if (node->type == NODE_READ && node->name[0]) add_capture_name(names, count, max, node->name);
+    /* calls: name is callee (function) - not a variable capture unless indirect; args have values */
+    if (node->type == NODE_CALL) {
+        /* indirect call target var stored in for_var */
+        if (strcmp(node->name, "__ltng_indirect") == 0 && node->for_var[0])
+            add_capture_name(names, count, max, node->for_var);
+    }
+    /* scan expression-bearing string fields */
+    collect_idents_from_str(node->value, names, count, max);
+    collect_idents_from_str(node->for_start, names, count, max);
+    collect_idents_from_str(node->for_end, names, count, max);
+    collect_idents_from_str(node->for_step, names, count, max);
+    collect_idents_from_str(node->array_index, names, count, max);
+    /* SET/assignments target var in name - writing is not a capture read, but reading RHS is in value */
+    /* for NODE_PARAM args, value may contain var refs */
+
+    collect_used_idents(node->body, names, count, max, depth + 1);
+    collect_used_idents(node->orelse, names, count, max, depth + 1);
+    collect_used_idents(node->else_body, names, count, max, depth + 1);
+    collect_used_idents(node->cases, names, count, max, depth + 1);
+    collect_used_idents(node->args, names, count, max, depth + 1);
+    collect_used_idents(node->params, names, count, max, depth + 1);
+    collect_used_idents(node->next, names, count, max, depth + 1);
+}
+
+static int name_in_list(char names[][MAX_IDENTIFIER_LEN], int count, const char *name) {
+    for (int i = 0; i < count; i++) if (strcmp(names[i], name) == 0) return 1;
+    return 0;
 }
 
 static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_cname) {
@@ -6573,6 +6791,59 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     g_in_function--;
     strncpy(g_enclosing_cname, saved_enc, MAX_IDENTIFIER_LEN - 1);
     g_enclosing_cname[MAX_IDENTIFIER_LEN - 1] = 0;
+
+    /* Compute captures for nested/anonymous functions */
+    fn->capture_count = 0;
+    if (is_anon || (enclosing_cname && enclosing_cname[0])) {
+        char used[64][MAX_IDENTIFIER_LEN]; int used_n = 0;
+        char locals[64][MAX_IDENTIFIER_LEN]; int locals_n = 0;
+        /* params are locals */
+        for (ASTNode *p = fn->params; p; p = p->next) {
+            if (p->for_var[0]) add_capture_name(locals, &locals_n, 64, p->for_var);
+            if (p->name[0]) add_capture_name(locals, &locals_n, 64, p->name);
+        }
+        collect_declared_locals(fn->body, locals, &locals_n, 64, 0);
+        collect_used_idents(fn->body, used, &used_n, 64, 0);
+        for (int i = 0; i < used_n && fn->capture_count < 8; i++) {
+            const char *u = used[i];
+            if (name_in_list(locals, locals_n, u)) continue;
+            /* skip common keywords/builtins/literals that might appear as tokens in expressions */
+            if (strcmp(u,"true")==0||strcmp(u,"false")==0||strcmp(u,"t")==0||strcmp(u,"f")==0) continue;
+            if (strcmp(u,"null")==0||strcmp(u,"write")==0||strcmp(u,"read")==0) continue;
+            if (strcmp(u,"int")==0||strcmp(u,"float")==0||strcmp(u,"string")==0||strcmp(u,"char")==0||strcmp(u,"bool")==0) continue;
+            if (strcmp(u,"if")==0||strcmp(u,"else")==0||strcmp(u,"for")==0||strcmp(u,"while")==0||strcmp(u,"return")==0) continue;
+            if (strcmp(u,"let")==0||strcmp(u,"const")==0||strcmp(u,"set")==0||strcmp(u,"function")==0) continue;
+            if (strcmp(u,"try")==0||strcmp(u,"catch")==0||strcmp(u,"finally")==0||strcmp(u,"throw")==0) continue;
+            if (strcmp(u,"break")==0||strcmp(u,"continue")==0||strcmp(u,"switch")==0||strcmp(u,"case")==0||strcmp(u,"default")==0) continue;
+            if (strcmp(u,"and")==0||strcmp(u,"or")==0||strcmp(u,"not")==0||strcmp(u,"in")==0||strcmp(u,"from")==0||strcmp(u,"to")==0||strcmp(u,"step")==0||strcmp(u,"by")==0) continue;
+            if (strcmp(u,"exit")==0||strcmp(u,"include")==0) continue;
+            /* skip if it's a declared function name */
+            if (is_function_name(u)) continue;
+            /* skip numeric-like */
+            if (u[0] >= '0' && u[0] <= '9') continue;
+            /* check if this identifier exists in enclosing scope (as variable) */
+            char mangled_u[MAX_IDENTIFIER_LEN];
+            mangle_name(u, mangled_u, sizeof(mangled_u));
+            /* try both original and mangled forms as they appear */
+            int in_enclosing = 0;
+            const char *cap_cname = NULL;
+            if (table && symbol_table_has(table, mangled_u)) { in_enclosing = 1; cap_cname = symbol_table_get_cname(table, mangled_u); }
+            else if (table && symbol_table_has(table, u)) { in_enclosing = 1; cap_cname = symbol_table_get_cname(table, u); }
+            /* also check if u is already a mangled cname present in enclosing scope */
+            if (!in_enclosing && table && symbol_table_has(table, u)) { in_enclosing = 1; cap_cname = symbol_table_get_cname(table, u); }
+            if (!in_enclosing) continue;
+            /* avoid duplicate captures */
+            int dup = 0;
+            for (int c = 0; c < fn->capture_count; c++) {
+                if (strcmp(fn->captures[c], cap_cname ? cap_cname : mangled_u) == 0) dup = 1;
+            }
+            if (dup) continue;
+            strncpy(fn->captures[fn->capture_count], cap_cname ? cap_cname : mangled_u, MAX_IDENTIFIER_LEN - 1);
+            fn->captures[fn->capture_count][MAX_IDENTIFIER_LEN - 1] = 0;
+            fn->capture_count++;
+        }
+    }
+
     free(func_scope);
     validate_function_return_types(fn);
     (void)kw;

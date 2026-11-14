@@ -1187,13 +1187,42 @@ write(op(5))   # 25
 ```
 
 - Anonymous functions can be called through the variable they are assigned to: `name(args)`.
-- They can be used in expressions and as call arguments (including nested calls), e.g. `write(add(dbl(2), inc(1)))`.
+- They can be used in expressions, as call arguments (including nested calls), returned from functions, and passed as values to other functions.
+
+**Closures (capture)**
+
+Anonymous functions may capture variables from their enclosing function scope (parameters and local `let`/`const` variables). Captured values are bound at the time the function expression is created.
+
+```
+function makeAdder(n) {
+    return function(x) {
+        return x + n
+    }
+}
+let add5 = makeAdder(5)
+write(add5(10))   # 15
+```
+
+**First-class use and dynamic dispatch**
+
+Function values (including closures) can be stored in variables, returned, and passed to other functions. Calls through function-valued parameters/variables are dispatched dynamically at runtime.
+
+```
+function apply(fn, v) {
+    return fn(v)
+}
+function makeOffset(n) {
+    return function(x) { return x + n }
+}
+let off5 = makeOffset(5)
+write(apply(off5, 10))   # 15
+```
 
 **Current limitations**
 
-- **No closure capture:** anonymous functions do not capture variables from enclosing scopes (full capture semantics are pending).
-- **Indirect calls through untracked variables/parameters:** calls through variables that the compiler can track as function references (e.g. `let f = function(...)`; then `f(...)`) are supported. Invoking a function value received as an ordinary parameter/variable that is not tracked as a function reference (dynamic dispatch) is not yet supported and results in a compile-time error.
-- **First-class function references (general):** broader first-class function value semantics are still in progress.
+- **Capture semantics:** captures are by value at creation time; shared/mutable capture of outer variables is not yet implemented.
+- **Named function references:** taking a reference to an existing named function as a value (e.g. `let f = someFunc`) is not yet supported as dedicated syntax/semantics; anonymous function expressions are the primary function-value form.
+- Variadic arguments and function overloading remain pending.
 
 ### Method-style calls (UFCS)
 

@@ -1451,7 +1451,13 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             }
             /* call statement - invoke and discard result */
             pad(out, indent);
-            fprintf(out, "%s(_ltng_retbuf(), %d, %d", node->name, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1);
+            if (strcmp(node->name, "__ltng_indirect") == 0) {
+                int argc = 0;
+                for (ASTNode *a = node->args; a; a = a->next) argc++;
+                fprintf(out, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d", node->for_var, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1, argc);
+            } else {
+                fprintf(out, "%s(_ltng_retbuf(), %d, %d", node->name, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1);
+            }
             for (ASTNode *a = node->args; a; a = a->next) {
                 if (a->var_type == TYPE_STRING && a->value[0] == '"') {
                     fprintf(out, ", %s", a->value);
@@ -1734,6 +1740,9 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char buf[32][256]; static int _ltng_asn_idx=0; _ltng_asn_idx=(_ltng_asn_idx+1)%%32; char *r=buf[_ltng_asn_idx]; r[0]=0; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a),nb=atof(b); snprintf(r,256,\"%%g\",na+nb); } else { snprintf(r,256,\"%%s%%s\",a,b); } return r; }\n");
     fprintf(out, "\n");
 
+    /* Indirect call dispatcher prototype */
+    fprintf(out, "static char *__ltng_call_indirect(const char *target, char *_ret, int _ltng_cl, int _ltng_cc, int argc, ...);\n\n");
+
     /* Emit function prototypes and definitions */
     if (program->functions) {
         ASTNode *fns[256]; int fncount = 0;
@@ -1742,6 +1751,8 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         for (int i = fncount - 1; i >= 0; i--) {
             ASTNode *fn = fns[i];
             fprintf(out, "static char *%s(char *_ret, int _ltng_cl, int _ltng_cc", fn->name);
+            for (int ci = 0; ci < fn->capture_count; ci++)
+                fprintf(out, ", const char *_cap_%d", ci);
             for (ASTNode *p = fn->params; p; p = p->next)
                 fprintf(out, ", const char *_a_%s", p->name);
             fprintf(out, ");\n");
@@ -1750,6 +1761,8 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         for (int i = fncount - 1; i >= 0; i--) {
             ASTNode *fn = fns[i];
             fprintf(out, "static char *%s(char *_ret, int _ltng_cl, int _ltng_cc", fn->name);
+            for (int ci = 0; ci < fn->capture_count; ci++)
+                fprintf(out, ", const char *_cap_%d", ci);
             for (ASTNode *p = fn->params; p; p = p->next)
                 fprintf(out, ", const char *_a_%s", p->name);
             fprintf(out, ") {\n");
@@ -1757,6 +1770,11 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             fprintf(out, "    _ltng_fn_push(\"");
             write_c_string_raw(out, fn->for_var[0] ? fn->for_var : fn->name);
             fprintf(out, "\", _ltng_cl, _ltng_cc);\n");
+            /* bind captured variables */
+            for (int ci = 0; ci < fn->capture_count; ci++) {
+                fprintf(out, "    char %s[256] = \"\"; if(_cap_%d) { strncpy(%s, _cap_%d, 255); %s[255]=0; }\n",
+                    fn->captures[ci], ci, fn->captures[ci], ci, fn->captures[ci]);
+            }
             for (ASTNode *p = fn->params; p; p = p->next) {
                 fprintf(out, "    char %s[256] = \"\"; if(_a_%s) { strncpy(%s, _a_%s, 255); %s[255]=0; }\n",
                     p->name, p->name, p->name, p->name, p->name);
@@ -1798,6 +1816,35 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             fprintf(out, "}\n\n");
         }
     }
+
+    /* Indirect call dispatcher for dynamic function values */
+    fprintf(out, "static char *__ltng_call_indirect(const char *target, char *_ret, int _ltng_cl, int _ltng_cc, int argc, ...) {\n");
+    fprintf(out, "    const char *_argv[16] = {\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"};\n");
+    fprintf(out, "    va_list ap; va_start(ap, argc);\n");
+    fprintf(out, "    for (int i = 0; i < argc && i < 16; i++) { const char *v = va_arg(ap, const char*); _argv[i] = v ? v : \"\"; }\n");
+    fprintf(out, "    va_end(ap);\n");
+    fprintf(out, "    if (!target) target = \"\";\n");
+    fprintf(out, "    char _tname[256]; snprintf(_tname, sizeof(_tname), \"%%s\", target);\n");
+    fprintf(out, "    const char *_caps[8] = {\"\",\"\",\"\",\"\",\"\",\"\",\"\"}; int _ncaps = 0;\n");
+    fprintf(out, "    char *_sep = strchr(_tname, 1);\n");
+    fprintf(out, "    if (_sep) { *_sep = 0; char *_p = _sep + 1; while (_p && *_p && _ncaps < 8) { char *_n = strchr(_p, 1); if (_n) { *_n = 0; _caps[_ncaps++] = _p; _p = _n + 1; } else { _caps[_ncaps++] = _p; break; } } }\n");
+    if (program->functions) {
+        ASTNode *fns_d[256]; int fncount_d = 0;
+        for (ASTNode *fn = program->functions; fn && fncount_d < 256; fn = fn->next) fns_d[fncount_d++] = fn;
+        for (int i = fncount_d - 1; i >= 0; i--) {
+            ASTNode *fn = fns_d[i];
+            int pc = 0;
+            for (ASTNode *p = fn->params; p; p = p->next) pc++;
+            fprintf(out, "    if (strcmp(_tname, \"%s\") == 0) return %s(_ret, _ltng_cl, _ltng_cc", fn->name, fn->name);
+            for (int ci = 0; ci < fn->capture_count; ci++) fprintf(out, ", _caps[%d]", ci);
+            for (int pi = 0; pi < pc; pi++) fprintf(out, ", _argv[%d]", pi);
+            fprintf(out, ");\n");
+        }
+    }
+    fprintf(out, "    _ltng_throw_value(\"Error\", \"Unknown function in indirect call\", _ltng_cl, _ltng_cc);\n");
+    fprintf(out, "    return _ret;\n");
+    fprintf(out, "}\n\n");
+
 
     fprintf(out, "int main(void) {\n");
     fprintf(out, "    _ltng_fn_push(\"main\", 1, 1);\n");

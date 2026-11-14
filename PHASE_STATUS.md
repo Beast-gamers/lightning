@@ -228,14 +228,16 @@
 - **Named arguments:** calls support `name = value` arguments in any order, mixed with positional arguments (positional args bind left-to-right to parameters not supplied by name). Works with default parameters. Tests: `tests/runtime/phase5_named_args.ltng`.
 - **Call argument validation:** compile-time errors for missing required arguments, too many arguments, unknown named parameters, and duplicate named arguments (with placeholder emission to avoid internal C errors). Tests: `tests/semantic/phase5_missing_arg_neg.ltng`, `tests/semantic/phase5_too_many_args_neg.ltng`, `tests/semantic/phase5_unknown_named_arg_neg.ltng`.
 - **Return-type validation improvements:** compile-time error for clearly inconsistent return types within a function (e.g. string literal vs numeric), while remaining compatible with numeric mixing and current variable pass-through return representation. Tests: `tests/semantic/phase5_inconsistent_return_neg.ltng`.
-- **Anonymous functions (initial, no capture):** `function(params) { ... }` expressions can be assigned to `let`/`const` variables or reassigned with `set`, and called through tracked function-reference variables (including in expressions/arguments). Indirect calls through untracked variables/parameters (dynamic dispatch) are rejected with a compile-time error for now. Tests: `tests/runtime/phase5_anon_functions.ltng`.
+- **Anonymous functions:** `function(params) { ... }` expressions can be assigned to `let`/`const` variables or reassigned with `set`, called, used in expressions/arguments, returned, and passed as values. Tests: `tests/runtime/phase5_anon_functions.ltng`.
+- **Closures / capture (initial):** anonymous/nested functions capture enclosing-scope variables (parameters and locals) by value at creation time; closure values are supported (including return and passing). Tests: `tests/runtime/phase5_closures.ltng`.
+- **Function values / dynamic dispatch:** function values (including closures) can be called through variables and parameters via runtime dispatch. Tests: `tests/runtime/phase5_closures.ltng`.
 
 ### Test results
-- Full suite: **PASS=137 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
+- Full suite: **PASS=138 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
 
 ### Remaining for Phase 5
-- Closures / capture semantics (capture of enclosing-scope locals, mutable captures, independent instances).
-- Function references / first-class function values (dynamic/indirect dispatch, passing/calling through untracked parameters/values).
+- Mutable/shared closure capture semantics (captures are currently by value at creation).
+- Named-function references as first-class values (dedicated syntax/semantics for `let f = someFunc`).
 - Variadic arguments.
 - Function overloading.
 - Further return-type checking/validation (e.g. richer type annotations).

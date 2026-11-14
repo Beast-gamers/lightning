@@ -1,0 +1,41 @@
+# Closures: capture enclosing-scope variables
+function makeAdder(n) {
+    let adder = function(x) {
+        return x + n
+    }
+    return adder(10)
+}
+write(makeAdder(5))
+
+# Capture multiple variables
+function makeSum(a, b) {
+    let add = function(x) {
+        return x + a + b
+    }
+    return add(10)
+}
+write(makeSum(1, 2))
+
+# Return closure and call later
+function makeOffset(n) {
+    return function(x) {
+        return x + n
+    }
+}
+let off5 = makeOffset(5)
+write(off5(20))
+
+# Pass closure as argument (dynamic dispatch)
+function apply(cb, v) {
+    return cb(v)
+}
+write(apply(off5, 10))
+
+function applyTwice(fn, x) {
+    let a = fn(x)
+    return fn(a)
+}
+let inc = function(n) {
+    return n + 1
+}
+write(applyTwice(inc, 5))
