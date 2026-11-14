@@ -1022,13 +1022,16 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
 
 static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
     int id = g_try_uid++;
-    char tf[64], tr[64], cf[64], cr[64], es[64], ec[64];
+    char tf[64], tr[64], cf[64], cr[64], es[64], ec[64], ef[64], er[64], ee[64];
     snprintf(tf, sizeof(tf), "_ltng_tf%d", id);
     snprintf(tr, sizeof(tr), "_ltng_tr%d", id);
     snprintf(cf, sizeof(cf), "_ltng_cf%d", id);
     snprintf(cr, sizeof(cr), "_ltng_cr%d", id);
     snprintf(es, sizeof(es), "_ltng_es%d", id);
     snprintf(ec, sizeof(ec), "_ltng_ec%d", id);
+    snprintf(ef, sizeof(ef), "_ltng_ef%d", id);
+    snprintf(er, sizeof(er), "_ltng_er%d", id);
+    snprintf(ee, sizeof(ee), "_ltng_ee%d", id);
     int base = g_cleanup_count;
 
     pad(out, indent); fprintf(out, "{\n");
@@ -1046,14 +1049,62 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
     }
 
     if (node->body) emit_block(out, node->body, table, indent + 2);
-    if (g_cleanup_count > base) g_cleanup_count--;
-    pad(out, indent + 2); fprintf(out, "_ltng_try_top = %s.prev;\n", tf);
 
-    if (node->has_finally && node->cases) {
-        int saved = g_cleanup_count;
-        g_cleanup_count = base;
-        emit_block(out, node->cases, table, indent + 2);
-        g_cleanup_count = saved;
+    int has_else = node->has_else && node->else_body;
+    int has_finally = node->has_finally && node->cases;
+
+    if (has_else) {
+        /* Success path: restore the try frame before running else so that an
+           exception from else is not caught by this construct's catch. */
+        pad(out, indent + 2); fprintf(out, "_ltng_try_top = %s.prev;\n", tf);
+        if (has_finally) {
+            /* Guard the else body so a throw still runs finally, then
+               propagates to an outer handler. */
+            pad(out, indent + 2); fprintf(out, "{\n");
+            pad(out, indent + 3); fprintf(out, "LtngTryFrame %s;\n", ef);
+            pad(out, indent + 3); fprintf(out, "%s.prev = _ltng_try_top;\n", ef);
+            pad(out, indent + 3); fprintf(out, "%s.stack_depth = _ltng_stack_depth;\n", ef);
+            pad(out, indent + 3); fprintf(out, "_ltng_try_top = &%s;\n", ef);
+            pad(out, indent + 3); fprintf(out, "int %s = setjmp(%s.env);\n", er, ef);
+            pad(out, indent + 3); fprintf(out, "if (%s == 0) {\n", er);
+            emit_block(out, node->else_body, table, indent + 4);
+            pad(out, indent + 4); fprintf(out, "_ltng_try_top = %s.prev;\n", ef);
+            if (g_cleanup_count > base) g_cleanup_count--;
+            {
+                int saved = g_cleanup_count;
+                g_cleanup_count = base;
+                emit_block(out, node->cases, table, indent + 4);
+                g_cleanup_count = saved;
+            }
+            pad(out, indent + 3); fprintf(out, "} else {\n");
+            pad(out, indent + 4); fprintf(out, "_ltng_try_top = %s.prev;\n", ef);
+            pad(out, indent + 4); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", ef);
+            if (g_cleanup_count > base) g_cleanup_count--;
+            pad(out, indent + 4); fprintf(out, "LtngExcSaved %s;\n", ee);
+            pad(out, indent + 4); fprintf(out, "_ltng_exc_save_to(&%s);\n", ee);
+            {
+                int saved = g_cleanup_count;
+                g_cleanup_count = base;
+                emit_block(out, node->cases, table, indent + 4);
+                g_cleanup_count = saved;
+            }
+            pad(out, indent + 4); fprintf(out, "_ltng_exc_restore_from(&%s);\n", ee);
+            pad(out, indent + 4); fprintf(out, "_ltng_rethrow();\n");
+            pad(out, indent + 3); fprintf(out, "}\n");
+            pad(out, indent + 2); fprintf(out, "}\n");
+        } else {
+            if (g_cleanup_count > base) g_cleanup_count--;
+            emit_block(out, node->else_body, table, indent + 2);
+        }
+    } else {
+        if (g_cleanup_count > base) g_cleanup_count--;
+        pad(out, indent + 2); fprintf(out, "_ltng_try_top = %s.prev;\n", tf);
+        if (has_finally) {
+            int saved = g_cleanup_count;
+            g_cleanup_count = base;
+            emit_block(out, node->cases, table, indent + 2);
+            g_cleanup_count = saved;
+        }
     }
 
     pad(out, indent + 1); fprintf(out, "} else {\n");

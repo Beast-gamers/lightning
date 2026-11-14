@@ -1,0 +1,5 @@
+try {
+    write("no catch")
+} else {
+    write("else requires catch")
+}

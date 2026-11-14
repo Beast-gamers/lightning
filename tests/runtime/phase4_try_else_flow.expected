@@ -1,0 +1,24 @@
+try
+finally-ret-try
+from-try
+try2
+else2
+finally-ret-else
+from-else
+finally 0
+body 1
+else 1
+finally 1
+finally 2
+t0
+e0
+f0
+inner-try
+inner-else
+inner-finally
+outer-catch from-else
+solo-try
+solo-else
+inner2-try
+inner2-else
+outer2-catch from-else2

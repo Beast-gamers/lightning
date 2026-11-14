@@ -1,0 +1,17 @@
+function check(n) {
+    try {
+        if (n < 0) {
+            throw error("Negative", "n must be >= 0")
+        }
+        write("try-ok " + tostring(n))
+    } catch (e) {
+        write("catch " + e.type + ": " + e.message)
+    } else {
+        write("else " + tostring(n))
+    } finally {
+        write("finally " + tostring(n))
+    }
+}
+
+check(5)
+check(-1)

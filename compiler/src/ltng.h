@@ -160,6 +160,7 @@ typedef struct ASTNode {
     int is_default;
     int is_base_assign; /* UFCS call whose return value is assigned to receiver (base param) */
     int has_catch;      /* NODE_TRY: catch clause present */
+    int has_else;       /* NODE_TRY: else (success) clause present */
     int has_finally;    /* NODE_TRY: finally clause present */
     char for_var[MAX_IDENTIFIER_LEN];
     char for_start[MAX_STRING_LEN];
@@ -175,8 +176,9 @@ typedef struct ASTNode {
     int fe_sl, fe_sc, fe_el, fe_ec;   /* for end expression span */
     int fst_sl, fst_sc, fst_el, fst_ec; /* for step expression span */
     struct ASTNode *body;
-    struct ASTNode *orelse;
-    struct ASTNode *cases;
+    struct ASTNode *orelse;   /* NODE_TRY: catch body */
+    struct ASTNode *else_body;/* NODE_TRY: else (success) body */
+    struct ASTNode *cases;    /* NODE_TRY: finally body */
     struct ASTNode *params;  /* function parameters (NODE_PARAM/name chain) */
     struct ASTNode *args;    /* call arguments (expression nodes chain) */
     struct ASTNode *next;

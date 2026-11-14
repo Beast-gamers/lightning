@@ -9,7 +9,8 @@ All notable changes to the Lightning project in this development effort are docu
 - Catch objects expose `type`, `message`, `trace`, `line`, `column`, `function`, `value`, and `obj`; catch variables are block-scoped and nested catches may reuse names.
 - Call-site-aware stack traces: generated functions carry hidden call-site line/column arguments, and traces report the throw location plus each caller's call site.
 - `finally` cleanup semantics for normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides a pending return/exception, and a new exception thrown in `finally` replaces a pending one.
-- Phase 4 tests: `tests/runtime/phase4_*.ltng` (try/catch, custom errors, finally control flow, finally throws, nested rethrow, propagation, uncaught, catch scope, and exception-path finally exits) plus `tests/semantic/phase4_*_neg.ltng` negative cases.
+- `try`/`catch`/`else` success block: `else` runs only when the `try` body completes normally, is skipped on `throw`/`return`/`break`/`continue`, requires a `catch`, runs before `finally`, and propagates exceptions thrown inside `else` outward while still running `finally`.
+- Phase 4 tests: `tests/runtime/phase4_*.ltng` (try/catch, try/catch/else success and control-flow interactions, custom errors, finally control flow, finally throws, nested rethrow, propagation, uncaught, catch scope, and exception-path finally exits) plus `tests/semantic/phase4_*_neg.ltng` negative cases.
 - Test harness support for optional `.exitcode` and `.stderr` expectations, and source-path normalization for stable traceback comparisons.
 - `DEVELOPMENT_AUDIT.md`: initial repository and architecture audit, baseline status, risks, and limitations.
 - `TESTING.md`: testing infrastructure documentation and conventions.

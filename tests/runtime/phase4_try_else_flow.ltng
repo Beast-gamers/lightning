@@ -1,0 +1,95 @@
+function ret_try() {
+    try {
+        write("try")
+        return "from-try"
+    } catch (e) {
+        return "catch"
+    } else {
+        write("else-should-not-run")
+    } finally {
+        write("finally-ret-try")
+    }
+}
+
+function ret_else() {
+    try {
+        write("try2")
+    } catch (e) {
+        return "catch2"
+    } else {
+        write("else2")
+        return "from-else"
+    } finally {
+        write("finally-ret-else")
+    }
+}
+
+write(ret_try())
+write(ret_else())
+
+for (i from 0 to 2) {
+    try {
+        if (i == 0) {
+            continue
+        }
+        if (i == 2) {
+            break
+        }
+        write("body " + tostring(i))
+    } catch (e) {
+        write("catch-loop")
+    } else {
+        write("else " + tostring(i))
+    } finally {
+        write("finally " + tostring(i))
+    }
+}
+
+for (i from 0 to 2) {
+    try {
+        write("t" + tostring(i))
+    } catch (e) {
+        write("c" + tostring(i))
+    } else {
+        write("e" + tostring(i))
+        break
+    } finally {
+        write("f" + tostring(i))
+    }
+}
+
+try {
+    try {
+        write("inner-try")
+    } catch (e) {
+        write("inner-catch")
+    } else {
+        write("inner-else")
+        throw "from-else"
+    } finally {
+        write("inner-finally")
+    }
+} catch (e) {
+    write("outer-catch " + e.message)
+}
+
+try {
+    write("solo-try")
+} catch (e) {
+    write("solo-catch")
+} else {
+    write("solo-else")
+}
+
+try {
+    try {
+        write("inner2-try")
+    } catch (e) {
+        write("inner2-catch")
+    } else {
+        write("inner2-else")
+        throw "from-else2"
+    }
+} catch (e) {
+    write("outer2-catch " + e.message)
+}

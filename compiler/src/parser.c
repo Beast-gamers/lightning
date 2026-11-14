@@ -5421,6 +5421,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
     node->body = parse_block(lexer, table, 0);
 
     int have_catch = 0;
+    int have_else = 0;
     int have_finally = 0;
 
     /* Optional catch clause. Newlines between '}' and 'catch' are allowed. */
@@ -5502,6 +5503,27 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
         skip_newlines(lexer);
     }
 
+    /* Optional else (success) clause. Runs only when the try body completes
+       without throwing. Requires a catch clause, and must precede finally. */
+    if (lexer_peek(lexer).type == TOKEN_ELSE) {
+        Token else_tok = lexer_next(lexer); /* else */
+        have_else = 1;
+        if (!have_catch) {
+            error_state_add(parser_errors, else_tok.line, else_tok.col,
+                "'else' in a try construct requires a preceding 'catch' clause");
+        }
+        skip_newlines(lexer);
+        Token elb = lexer_next(lexer);
+        if (elb.type != TOKEN_LBRACE) {
+            error_state_add(parser_errors, elb.line, elb.col,
+                "Expected '{' after 'else'");
+            skip_to_newline(lexer);
+        } else {
+            node->else_body = parse_block(lexer, table, 0);
+        }
+        skip_newlines(lexer);
+    }
+
     if (lexer_peek(lexer).type == TOKEN_FINALLY) {
         lexer_next(lexer); /* finally */
         have_finally = 1;
@@ -5512,6 +5534,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
                 "Expected '{' after 'finally'");
             skip_to_newline(lexer);
             node->has_catch = have_catch;
+            node->has_else = have_else;
             node->has_finally = have_finally;
             return node;
         }
@@ -5524,6 +5547,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
     }
 
     node->has_catch = have_catch;
+    node->has_else = have_else;
     node->has_finally = have_finally;
     return node;
 }

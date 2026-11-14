@@ -178,13 +178,15 @@
 - **Propagation:** exceptions propagate through nested `try` blocks and function calls to the nearest handler.
 - **Uncaught exceptions:** print `<Type>: <message>` followed by a stack trace to stderr, then `exit(1)`.
 - **Stack traces:** call-site-aware frames (`at <function> (<file>:<line>:<col>)`), with the first frame at the throw site and each subsequent frame at the caller's call site.
+- **Stack traces:** call-site-aware frames (`at <function> (<file>:<line>:<col>)`), with the first frame at the throw site and each subsequent frame at the caller's call site.
+- **`else` success block:** optional `else` clause after `catch` runs only when the `try` body completes normally; skipped on `throw`/`return`/`break`/`continue`; requires a `catch`; runs before `finally`; exceptions thrown in `else` propagate outward (not caught by the same catch) while `finally` still runs.
 - **`finally` semantics:** runs on normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides a pending return/exception; a new exception thrown in `finally` replaces a pending one; `break`/`continue` in `finally` leave the loop after cleanup.
 - **Runtime:** `setjmp`/`longjmp` try-frame chain, active exception state, stack-local saved-exception capture for rethrow, and a bounded function stack for trace capture.
 
 ### Test results
 - Full suite: **PASS=125 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
-- Phase 4 positive/native tests: `tests/runtime/phase4_try_catch`, `phase4_custom_errors`, `phase4_finally_control`, `phase4_finally_throws`, `phase4_nested_rethrow`, `phase4_propagation`, `phase4_uncaught`, `phase4_catch_scope`, `phase4_finally_exit_exc` (with `.expected`, and `.exitcode`/`.stderr` where applicable).
-- Phase 4 negative tests: `tests/semantic/phase4_bare_throw_neg`, `phase4_catch_without_try_neg`, `phase4_finally_without_try_neg`, `phase4_throw_missing_message_neg`, `phase4_try_without_clause_neg`.
+- Phase 4 positive/native tests: `tests/runtime/phase4_try_catch`, `phase4_try_else`, `phase4_try_else_flow`, `phase4_custom_errors`, `phase4_finally_control`, `phase4_finally_throws`, `phase4_nested_rethrow`, `phase4_propagation`, `phase4_uncaught`, `phase4_catch_scope`, `phase4_finally_exit_exc` (with `.expected`, and `.exitcode`/`.stderr` where applicable).
+- Phase 4 negative tests: `tests/semantic/phase4_bare_throw_neg`, `phase4_catch_without_try_neg`, `phase4_finally_without_try_neg`, `phase4_throw_missing_message_neg`, `phase4_try_without_clause_neg`, `phase4_try_else_without_catch_neg`, `phase4_try_else_after_finally_neg`.
 - **UBSan:** all Phase 4 programs compiled with `-fsanitize=undefined -fno-sanitize-recover=all` and executed cleanly (9/9; `phase4_uncaught` exits 1 as expected).
 - **ASan/valgrind:** ASan could not run in this proot environment (`heap size ... exceeds max user virtual address`); valgrind is unavailable. Memory checks are therefore limited to UBSan plus native execution.
 

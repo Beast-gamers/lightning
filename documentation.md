@@ -1225,6 +1225,44 @@ throw CustomError("custom message")      # custom type name
 
 `error(type, message)` requires both a string type and a message. A bare identifier ending in `Error` followed by a call is treated as a custom error type when it is not a user-defined function; the type name is the identifier itself and the first argument is the message. Additional arguments to a custom error are ignored.
 
+### `else` (success block)
+
+Add an optional `else` after `catch` to run code only when the `try` body completes normally. This is the explicit way to identify success.
+
+```ltng
+let result = ""
+try {
+    set result = parse(input)
+} catch (e) {
+    write("failed: " + e.message)
+} else {
+    write("succeeded: " + result)
+}
+```
+
+Semantics:
+
+- `else` runs only when the `try` body finishes without throwing.
+- It is skipped when the `try` body throws, `return`s, `break`s, or `continue`s out of the construct.
+- `else` requires a `catch` clause.
+- `else` must appear before `finally`.
+- Exceptions thrown in `else` are **not** caught by the same `catch`; they propagate to an outer handler. A `finally` on the same construct still runs.
+- On success, execution order is `try` body → `else` body → `finally` body.
+
+```ltng
+try {
+    write("try")
+} catch (e) {
+    write("catch")
+} else {
+    write("else")
+} finally {
+    write("finally")
+}
+```
+
+On success this prints `try`, `else`, `finally`. If the `try` throws, it prints `try`, `catch`, `finally` and skips `else`.
+
 ### `finally`
 
 `finally` runs when control leaves the associated `try`/`catch` — whether normally, by `throw`, or by `return`, `break`, or `continue`. This makes it suitable for cleanup.

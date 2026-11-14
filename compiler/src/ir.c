@@ -95,6 +95,7 @@ static void ir_write_node(FILE *out, ASTNode *node, int indent) {
     ir_indent(out, indent + 1); fprintf(out, "is_base_assign: %d\n", node->is_base_assign);
     if (node->type == NODE_TRY) {
         ir_indent(out, indent + 1); fprintf(out, "has_catch: %d\n", node->has_catch);
+        ir_indent(out, indent + 1); fprintf(out, "has_else: %d\n", node->has_else);
         ir_indent(out, indent + 1); fprintf(out, "has_finally: %d\n", node->has_finally);
     }
     if (node->for_var[0]) { ir_indent(out, indent + 1); fprintf(out, "for_var: "); ir_print_escaped(out, node->for_var); fputc('\n', out); }
@@ -114,6 +115,7 @@ static void ir_write_node(FILE *out, ASTNode *node, int indent) {
     if (node->array_index[0]) { ir_indent(out, indent + 1); fprintf(out, "array_index: "); ir_print_escaped(out, node->array_index); fputc('\n', out); }
     ir_write_list(out, "body", node->body, indent + 1);
     ir_write_list(out, "orelse", node->orelse, indent + 1);
+    ir_write_list(out, "else_body", node->else_body, indent + 1);
     ir_write_list(out, "cases", node->cases, indent + 1);
     ir_write_list(out, "params", node->params, indent + 1);
     ir_write_list(out, "args", node->args, indent + 1);
