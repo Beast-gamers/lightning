@@ -162,6 +162,7 @@ typedef struct ASTNode {
     int has_catch;      /* NODE_TRY: catch clause present */
     int has_else;       /* NODE_TRY: else (success) clause present */
     int has_finally;    /* NODE_TRY: finally clause present */
+    int has_default;    /* NODE_PARAM: default value expression supplied */
     char for_var[MAX_IDENTIFIER_LEN];
     char for_start[MAX_STRING_LEN];
     char for_end[MAX_STRING_LEN];

@@ -1113,6 +1113,30 @@ function fact(n) {
 write(fact(5))   # 120
 ```
 
+### Default parameters
+
+Functions may declare default parameter values using `=` after the parameter name. Parameters with defaults may be omitted at the call site; the default value is used.
+
+```
+function add(a, b = 100) {
+    return a + b
+}
+
+write(add(5))     # 105   (b defaults to 100)
+write(add(5, 7))  # 12    (explicit value overrides the default)
+
+function greet(name, greeting = "Hello") {
+    return greeting + ", " + name
+}
+
+write(greet("World"))   # Hello, World   (greeting defaults to "Hello")
+write(greet("World", "Hi"))  # Hi, World
+```
+
+- Defaults are positional: omitted arguments take the value of the first parameter that has a default and has not been supplied yet.
+- Defaults may be numeric or string literals (or expressions evaluated at the call site).
+- Omitted arguments before a defaulted argument are not allowed; supply earlier arguments first.
+
 ### Method-style calls (UFCS)
 
 A function can also be called with method-style syntax: `receiver.func(args...)`. The receiver becomes the first argument, so `receiver.func(args...)` is equivalent to `func(receiver, args...)`. This works with any first parameter name (for example `base`).
@@ -1652,5 +1676,4 @@ The following are **not yet implemented** and are not considered bugs:
 - Modules / imports
 - String comparison by content
 - Fallthrough in `switch` cases
-- Default function parameter values
 - `else if` without braces after `switch` cases (every `case`/`default` needs `{ }`)

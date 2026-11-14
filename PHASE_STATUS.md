@@ -219,6 +219,25 @@
 - No typed catch filtering (`catch (Type e)`); every `catch` handles all exceptions from its `try`.
 - `finally` is implemented by inlining cleanup code at exit points; very deeply nested `try`/`finally` blocks increase generated code size.
 
-## Phases 5–13
+## Phase 5 — Function system
+
+**Status:** In progress (first increment landed: default parameters)
+
+### Implemented so far
+- **Default parameters:** `function f(a, b = 100) { ... }` — omitted call arguments use the declared default. Defaults may be numeric or string literals. Fill-missing logic applied in `parse_call_node` for all call paths (statement, expression, UFCS, nested call arguments).
+
+### Test results
+- Full suite: **PASS=130 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation).
+- New: `tests/runtime/phase5_defaults.ltng` (+ `.expected`) covering numeric/string defaults and multiple defaults.
+
+### Remaining for Phase 5
+- Anonymous functions and closures (capture of enclosing function locals, captured mutable variables, independent instances).
+- Function references / first-class function values.
+- Named arguments.
+- Variadic arguments.
+- Function overloading.
+- Return-type checking/validation.
+
+## Phases 6–13
 
 Pending. Each phase will be updated with: implemented features, changed files, test results (positive/negative/boundary/interaction/regression/memory where applicable), discovered bugs, and remaining limitations. No phase marked complete until all completion criteria are satisfied.

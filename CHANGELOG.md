@@ -11,6 +11,7 @@ All notable changes to the Lightning project in this development effort are docu
 - `finally` cleanup semantics for normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides a pending return/exception, and a new exception thrown in `finally` replaces a pending one.
 - `try`/`catch`/`else` success block: `else` runs only when the `try` body completes normally, is skipped on `throw`/`return`/`break`/`continue`, requires a `catch`, runs before `finally`, and propagates exceptions thrown inside `else` outward while still running `finally`.
 - Phase 4 tests: `tests/runtime/phase4_*.ltng` (try/catch, try/catch/else success and control-flow interactions, custom errors, finally control flow, finally throws, nested rethrow, propagation, uncaught, catch scope, and exception-path finally exits) plus `tests/semantic/phase4_*_neg.ltng` negative cases.
+- Phase 5 first increment (default parameters): `tests/runtime/phase5_defaults.ltng` (+ `.expected`) covering numeric/string defaults and multiple defaults; `else_body` traversal added to return-type inference for the new `else` clause.
 - Test harness support for optional `.exitcode` and `.stderr` expectations, and source-path normalization for stable traceback comparisons.
 - `DEVELOPMENT_AUDIT.md`: initial repository and architecture audit, baseline status, risks, and limitations.
 - `TESTING.md`: testing infrastructure documentation and conventions.

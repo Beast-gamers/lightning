@@ -5780,6 +5780,12 @@ static VarType analyze_function_returns(ASTNode *node, int *has_return) {
         result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
     }
 
+    child = analyze_function_returns(node->else_body, &child_has_return);
+    if (child_has_return) {
+        *has_return = 1;
+        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
+    }
+
     child = analyze_function_returns(node->next, &child_has_return);
     if (child_has_return) {
         *has_return = 1;
@@ -5872,7 +5878,34 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     }
     if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
     else { error_state_add(parser_errors, line, col, "Expected ')' after function arguments"); }
-    call->args = args;
+
+    /* Fill in default values for parameters that were not supplied by the caller. */
+    ASTNode *fn_def = find_function_ast_by_name(fname_tok_val);
+    if (fn_def && fn_def->params) {
+        ASTNode *eff = NULL;
+        ASTNode *efflast = NULL;
+        ASTNode *src = args;
+        int idx = 0;
+        for (ASTNode *p = fn_def->params; p; p = p->next, idx++) {
+            ASTNode *a = src;
+            if (a) src = a->next; else a = NULL;
+            ASTNode *outn;
+            if (a) {
+                outn = a;
+            } else if (p->has_default) {
+                outn = create_node(NODE_PARAM, "", p->value);
+                outn->var_type = p->var_type;
+                outn->is_expr = 1;
+                outn->has_default = 1;
+            } else {
+                break;
+            }
+            if (!eff) eff = efflast = outn; else { efflast->next = outn; efflast = outn; }
+        }
+        call->args = eff;
+    } else {
+        call->args = args;
+    }
     return call;
 }
 
@@ -6085,6 +6118,17 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
             ASTNode *pn = create_node(NODE_PARAM, pm, "");
             pn->var_type = TYPE_FLOAT;
             strncpy(pn->for_var, p.value, MAX_IDENTIFIER_LEN - 1);
+            pn->has_default = 0;
+            pn->value[0] = '\0';
+            if (lexer_peek(lexer).type == TOKEN_EQUALS) {
+                /* Default parameter value: name = expr */
+                lexer_next(lexer); /* = */
+                char defexpr[MAX_STRING_LEN];
+                VarType dvt = collect_expression(lexer, table, defexpr, sizeof(defexpr), 1, 1, NULL, NULL, NULL, NULL);
+                pn->has_default = 1;
+                pn->var_type = dvt;
+                snprintf(pn->value, MAX_STRING_LEN, "%s", defexpr);
+            }
             if (!params) params = plast = pn; else { plast->next = pn; plast = pn; }
             pcount++;
             if (lexer_peek(lexer).type == TOKEN_COMMA) { lexer_next(lexer); continue; }

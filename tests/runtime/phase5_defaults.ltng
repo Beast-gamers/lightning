@@ -1,0 +1,17 @@
+function add(a, b = 100) {
+    return a + b
+}
+
+function pick(a, b = "def") {
+    return b
+}
+
+function make(prefix, sep = "-", suffix = "!") {
+    return prefix + sep + suffix
+}
+
+write(add(5))
+write(add(5, 7))
+write(pick("x"))
+write(pick("x", "custom"))
+write(make("a"))
