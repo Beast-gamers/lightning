@@ -24,6 +24,7 @@ All notable changes to the Lightning project in this development effort are docu
 - `try`/`catch`/`else` success block: `else` runs only when the `try` body completes normally, is skipped on `throw`/`return`/`break`/`continue`, requires a `catch`, runs before `finally`, and propagates exceptions thrown inside `else` outward while still running `finally`.
 - Phase 4 tests: `tests/runtime/phase4_*.ltng` (try/catch, try/catch/else success and control-flow interactions, custom errors, finally control flow, finally throws, nested rethrow, propagation, uncaught, catch scope, and exception-path finally exits) plus `tests/semantic/phase4_*_neg.ltng` negative cases.
 - Phase 5 first increment (default parameters): `tests/runtime/phase5_defaults.ltng` (+ `.expected`) covering numeric/string defaults and multiple defaults; `else_body` traversal added to return-type inference for the new `else` clause.
+- Phase 5 notable-observation increments: initial immediate chained call syntax for sole RHS/`return`/`write` sole-arg/standalone call forms (e.g. `maker()(5)`) and improved sole-call result typing/codegen for numeric returns.
 - Test harness support for optional `.exitcode` and `.stderr` expectations, and source-path normalization for stable traceback comparisons.
 - `DEVELOPMENT_AUDIT.md`: initial repository and architecture audit, baseline status, risks, and limitations.
 - `TESTING.md`: testing infrastructure documentation and conventions.
@@ -50,6 +51,9 @@ All notable changes to the Lightning project in this development effort are docu
 - Compiler now returns a non-zero exit code when backend C compilation fails (instead of reporting failure and exiting successfully in some paths).
 - Fixed object-literal `set` assignments to emit update semantics (not redeclarations) compatible with block-scope inline declaration behavior.
 - Corrected declaration/reference handling for block-scoped and shadowed variables in key parse/codegen paths.
+- Corrected array `slice(start, end)` runtime semantics to use 1-based start and 1-based exclusive end (with negative-index support), aligning behavior with documented examples.
+- Improved sole-call RHS type inference and numeric codegen for inferred int/float function results (including calls with expression arguments), fixing incorrect string typing/invalid generated C in affected cases.
+- Fixed indirect/dynamic function-call emission in numeric-expression contexts and in-scope named function self-reference resolution for first-class function values.
 - Addressed several compiler-source warnings in feasible paths (unused functions/parameters/variables, missing switch/default handling in key cases, label/declaration formatting issue, embedded-NUL format issue, const-correctness in helper path, and increased output/path buffer sizing in `main.c`); format-truncation warnings remain in complex expression/codegen formatting paths.
 
 ### Compatibility / Breaking changes

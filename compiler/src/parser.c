@@ -2959,7 +2959,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
         }
     }
 
-    /* Direct callable call as sole write argument: write(f(x)) or write(func(x)) */
+    /* Direct callable call as sole write argument: write(f(x)), write(f(x)(y)) */
     if (first.type == TOKEN_IDENT) {
         Token second_tok = lexer->tokens[lexer->current + 1];
         if (second_tok.type == TOKEN_LPAREN && is_callable_ident(table, first.value) &&
@@ -2968,10 +2968,45 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             Token fname = lexer_next(lexer);
             lexer_next(lexer); /* consume ( */
             ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
+            char cexpr[MAX_STRING_LEN];
+            build_call_cexpr(call, cexpr, sizeof(cexpr));
+            int chained = 0;
+            while (lexer_peek(lexer).type == TOKEN_LPAREN) {
+                chained = 1;
+                int cline = lexer_peek(lexer).line, ccol = lexer_peek(lexer).col;
+                lexer_next(lexer); /* consume ( */
+                ASTNode *args = NULL, *last = NULL;
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    while (1) {
+                        char arg_expr[MAX_STRING_LEN];
+                        VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 1, NULL, NULL, NULL, NULL);
+                        ASTNode *an = create_node(NODE_PARAM, "", arg_expr);
+                        an->var_type = at; an->is_expr = 1;
+                        an->v_sl=g_expr_sl; an->v_sc=g_expr_sc; an->v_el=g_expr_el; an->v_ec=g_expr_ec;
+                        if (!args) args = last = an; else { last->next = an; last = an; }
+                        Token sep = lexer_peek(lexer);
+                        if (sep.type == TOKEN_COMMA) { lexer_next(lexer); continue; }
+                        break;
+                    }
+                }
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) { lexer->current = saved_call; goto _write_call_fallback; }
+                lexer_next(lexer); /* consume ) */
+                int argc = 0; for (ASTNode *a = args; a; a = a->next) argc++;
+                char next_expr[MAX_STRING_LEN]; int p = 0;
+                static int _wcid = 0; int cid = _wcid++;
+                p += snprintf(next_expr+p, sizeof(next_expr)-p, "({ char __ct%d[256]; snprintf(__ct%d,256,\"%%s\",%s); __ltng_call_indirect(__ct%d,_ltng_retbuf(),%d,%d,%d",
+                    cid,cid,cexpr,cid,cline>0?cline:1,ccol>0?ccol:1,argc);
+                for (ASTNode *a = args; a; a = a->next) {
+                    if (a->var_type == TYPE_STRING && a->value[0] == '"') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",%s", a->value);
+                    else if (a->is_variable && a->value[0] != '\0') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",%s", a->value);
+                    else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",%s", a->value);
+                    else if (a->value[0] == '\0') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",\"\"");
+                    else p += snprintf(next_expr+p, sizeof(next_expr)-p, ",_ltng_ad((double)(%s))", a->value);
+                }
+                p += snprintf(next_expr+p, sizeof(next_expr)-p, "); })");
+                strncpy(cexpr, next_expr, sizeof(cexpr)-1); cexpr[sizeof(cexpr)-1]=0;
+            }
             if (lexer_peek(lexer).type == TOKEN_RPAREN) {
-                /* sole call argument */
-                char cexpr[MAX_STRING_LEN];
-                build_call_cexpr(call, cexpr, sizeof(cexpr));
                 lexer_next(lexer); /* consume write's ) */
                 ASTNode *node = create_node(NODE_WRITE, "", cexpr);
                 node->is_variable = 0;
@@ -2983,6 +3018,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             /* not a sole call (e.g. f(x) + 1) - backtrack and let expression parsing handle it */
             lexer->current = saved_call;
         }
+    _write_call_fallback: ;
     }
 
     Token second = lexer->tokens[lexer->current + 1];
@@ -3404,9 +3440,13 @@ static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok) {
     return recv;
 }
 
-static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign) {
+static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign, VarType *out_type) {
     Token first = lexer_peek(lexer);
     int saved = lexer->current;
+    if (out_type) *out_type = TYPE_STRING;
+    ASTNode *call = NULL;
+    int is_method_form = 0;
+
     if (first.type == TOKEN_IDENT && !is_callable_ident(table, first.value)) {
         /* method form? receiver.method( */
         lexer_next(lexer);
@@ -3418,39 +3458,86 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
                 is_function_name_scoped(table, mname.value)) {
                 lexer_next(lexer);
                 ASTNode *recv = make_receiver_arg(table, first);
-                ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
-                if (call->is_base_assign && !allow_base_assign) {
-                    lexer->current = saved; return 0;
-                }
-                Token after = lexer_peek(lexer);
-                if (after.type != TOKEN_NEWLINE && after.type != TOKEN_EOF && after.type != TOKEN_RBRACE) {
-                    lexer->current = saved; return 0;
-                }
-                if (allow_base_assign) call->is_base_assign = 0;
-                build_call_cexpr(call, cexpr, cexpr_size);
-                return 1;
+                call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
+                is_method_form = 1;
             }
         }
-        lexer->current = saved;
-    }
-    if (first.type == TOKEN_IDENT && is_callable_ident(table, first.value)) {
+        if (!call) { lexer->current = saved; return 0; }
+    } else if (first.type == TOKEN_IDENT && is_callable_ident(table, first.value)) {
         Token fname = lexer_next(lexer);
         if (lexer_peek(lexer).type != TOKEN_LPAREN) { lexer->current = saved; return 0; }
         lexer_next(lexer); /* consume ( */
-        ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
-        if (call->is_base_assign && !allow_base_assign) {
-            lexer->current = saved; return 0;
-        }
-        Token after = lexer_peek(lexer);
-        if (after.type != TOKEN_NEWLINE && after.type != TOKEN_EOF && after.type != TOKEN_RBRACE) {
-            lexer->current = saved; return 0;
-        }
-        if (allow_base_assign) call->is_base_assign = 0;
-        build_call_cexpr(call, cexpr, cexpr_size);
-        return 1;
+        call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
+    } else {
+        lexer->current = saved;
+        return 0;
     }
-    lexer->current = saved;
-    return 0;
+
+    if (call->is_base_assign && !allow_base_assign) {
+        lexer->current = saved; return 0;
+    }
+    if (allow_base_assign) call->is_base_assign = 0;
+
+    /* handle chained immediate calls: expr()(args)... */
+    char cur_expr[MAX_STRING_LEN];
+    build_call_cexpr(call, cur_expr, sizeof(cur_expr));
+    int chain = 0;
+    while (lexer_peek(lexer).type == TOKEN_LPAREN) {
+        chain = 1;
+        int cline = lexer_peek(lexer).line;
+        int ccol = lexer_peek(lexer).col;
+        lexer_next(lexer); /* consume ( */
+        /* parse args as indirect call */
+        ASTNode *args = NULL, *last = NULL;
+        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+            while (1) {
+                char arg_expr[MAX_STRING_LEN];
+                VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 1, NULL, NULL, NULL, NULL);
+                ASTNode *an = create_node(NODE_PARAM, "", arg_expr);
+                an->var_type = at;
+                an->is_expr = 1;
+                an->v_sl = g_expr_sl; an->v_sc = g_expr_sc; an->v_el = g_expr_el; an->v_ec = g_expr_ec;
+                if (!args) args = last = an; else { last->next = an; last = an; }
+                Token sep = lexer_peek(lexer);
+                if (sep.type == TOKEN_COMMA) { lexer_next(lexer); continue; }
+                break;
+            }
+        }
+        if (lexer_peek(lexer).type != TOKEN_RPAREN) { lexer->current = saved; return 0; }
+        lexer_next(lexer); /* consume ) */
+        int argc = 0; for (ASTNode *a = args; a; a = a->next) argc++;
+        char next_expr[MAX_STRING_LEN];
+        int p = 0;
+        static int _chain_id = 0; int cid = _chain_id++;
+        p += snprintf(next_expr + p, sizeof(next_expr) - p, "({ char __ct%d[256]; snprintf(__ct%d,256,\"%%s\",%s); __ltng_call_indirect(__ct%d,_ltng_retbuf(),%d,%d,%d",
+            cid, cid, cur_expr, cid, cline>0?cline:1, ccol>0?ccol:1, argc);
+        for (ASTNode *a = args; a; a = a->next) {
+            if (a->var_type == TYPE_STRING && a->value[0] == '"')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",%s", a->value);
+            else if (a->is_variable && a->value[0] != '\0')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",%s", a->value);
+            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",%s", a->value);
+            else if (a->value[0] == '\0')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",\"\"");
+            else
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",_ltng_ad((double)(%s))", a->value);
+        }
+        p += snprintf(next_expr + p, sizeof(next_expr) - p, "); })");
+        strncpy(cur_expr, next_expr, sizeof(cur_expr)-1); cur_expr[sizeof(cur_expr)-1]=0;
+    }
+
+    Token after = lexer_peek(lexer);
+    if (after.type != TOKEN_NEWLINE && after.type != TOKEN_EOF && after.type != TOKEN_RBRACE) {
+        lexer->current = saved; return 0;
+    }
+    strncpy(cexpr, cur_expr, cexpr_size - 1); cexpr[cexpr_size - 1] = 0;
+    if (out_type) {
+        if (chain) *out_type = TYPE_STRING;
+        else if (strcmp(call->name, "__ltng_indirect") == 0) *out_type = TYPE_STRING;
+        else *out_type = infer_function_return_type(call->name);
+    }
+    return 1;
 }
 
 
@@ -3982,12 +4069,14 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                   lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1)) {
-                    symbol_table_add_locked(table, mangled, TYPE_STRING);
+                VarType call_type = TYPE_STRING;
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
+                    symbol_table_add_locked(table, mangled, call_type);
                     const char *cname = symbol_table_get_cname(table, mangled);
                     ASTNode *node = create_node(NODE_LET, cname, expr);
-                    node->var_type = TYPE_STRING;
+                    node->var_type = call_type;
                     node->is_expr = 1;
+                    node->is_default = 1; /* sole call result */
                     emit(node);
                     return;
                 }
@@ -4222,12 +4311,14 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
                   lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1)) {
-                    symbol_table_add_locked(table, mangled, TYPE_STRING);
+                VarType call_type = TYPE_STRING;
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
+                    symbol_table_add_locked(table, mangled, call_type);
                     symbol_table_set_const(table, mangled, 1);
                     ASTNode *node = create_node(NODE_CONST, mangled, expr);
-                    node->var_type = TYPE_STRING;
+                    node->var_type = call_type;
                     node->is_expr = 1;
+                    node->is_default = 1; /* sole call result */
                     emit(node);
                     return;
                 }
@@ -4770,14 +4861,16 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                   lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1)) {
-                    vtype = TYPE_STRING;
+                VarType call_type = TYPE_STRING;
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
+                    vtype = call_type;
                     if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
                         return;
                     symbol_table_update(table, mangled, vtype);
                     ASTNode *node = create_node(NODE_SET, cname, expr);
                     node->var_type = vtype;
                     node->is_expr = 1;
+                    node->is_default = 1; /* sole call result */
                     emit(node);
                     return;
                 }
@@ -4951,14 +5044,16 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                   lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1)) {
-                    vtype = TYPE_STRING;
+                VarType call_type = TYPE_STRING;
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
+                    vtype = call_type;
                     if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
                         return;
                     symbol_table_update(table, mangled, vtype);
                     ASTNode *node = create_node(NODE_SET, cname, expr);
                     node->var_type = vtype;
                     node->is_expr = 1;
+                    node->is_default = 1; /* sole call result */
                     emit(node);
                     return;
                 }
@@ -6619,7 +6714,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
               lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
               (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0)) {
+            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0, NULL)) {
                 etype = TYPE_STRING;
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
@@ -7049,6 +7144,49 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
             Token fname = lexer_next(lexer); /* consume fname */
             lexer_next(lexer); /* consume ( */
             ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
+            /* handle chained immediate calls: f()()... */
+            if (lexer_peek(lexer).type == TOKEN_LPAREN) {
+                char cexpr[MAX_STRING_LEN];
+                build_call_cexpr(call, cexpr, sizeof(cexpr));
+                while (lexer_peek(lexer).type == TOKEN_LPAREN) {
+                    int cline = lexer_peek(lexer).line, ccol = lexer_peek(lexer).col;
+                    lexer_next(lexer);
+                    ASTNode *args = NULL, *last = NULL;
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        while (1) {
+                            char arg_expr[MAX_STRING_LEN];
+                            VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 1, NULL, NULL, NULL, NULL);
+                            ASTNode *an = create_node(NODE_PARAM, "", arg_expr);
+                            an->var_type = at; an->is_expr = 1;
+                            an->v_sl=g_expr_sl; an->v_sc=g_expr_sc; an->v_el=g_expr_el; an->v_ec=g_expr_ec;
+                            if (!args) args = last = an; else { last->next = an; last = an; }
+                            Token sep = lexer_peek(lexer);
+                            if (sep.type == TOKEN_COMMA) { lexer_next(lexer); continue; }
+                            break;
+                        }
+                    }
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) { error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' in chained call"); skip_to_newline(lexer); return; }
+                    lexer_next(lexer);
+                    int argc = 0; for (ASTNode *a = args; a; a = a->next) argc++;
+                    char next_expr[MAX_STRING_LEN]; int p = 0;
+                    static int _scid = 0; int cid = _scid++;
+                    p += snprintf(next_expr+p, sizeof(next_expr)-p, "({ char __ct%d[256]; snprintf(__ct%d,256,\"%%s\",%s); __ltng_call_indirect(__ct%d,_ltng_retbuf(),%d,%d,%d",
+                        cid,cid,cexpr,cid,cline>0?cline:1,ccol>0?ccol:1,argc);
+                    for (ASTNode *a = args; a; a = a->next) {
+                        if (a->var_type == TYPE_STRING && a->value[0] == '"') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",%s", a->value);
+                        else if (a->is_variable && a->value[0] != '\0') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",%s", a->value);
+                        else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",%s", a->value);
+                        else if (a->value[0] == '\0') p += snprintf(next_expr+p, sizeof(next_expr)-p, ",\"\"");
+                        else p += snprintf(next_expr+p, sizeof(next_expr)-p, ",_ltng_ad((double)(%s))", a->value);
+                    }
+                    p += snprintf(next_expr+p, sizeof(next_expr)-p, "); })");
+                    strncpy(cexpr, next_expr, sizeof(cexpr)-1); cexpr[sizeof(cexpr)-1]=0;
+                }
+                ASTNode *stmt = create_node(NODE_CALL, "", cexpr);
+                stmt->is_expr = 1;
+                emit(stmt);
+                return;
+            }
             emit(call);
             return;
         }

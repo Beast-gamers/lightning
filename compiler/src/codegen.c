@@ -550,12 +550,19 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                 node->name, node->value);
         } else {
             pad(out, indent);
-            if (strchr(node->value, '.')) {
-                fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n",
-                    node->value, node->name);
+            int _is_call_res = node->is_default || (strncmp(node->value, "({ char __ct", 12) == 0);
+            if (node->var_type == TYPE_FLOAT) {
+                if (_is_call_res)
+                    fprintf(out, "{ double _e = atof(%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                else
+                    fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+            } else if (strchr(node->value, '.') && !_is_call_res) {
+                fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
             } else {
-                fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n",
-                    node->value, node->name);
+                if (_is_call_res)
+                    fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                else
+                    fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
             }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
@@ -775,12 +782,19 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                 node->name, node->value);
         } else {
             pad(out, indent);
-            if (strchr(node->value, '.')) {
-                fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n",
-                    node->value, node->name);
+            int _is_call_res = node->is_default || (strncmp(node->value, "({ char __ct", 12) == 0);
+            if (node->var_type == TYPE_FLOAT) {
+                if (_is_call_res)
+                    fprintf(out, "{ double _e = atof(%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                else
+                    fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+            } else if (strchr(node->value, '.') && !_is_call_res) {
+                fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
             } else {
-                fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n",
-                    node->value, node->name);
+                if (_is_call_res)
+                    fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                else
+                    fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
             }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
@@ -1448,6 +1462,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             break;
         }
         case NODE_CALL: {
+            if (node->is_expr && node->value[0] != '\0') {
+                pad(out, indent);
+                fprintf(out, "%s;\n", node->value);
+                break;
+            }
             /* base-assign call statement: receiver = func(receiver, args...)
                Used when the function's first parameter is named "base" and it
                is called via UFCS (receiver.method(args)). The return value is
@@ -1752,7 +1771,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static int _ltng_arr_cmp(const void *a,const void *b){ return _ltng_arr_numcmp(*(const char * const *)a, *(const char * const *)b); }\n");
     fprintf(out, "static void _ltng_arr_sort(char **d,int len){ qsort(d,len,sizeof(char *),_ltng_arr_cmp); }\n");
     fprintf(out, "static void _ltng_arr_copy(char **sd,char ***dd,int *dl,int *dc,int sl){ _ltng_arr_ensure(dd,dl,dc,sl); for(int i=sl;i<*dl;i++){ if((*dd)[i]){ free((*dd)[i]); (*dd)[i]=NULL; } } for(int i=0;i<sl;i++){ if((*dd)[i]) free((*dd)[i]); (*dd)[i]=sd[i]?_ltng_arr_strdup(sd[i]):_ltng_arr_strdup(\"\"); } *dl=sl; }\n");
-    fprintf(out, "static void _ltng_arr_slice(char **sd,int sl,int start,int end,char ***dd,int *dl,int *dc){ if(start<0) start=sl+start; if(end<0) end=sl+end; if(start<0) start=0; if(end>sl) end=sl; if(start>end) end=start; int n=end-start; _ltng_arr_ensure(dd,dl,dc,n); for(int i=0;i<*dl;i++){ if((*dd)[i]){ free((*dd)[i]); (*dd)[i]=NULL; } } *dl=0; for(int i=0;i<n;i++){ _ltng_arr_push(dd,dl,dc,sd[start+i]?sd[start+i]:\"\"); } }\n");
+    fprintf(out, "static void _ltng_arr_slice(char **sd,int sl,int start,int end,char ***dd,int *dl,int *dc){ if(start>0) start=start-1; else if(start<0) start=sl+start; if(end>0) end=end-1; else if(end<0) end=sl+end; if(start<0) start=0; if(end<0) end=0; if(end>sl) end=sl; if(start>sl) start=sl; if(start>end) start=end; int n=end-start; _ltng_arr_ensure(dd,dl,dc,n); for(int i=0;i<*dl;i++){ if((*dd)[i]){ free((*dd)[i]); (*dd)[i]=NULL; } } *dl=0; for(int i=0;i<n;i++){ _ltng_arr_push(dd,dl,dc,sd[start+i]?sd[start+i]:\"\"); } }\n");
     fprintf(out, "static void _ltng_arr_free(char **d,int len){ if(!d) return; for(int i=0;i<len;i++){ if(d[i]) free(d[i]); } free(d); }\n");
     fprintf(out, "static int _ltng_idx2(int i0, int i1, int d1) { return i0 * d1 + i1; }\n");
     fprintf(out, "static int _ltng_idx3(int i0, int i1, int i2, int d1, int d2) { return (i0 * d1 + i1) * d2 + i2; }\n");
