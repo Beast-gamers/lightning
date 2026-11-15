@@ -1,0 +1,15 @@
+function pick(a, b) -> int {
+    return a + b
+}
+
+function pick(a, b, c) -> int {
+    return a + b + c
+}
+
+function pick(a) -> string {
+    return "single"
+}
+
+write(pick(2, 3))
+write(pick(2, 3, 4))
+write(pick("only"))

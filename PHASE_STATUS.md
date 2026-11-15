@@ -234,20 +234,22 @@
 - **Function values / dynamic dispatch:** function values (closures and named function references) can be called through variables and parameters via runtime dispatch. Tests: `tests/runtime/phase5_indirect_call_in_expr.ltng`.
 - **Immediate chained call syntax:** chained immediate invocation of call results is supported in general expression contexts, including sole RHS call contexts (`let`/`const`/`set`/`return`), conditions/comparisons, arithmetic expressions, `write(...)` arguments, and standalone call statements (e.g. `maker()(5)`, `a()(2)(3)`, `if (maker()(5) == 6)`, `write(1 + maker()(5))`).
 - **Call-result typing/codegen fixes:** sole-call RHS type inference and numeric codegen now correctly handle inferred numeric function results (including arguments containing expressions), avoiding prior string-typed/invalid-C emission in affected cases.
+- **Return-type annotations:** named functions may declare `-> type` return annotations (`int`, `float`, `string`, `char`, `bool`, `object`, or `void`); return paths are validated (missing returns, void-return violations, type mismatches).
 
 ### Edge-case fixes (this pass)
 - Fixed indirect/dynamic function-call emission in numeric-expression contexts (correct `__ltng_call_indirect` handling for callable-identified function values), preventing generated C/internal compile failures when function values are called inside expressions (e.g. `sum + fn(10)`).
 - Fixed named function reference resolution for in-scope functions not yet linked in the AST (e.g. taking a self-reference inside the function body).
 - Corrected array `slice(start, end)` runtime semantics to 1-based start with 1-based exclusive end (including negative-index handling), matching documented behavior and existing examples.
 - Improved sole-call assignment/initialization typing and codegen for numeric call results and chained immediate calls in general expression contexts.
+- Fixed string concatenation of call results: string-typed parts now use runtime string concatenation while numeric parts use numeric addition (`_ltng_add_sn`), and variadic call results in string concatenation are recognized via callee return-type inference; concatenation part buffers were enlarged to avoid truncating long statement expressions.
 
 ### Test results
-- Full suite: **PASS=142 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation), including array slice coverage, mutable/shared capture, named function references/self-ref, indirect-call-in-expression, chained call forms, and exception trace/buffer regression coverage.
+- Full suite: **PASS=147 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation), including array slice coverage, mutable/shared capture, named function references/self-ref, indirect-call-in-expression, chained call forms, exception trace/buffer regression coverage, return annotations, variadics, and overloading.
 
 ### Remaining for Phase 5
-- Variadic arguments.
-- Function overloading.
-- Further return-type checking/validation (e.g. richer type annotations).
+- Variadic arguments: **implemented** this pass (trailing `...rest` parameter compiled to a dynamic array with hidden variadic ABI parameters; calls build/flatten rest arrays; `.length`/indexing supported). Negative case: variadic parameter must be last.
+- Function overloading: **implemented** this pass (arity-based overload resolution, duplicate-signature rejection, ambiguous-call reporting). Negative cases: duplicate signatures, no matching overload, unknown/duplicate named arguments.
+- Return-type checking/validation: **implemented** this pass for annotation/literal-based consistency (missing returns, void-return violations, mismatch errors); richer generic type annotations remain future work.
 
 ## Phases 6–13
 

@@ -1,0 +1,20 @@
+function getNum() -> int {
+    return 42
+}
+
+function getStr() -> string {
+    return "hello"
+}
+
+function getNothing() -> void {
+    write("done")
+}
+
+function combine(a, b) -> int {
+    return a + b
+}
+
+write(getNum())
+write(getStr())
+getNothing()
+write(combine(2, 3))

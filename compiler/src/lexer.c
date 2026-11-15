@@ -332,9 +332,17 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '.') {
-            Token token = {TOKEN_DOT, ".", lexer->line, lexer->col};
             lexer_advance(lexer);
-            lexer_add_token(lexer, token);
+            if (lexer_peek_char(lexer) == '.' &&
+                lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '.') {
+                lexer_advance(lexer);
+                lexer_advance(lexer);
+                Token token = {TOKEN_ELLIPSIS, "...", lexer->line, lexer->col};
+                lexer_add_token(lexer, token);
+            } else {
+                Token token = {TOKEN_DOT, ".", lexer->line, lexer->col};
+                lexer_add_token(lexer, token);
+            }
         } else if (c == '=') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '=') {
@@ -403,7 +411,11 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
             }
         } else if (c == '-') {
             lexer_advance(lexer);
-            if (lexer_peek_char(lexer) == '-') {
+            if (lexer_peek_char(lexer) == '>') {
+                lexer_advance(lexer);
+                Token token = {TOKEN_ARROW, "->", lexer->line, lexer->col};
+                lexer_add_token(lexer, token);
+            } else if (lexer_peek_char(lexer) == '-') {
                 lexer_advance(lexer);
                 Token token = {TOKEN_MINUS_MINUS, "--", lexer->line, lexer->col};
                 lexer_add_token(lexer, token);

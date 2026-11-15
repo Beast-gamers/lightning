@@ -20,6 +20,7 @@ static int g_try_uid = 0;
 static int g_codegen_in_function = 0;
 static ASTNode *g_codegen_current_fn = NULL;
 static ASTNode *g_codegen_all_fns = NULL;
+static ASTNode *g_codegen_program_fns = NULL;
 
 void codegen_set_log(CodegenLog *log) {
     codegen_log = log;
@@ -181,6 +182,7 @@ static const char *default_for(VarType t) {
         case TYPE_BOOL: return "false";
         case TYPE_OBJECT: return "";
         case TYPE_NULL: return "";
+        case TYPE_VOID: return "";
     }
     return "";
 }
@@ -826,6 +828,72 @@ static void codegen_while(FILE *out, ASTNode *node, SymbolTable *table, int inde
 static void codegen_do_while(FILE *out, ASTNode *node, SymbolTable *table, int indent);
 static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent);
 static void codegen_switch(FILE *out, ASTNode *node, SymbolTable *table, int indent);
+
+/* Find a function definition by emitted C name among all program functions. */
+static ASTNode *cg_find_fn_by_cname(const char *cname) {
+    for (ASTNode *fn = g_codegen_program_fns; fn; fn = fn->next) {
+        if (strcmp(fn->name, cname) == 0) return fn;
+    }
+    return NULL;
+}
+
+/* Emit the C string expression for a single call argument. */
+static void emit_arg_expr(FILE *out, ASTNode *a) {
+    if (a->var_type == TYPE_STRING && a->value[0] == '"') {
+        fputs(a->value, out);
+    } else if (a->is_variable && a->value[0] != '\0') {
+        fputs(a->value, out);
+    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+        fputs(a->value, out);
+    } else if (a->value[0] == '\0') {
+        fputs("\"\"", out);
+    } else {
+        fprintf(out, "_ltng_ad((double)(%s))", a->value);
+    }
+}
+
+/* Emit ", <arg>" for every argument in the chain. */
+static void emit_arg_list(FILE *out, ASTNode *args) {
+    for (ASTNode *a = args; a; a = a->next) {
+        fputs(", ", out);
+        emit_arg_expr(out, a);
+    }
+}
+
+/* Emit a complete call expression, adding the hidden variadic rest
+   count/array arguments for direct calls to variadic functions. */
+static void emit_call_expr(FILE *out, ASTNode *call) {
+    int cline = call->line > 0 ? call->line : 1;
+    int ccol = call->col > 0 ? call->col : 1;
+    if (strcmp(call->name, "__ltng_indirect") == 0) {
+        int argc = 0;
+        for (ASTNode *a = call->args; a; a = a->next) argc++;
+        fprintf(out, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d",
+            call->for_var, cline, ccol, argc);
+        emit_arg_list(out, call->args);
+        fputs(")", out);
+        return;
+    }
+    ASTNode *fn = cg_find_fn_by_cname(call->name);
+    if (fn && fn->is_variadic) {
+        int restn = 0;
+        for (ASTNode *a = call->rest_args; a; a = a->next) restn++;
+        fprintf(out, "({ int __rn = 0; int __rc = 0; char **__rv = _ltng_arr_new(%d);",
+            restn > 0 ? restn : 1);
+        for (ASTNode *a = call->rest_args; a; a = a->next) {
+            fputs(" { char __av[256]; snprintf(__av, sizeof(__av), \"%s\", ", out);
+            emit_arg_expr(out, a);
+            fputs("); _ltng_arr_push(&__rv, &__rn, &__rc, __av); }", out);
+        }
+        fprintf(out, " char *__rr = %s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
+        emit_arg_list(out, call->args);
+        fputs(", __rn, (const char**)__rv); _ltng_arr_free(__rv, __rn); __rr; })", out);
+        return;
+    }
+    fprintf(out, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
+    emit_arg_list(out, call->args);
+    fputs(")", out);
+}
 
 static void codegen_if(FILE *out, ASTNode *node, SymbolTable *table, int indent, int is_first) {
     (void)table;
@@ -1474,46 +1542,15 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             if (node->is_base_assign && node->args && node->args->value[0] != '\0') {
                 const char *recv = node->args->value;
                 pad(out, indent);
-                fprintf(out, "snprintf(%s, 256, \"%%s\", %s(_ltng_retbuf(), %d, %d", recv, node->name, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1);
-                for (ASTNode *a = node->args; a; a = a->next) {
-                    if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-                        fprintf(out, ", %s", a->value);
-                    } else if (a->is_variable && a->value[0] != '\0') {
-                        fprintf(out, ", %s", a->value);
-                    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                        fprintf(out, ", %s", a->value);
-                    } else if (a->value[0] == '\0') {
-                        fprintf(out, ", \"\"");
-                    } else {
-                        fprintf(out, ", _ltng_ad((double)(%s))", a->value);
-                    }
-                }
-                fprintf(out, "));\n");
+                fprintf(out, "snprintf(%s, 256, \"%%s\", ", recv);
+                emit_call_expr(out, node);
+                fprintf(out, ");\n");
                 break;
             }
             /* call statement - invoke and discard result */
             pad(out, indent);
-            if (strcmp(node->name, "__ltng_indirect") == 0) {
-                int argc = 0;
-                for (ASTNode *a = node->args; a; a = a->next) argc++;
-                fprintf(out, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d", node->for_var, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1, argc);
-            } else {
-                fprintf(out, "%s(_ltng_retbuf(), %d, %d", node->name, node->line > 0 ? node->line : 1, node->col > 0 ? node->col : 1);
-            }
-            for (ASTNode *a = node->args; a; a = a->next) {
-                if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-                    fprintf(out, ", %s", a->value);
-                } else if (a->is_variable && a->value[0] != '\0') {
-                    fprintf(out, ", %s", a->value);
-                } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                    fprintf(out, ", %s", a->value);
-                } else if (a->value[0] == '\0') {
-                    fprintf(out, ", \"\"");
-                } else {
-                    fprintf(out, ", _ltng_ad((double)(%s))", a->value);
-                }
-            }
-            fprintf(out, ");\n");
+            emit_call_expr(out, node);
+            fprintf(out, ";\n");
             break;
         }
         default:
@@ -1634,6 +1671,7 @@ static int merge_param_schemas(ObjSchema *combined, const char *fn_name, int par
 void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors) {
     codegen_errors = errors;
     codegen_table = table;
+    g_codegen_program_fns = program->functions;
 
     /* Pre-pass: record object schemas passed to function parameters at all call sites */
     if (program->functions) {
@@ -1801,6 +1839,8 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 fprintf(out, ", const char *_cap_%d", ci);
             for (ASTNode *p = fn->params; p; p = p->next)
                 fprintf(out, ", const char *_a_%s", p->name);
+            if (fn->is_variadic)
+                fprintf(out, ", int _ltng_restc, const char **_ltng_restv");
             fprintf(out, ");\n");
         }
         fprintf(out, "\n");
@@ -1813,6 +1853,8 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 fprintf(out, ", const char *_cap_%d", ci);
             for (ASTNode *p = fn->params; p; p = p->next)
                 fprintf(out, ", const char *_a_%s", p->name);
+            if (fn->is_variadic)
+                fprintf(out, ", int _ltng_restc, const char **_ltng_restv");
             fprintf(out, ") {\n");
             fprintf(out, "    if(!_ret) _ret=_ltng_retbuf(); _ret[0]=0;\n");
             fprintf(out, "    _ltng_fn_push(\"");
@@ -1833,6 +1875,16 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                     fprintf(out, "    char %s[256] = \"\"; if(_a_%s) { strncpy(%s, _a_%s, 255); %s[255]=0; }\n",
                         p->name, p->name, p->name, p->name, p->name);
                 }
+            }
+            /* Build the variadic rest parameter as a dynamic array. */
+            if (fn->is_variadic && fn->variadic_name[0]) {
+                char rest_cname[MAX_IDENTIFIER_LEN];
+                mangle_name(fn->variadic_name, rest_cname, sizeof(rest_cname));
+                fprintf(out, "    int %s_len = 0;\n", rest_cname);
+                fprintf(out, "    int %s_cap = 0;\n", rest_cname);
+                fprintf(out, "    char **%s_data = _ltng_arr_new(_ltng_restc > 0 ? _ltng_restc : 1);\n", rest_cname);
+                fprintf(out, "    for (int __ri = 0; __ri < _ltng_restc; __ri++) _ltng_arr_push(&%s_data, &%s_len, &%s_cap, _ltng_restv ? _ltng_restv[__ri] : \"\");\n",
+                    rest_cname, rest_cname, rest_cname);
             }
             /* declare object field variables for object-typed parameters */
             for (ASTNode *p = fn->params; p; p = p->next) {
@@ -1876,9 +1928,11 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
 
     /* Indirect call dispatcher for dynamic function values */
     fprintf(out, "static char *__ltng_call_indirect(const char *target, char *_ret, int _ltng_cl, int _ltng_cc, int argc, ...) {\n");
-    fprintf(out, "    const char *_argv[16] = {\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"};\n");
+    fprintf(out, "    const char *_argv[64] = {");
+    for (int _ai = 0; _ai < 64; _ai++) fprintf(out, "%s\"\"", _ai ? "," : "");
+    fprintf(out, "};\n");
     fprintf(out, "    va_list ap; va_start(ap, argc);\n");
-    fprintf(out, "    for (int i = 0; i < argc && i < 16; i++) { const char *v = va_arg(ap, const char*); _argv[i] = v ? v : \"\"; }\n");
+    fprintf(out, "    for (int i = 0; i < argc && i < 64; i++) { const char *v = va_arg(ap, const char*); _argv[i] = v ? v : \"\"; }\n");
     fprintf(out, "    va_end(ap);\n");
     fprintf(out, "    if (!target) target = \"\";\n");
     fprintf(out, "    char _tname[256]; snprintf(_tname, sizeof(_tname), \"%%s\", target);\n");
@@ -1892,10 +1946,21 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             ASTNode *fn = fns_d[i];
             int pc = 0;
             for (ASTNode *p = fn->params; p; p = p->next) pc++;
-            fprintf(out, "    if (strcmp(_tname, \"%s\") == 0) return %s(_ret, _ltng_cl, _ltng_cc", fn->name, fn->name);
-            for (int ci = 0; ci < fn->capture_count; ci++) fprintf(out, ", _caps[%d]", ci);
-            for (int pi = 0; pi < pc; pi++) fprintf(out, ", _argv[%d]", pi);
-            fprintf(out, ");\n");
+            if (fn->is_variadic) {
+                fprintf(out, "    if (strcmp(_tname, \"%s\") == 0) {\n", fn->name);
+                fprintf(out, "        int __rn = argc - %d; if (__rn < 0) __rn = 0; if (__rn > 64 - %d) __rn = 64 - %d;\n", pc, pc, pc);
+                fprintf(out, "        const char *__rv[64];\n");
+                fprintf(out, "        for (int __i = 0; __i < __rn; __i++) __rv[__i] = _argv[%d + __i];\n", pc);
+                fprintf(out, "        return %s(_ret, _ltng_cl, _ltng_cc", fn->name);
+                for (int ci = 0; ci < fn->capture_count; ci++) fprintf(out, ", _caps[%d]", ci);
+                for (int pi = 0; pi < pc; pi++) fprintf(out, ", _argv[%d]", pi);
+                fprintf(out, ", __rn, (const char**)__rv);\n    }\n");
+            } else {
+                fprintf(out, "    if (strcmp(_tname, \"%s\") == 0) return %s(_ret, _ltng_cl, _ltng_cc", fn->name, fn->name);
+                for (int ci = 0; ci < fn->capture_count; ci++) fprintf(out, ", _caps[%d]", ci);
+                for (int pi = 0; pi < pc; pi++) fprintf(out, ", _argv[%d]", pi);
+                fprintf(out, ");\n");
+            }
         }
     }
     fprintf(out, "    _ltng_throw_value(\"Error\", \"Unknown function in indirect call\", _ltng_cl, _ltng_cc);\n");

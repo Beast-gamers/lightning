@@ -1248,7 +1248,79 @@ write(apply(off5, 10))   # 15
 
 **Current limitations**
 
-- Variadic arguments and function overloading remain pending.
+- Return-type checking is annotation/inference based; richer generic type annotations remain future work.
+
+### Return type annotations
+
+Named functions may declare their return type using an arrow annotation followed by a type keyword (`-> type`).
+
+```
+function add(a, b) -> int {
+    return a + b
+}
+
+function greet(name) -> string {
+    return "hi " + name
+}
+
+function cleanup() -> void {
+    write("cleaning up")
+}
+```
+
+- The annotation may be `int`, `float`, `string`, `char`, `bool`, or `object`.
+- `void` is permitted only as a return annotation; a `void` function may not return a value.
+- Return statements are checked when the types are clear (annotations and literals): a declared return type that cannot hold the returned value is a compile-time error, a function declared to return a type without a valid return path is an error, and a non-`void` function returning on only some paths is an error.
+
+### Variadic arguments
+
+Functions may declare a trailing variadic parameter using `...rest`:
+
+```
+function sum(...nums) -> int {
+    let total = 0
+    for (i from 1 to nums.length) {
+        set total = total + tofloat(nums[i])
+    }
+    return total
+}
+
+function join(...parts) -> string {
+    let out = ""
+    for (i from 1 to parts.length) {
+        set out = out + parts[i]
+    }
+    return out
+}
+```
+
+- The variadic parameter must be the last parameter of the function.
+- Internally the rest parameter is implemented as a dynamic array (`_ltng_arr_new` backed by hidden count/array parameters `_ltng_restc` / `_ltng_restv`); users interact with it through the normal array interface (`.length`, indexing).
+- Calls pass extra positional arguments through a generated rest-array statement expression, and indirect/dynamic calls flatten arguments so the dispatcher splits fixed parameters from the variadic tail at runtime.
+
+### Function overloading
+
+Multiple functions may share a source name; calls select an overload by argument count (arity), taking required parameters, defaults, and variadic-ness into account.
+
+```
+function pick(a, b) -> int {
+    return a + b
+}
+function pick(a, b, c) -> int {
+    return a + b + c
+}
+function pick(a) -> string {
+    return "single"
+}
+
+write(pick(2, 3))    # 5
+write(pick(2, 3, 4)) # 9
+write(pick("only"))  # single
+```
+
+- Overloads are distinguished by arity (fixed parameter count, required count, and variadic-ness).
+- Duplicate signatures (same arity shape) are rejected at pre-scan with an error.
+- Ambiguous calls (multiple overloads matching equally) are rejected at the call site.
 
 ### Method-style calls (UFCS)
 

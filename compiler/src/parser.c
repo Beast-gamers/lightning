@@ -7,8 +7,24 @@ static int g_stmt_line = 0;
 static int g_stmt_col = 0;
 static int g_expr_sl=0,g_expr_sc=0,g_expr_el=0,g_expr_ec=0;
 
-#define MAX_FUNCS 128
-typedef struct { char name[MAX_IDENTIFIER_LEN]; int param_count; } FuncInfo;
+#define MAX_FUNCS 256
+#define MAX_FUNC_PARAMS 32
+typedef struct {
+    char name[MAX_IDENTIFIER_LEN];   /* emitted C name */
+    char src[MAX_IDENTIFIER_LEN];    /* source (unmangled) name */
+    int param_count;                 /* fixed parameter count (excludes ...rest) */
+    int required_count;              /* fixed parameters without defaults */
+    int is_variadic;                 /* trailing ...rest parameter present */
+    int has_return_type;             /* explicit -> type annotation */
+    VarType return_type;             /* annotated return type */
+    int line, col;                   /* source position of the function name */
+    int defined;                     /* body has been parsed */
+    int top_level;                   /* signature discovered by the top-level prescan */
+    char param_names[MAX_FUNC_PARAMS][MAX_IDENTIFIER_LEN];
+    int has_default[MAX_FUNC_PARAMS];
+    int def_start[MAX_FUNC_PARAMS];  /* token range of the default expression */
+    int def_end[MAX_FUNC_PARAMS];
+} FuncInfo;
 static FuncInfo g_funcs[MAX_FUNCS];
 static int g_func_count = 0;
 static int g_in_function = 0;
@@ -92,16 +108,25 @@ static void register_function(const char *name, int param_count) {
     if (g_func_count >= MAX_FUNCS) return;
     char mangled[MAX_IDENTIFIER_LEN];
     mangle_name(name, mangled, MAX_IDENTIFIER_LEN);
-    /* avoid duplicates */
+    /* avoid duplicates by source name */
     for (int i = 0; i < g_func_count; i++) {
-        if (strcmp(g_funcs[i].name, mangled) == 0) {
+        if (strcmp(g_funcs[i].src, name) == 0) {
             if (param_count > 0) g_funcs[i].param_count = param_count;
             return;
         }
     }
     strncpy(g_funcs[g_func_count].name, mangled, MAX_IDENTIFIER_LEN - 1);
     g_funcs[g_func_count].name[MAX_IDENTIFIER_LEN - 1] = '\0';
+    strncpy(g_funcs[g_func_count].src, name, MAX_IDENTIFIER_LEN - 1);
+    g_funcs[g_func_count].src[MAX_IDENTIFIER_LEN - 1] = '\0';
     g_funcs[g_func_count].param_count = param_count;
+    g_funcs[g_func_count].required_count = param_count;
+    g_funcs[g_func_count].is_variadic = 0;
+    g_funcs[g_func_count].has_return_type = 0;
+    g_funcs[g_func_count].return_type = TYPE_STRING;
+    g_funcs[g_func_count].line = 0;
+    g_funcs[g_func_count].col = 0;
+    g_funcs[g_func_count].defined = 0;
     g_func_count++;
 }
 
@@ -109,7 +134,8 @@ static int is_function_name(const char *name) {
     char mangled[MAX_IDENTIFIER_LEN];
     mangle_name(name, mangled, MAX_IDENTIFIER_LEN);
     for (int i = 0; i < g_func_count; i++) {
-        if (strcmp(g_funcs[i].name, mangled) == 0) return 1;
+        if (strcmp(g_funcs[i].name, mangled) == 0 ||
+            strcmp(g_funcs[i].src, name) == 0) return 1;
     }
     return 0;
 }
@@ -145,8 +171,8 @@ const char *resolve_func_name(SymbolTable *table, const char *src, char *out, in
     char mangled[MAX_IDENTIFIER_LEN];
     mangle_name(src, mangled, MAX_IDENTIFIER_LEN);
     for (int i = 0; i < g_func_count; i++) {
-        if (strcmp(g_funcs[i].name, mangled) == 0) {
-            strncpy(out, mangled, out_size - 1);
+        if (strcmp(g_funcs[i].name, mangled) == 0 || strcmp(g_funcs[i].src, src) == 0) {
+            strncpy(out, g_funcs[i].name, out_size - 1);
             out[out_size - 1] = 0;
             return out;
         }
@@ -254,6 +280,12 @@ static int is_type_keyword(const char *name) {
            strcmp(name, "bool") == 0 ||
            strcmp(name, "obj") == 0 ||
            strcmp(name, "array") == 0;
+}
+
+/* Return-type keywords accepted after '->'. Unlike declaration type keywords,
+   this additionally allows 'void' to mark a function that returns no value. */
+static int is_return_type_keyword(const char *name) {
+    return is_type_keyword(name) || strcmp(name, "void") == 0;
 }
 
 /* Return 1 for type keywords that can be used as conversion functions:
@@ -378,6 +410,7 @@ static VarType type_keyword_to_vartype(const char *name) {
     if (strcmp(name, "bool") == 0) return TYPE_BOOL;
     if (strcmp(name, "obj") == 0) return TYPE_OBJECT;
     if (strcmp(name, "array") == 0) return TYPE_ARRAY;
+    if (strcmp(name, "void") == 0) return TYPE_VOID;
     return TYPE_STRING;
 }
 
@@ -943,14 +976,35 @@ static const char *type_name_str(VarType t);
 /* Return 1 if a concat part is already a char* expression: a string literal,
    a simple identifier (all variables are char buffers in generated C), or a
    statement expression produced by transform_string_multiply (returns char*). */
+static int part_is_stringy(const char *part);
+static int function_returns_string(const char *fname);
+
 static int part_is_stringy(const char *part) {
     if (part[0] == '"') return 1;
-    if (part[0] == '_' || isalpha((unsigned char)part[0])) {
-        const char *q = part;
-        while (*q && (isalnum((unsigned char)*q) || *q == '_')) q++;
-        if (*q == '\0') return 1;
+    const char *q = part;
+    while (*q == ' ' || *q == '\t') q++;
+    if (*q == '_') {
+        const char *qq = q;
+        while (*qq && (isalnum((unsigned char)*qq) || *qq == '_')) qq++;
+        if (*qq == '\0') return 1;
     }
-    if (strncmp(part, "({", 2) == 0 &&
+    if (isalpha((unsigned char)*q) || *q == '_') {
+        const char *e = q;
+        while (*e && (isalnum((unsigned char)*e) || *e == '_')) e++;
+        if (*e == '(') {
+            /* Function call: decide by the callee's return type so that
+               string-returning calls (incl. variadic statement expressions)
+               participate in string concatenation. */
+            char callee[MAX_IDENTIFIER_LEN];
+            int cl = (int)(e - q);
+            if (cl >= MAX_IDENTIFIER_LEN) cl = MAX_IDENTIFIER_LEN - 1;
+            memcpy(callee, q, (size_t)cl);
+            callee[cl] = '\0';
+            return function_returns_string(callee);
+        }
+        if (*e == '\0') return 1;
+    }
+    if (strncmp(q, "({", 2) == 0 &&
         (strstr(part, "_ltng_repeat") != NULL || strstr(part, "_ltng_arr") != NULL)) return 1;
     return 0;
 }
@@ -959,10 +1013,15 @@ static void token_append_source(char *out, int *pos, int out_size, Token tok);
 
 /* Find a function AST node by its short source name or mangled C name. */
 static ASTNode *find_function_ast_by_name(const char *name);
+static ASTNode *find_function_node_by_cname(const char *cname);
 static int resolve_func_ref_info(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_pc);
 
 /* Infer the return type of a user-defined function by scanning its return statements. */
 static VarType infer_function_return_type(const char *fname);
+
+/* Return 1 when a call to the named function is known to produce a string
+   value (explicit `-> string` annotation, or inferred from its returns). */
+static int function_returns_string(const char *fname);
 
 static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
     (void)table;
@@ -1352,8 +1411,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     char cexpr[MAX_STRING_LEN];
                     build_call_cexpr(call, cexpr, sizeof(cexpr));
                     append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
-                    pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
-                    if (!type_locked) result_type = TYPE_INT;
+                    if (!type_locked && function_returns_string(call->name)) {
+                        pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                        result_type = TYPE_STRING;
+                    } else {
+                        pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                        if (!type_locked) result_type = TYPE_INT;
+                    }
                 } else if (lexer_peek(lexer).type == TOKEN_LPAREN && strcmp(tok.value, "typeof") != 0) {
                     char mangled[MAX_IDENTIFIER_LEN];
                     mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
@@ -1423,8 +1487,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         char cexpr[MAX_STRING_LEN];
                         build_call_cexpr(call, cexpr, sizeof(cexpr));
                         append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
-                        pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
-                        if (!type_locked) result_type = TYPE_INT;
+                        if (!type_locked && function_returns_string(mname.value)) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                            result_type = TYPE_STRING;
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                            if (!type_locked) result_type = TYPE_INT;
+                        }
                     } else if (mname.type == TOKEN_IDENT || token_is_name(mname)) {
                         /* property access: obj.field */
                         char mangled[MAX_IDENTIFIER_LEN];
@@ -2066,7 +2135,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             char tmp[2048];
             strncpy(tmp, out, 2047);
             tmp[2047] = 0;
-            char parts[32][512];
+            char parts[32][2048];
             int nparts = 0;
             char *start = tmp;
             int depth_paren = 0, depth_bracket = 0, depth_brace = 0;
@@ -2092,8 +2161,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     while (*s == ' ' || *s == '\t') s++;
                     char *e = s + strlen(s) - 1;
                     while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                    strncpy(parts[nparts++], s, 511);
-                    parts[nparts-1][511] = 0;
+                    strncpy(parts[nparts++], s, sizeof(parts[0]) - 1);
+                    parts[nparts-1][sizeof(parts[0]) - 1] = 0;
                     start = p + 1;
                 }
             }
@@ -2102,8 +2171,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 while (*s == ' ' || *s == '\t') s++;
                 char *e = s + strlen(s) - 1;
                 while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                strncpy(parts[nparts++], s, 511);
-                parts[nparts-1][511] = 0;
+                strncpy(parts[nparts++], s, sizeof(parts[0]) - 1);
+                parts[nparts-1][sizeof(parts[0]) - 1] = 0;
             }
             /* transform each part */
             for (int i = 0; i < nparts; i++) {
@@ -2146,29 +2215,39 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 result_type = TYPE_STRING;
             } else {
             /* concatenate */
-            char fmt[1024] = {0};
-            for (int i = 0; i < nparts; i++) strcat(fmt, "%s");
-            char result[2048] = {0};
-            snprintf(result, 2047, "({ char _ltc[512]; snprintf(_ltc,512,\"");
-            for (int i = 0; i < nparts; i++) strcat(result, "%s");
-            strcat(result, "\", ");
+            char add_result[2048] = {0};
+            int all_stringy = 1;
             for (int i = 0; i < nparts; i++) {
                 const char *part = parts[i];
+                char cpart[2048];
                 if (!part_is_stringy(part)) {
+                    all_stringy = 0;
                     int has_dot = (strchr(part, '.') != NULL);
-                    char conv[560];
-                    snprintf(conv, sizeof(conv), "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
+                    snprintf(cpart, sizeof(cpart), "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
                              has_dot ? "%g" : "%lld",
                              has_dot ? "double" : "long long",
                              part);
-                    strcat(result, conv);
                 } else {
-                    strcat(result, part);
+                    strncpy(cpart, part, sizeof(cpart) - 1);
+                    cpart[sizeof(cpart) - 1] = 0;
                 }
-                if (i < nparts - 1) strcat(result, ",");
+                if (i == 0) {
+                    strncpy(add_result, cpart, sizeof(add_result) - 1);
+                    add_result[sizeof(add_result) - 1] = 0;
+                } else {
+                    char step[2048];
+                    if (all_stringy) {
+                        /* Pure string concatenation: snprintf "%s%s" keeps plain
+                           string semantics (numeric-looking strings stay text). */
+                        snprintf(step, sizeof(step), "({ char _ltc[512]; snprintf(_ltc,512,\"%%s%%s\", %s, %s); _ltc; })", add_result, cpart);
+                    } else {
+                        snprintf(step, sizeof(step), "_ltng_add_sn(%s, %s)", add_result, cpart);
+                    }
+                    strncpy(add_result, step, sizeof(add_result) - 1);
+                    add_result[sizeof(add_result) - 1] = 0;
+                }
             }
-            strcat(result, "); _ltc; })");
-            strncpy(out, result, out_size - 1);
+            strncpy(out, add_result, out_size - 1);
             out[out_size - 1] = 0;
             result_type = TYPE_STRING;
             }
@@ -2192,6 +2271,7 @@ static const char *var_type_name(VarType t) {
         case TYPE_OBJECT: return "object";
         case TYPE_ARRAY: return "array";
         case TYPE_NULL: return "null";
+        case TYPE_VOID: return "void";
     }
     return "string";
 }
@@ -3343,6 +3423,33 @@ static void parse_read(Lexer *lexer, SymbolTable *table) {
 /* Try to parse a sole function call RHS: fname(args) with nothing after.
    On success, fills cexpr with the C call expression and returns 1 (tokens consumed).
    On failure, restores lexer and returns 0. */
+
+/* Look up a pre-scanned signature by emitted C name. Used for calls that
+   appear before the target function body has been parsed. */
+static FuncInfo *find_funcinfo_by_cname(const char *cname) {
+    for (int i = 0; i < g_func_count; i++) {
+        if (strcmp(g_funcs[i].name, cname) == 0) return &g_funcs[i];
+    }
+    return NULL;
+}
+
+static void append_arg_expr(char *out, int *pos, int out_size, ASTNode *a) {
+    int rem = out_size - *pos;
+    if (rem <= 1) return;
+    if (a->var_type == TYPE_STRING && a->value[0] == '"') {
+        *pos += snprintf(out + *pos, rem, "%s", a->value);
+    } else if (a->is_variable && a->value[0] != '\0') {
+        *pos += snprintf(out + *pos, rem, "%s", a->value);
+    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+        *pos += snprintf(out + *pos, rem, "%s", a->value);
+    } else if (a->value[0] == '\0') {
+        *pos += snprintf(out + *pos, rem, "\"\"");
+    } else {
+        *pos += snprintf(out + *pos, rem, "_ltng_ad((double)(%s))", a->value);
+    }
+    if (*pos >= out_size) *pos = out_size - 1;
+}
+
 static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
     int cpos = 0;
     int cline = call->line > 0 ? call->line : 1;
@@ -3351,27 +3458,48 @@ static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
         int argc = 0;
         for (ASTNode *a = call->args; a; a = a->next) argc++;
         cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d", call->for_var, cline, ccol, argc);
-    } else {
-        cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
-    }
-    if (cpos >= cexpr_size) cpos = cexpr_size - 1;
-    for (ASTNode *a = call->args; a && cpos < cexpr_size - 1; a = a->next) {
-        int rem = cexpr_size - cpos;
-        if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-            cpos += snprintf(cexpr + cpos, rem, ", %s", a->value);
-        } else if (a->is_variable && a->value[0] != '\0') {
-            cpos += snprintf(cexpr + cpos, rem, ", %s", a->value);
-        } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-            cpos += snprintf(cexpr + cpos, rem, ", %s", a->value);
-        } else if (a->value[0] == '\0') {
-            cpos += snprintf(cexpr + cpos, rem, ", \"\"");
-        } else {
-            cpos += snprintf(cexpr + cpos, rem, ", _ltng_ad((double)(%s))", a->value);
+        for (ASTNode *a = call->args; a && cpos < cexpr_size - 1; a = a->next) {
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", ");
+            append_arg_expr(cexpr, &cpos, cexpr_size, a);
         }
-        if (cpos >= cexpr_size) cpos = cexpr_size - 1;
-    }
-    if (cpos < cexpr_size - 1)
         cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ")");
+    } else {
+        ASTNode *fn = find_function_node_by_cname(call->name);
+        int variadic = fn ? fn->is_variadic : 0;
+        if (!fn) {
+            FuncInfo *fi = find_funcinfo_by_cname(call->name);
+            if (fi) variadic = fi->is_variadic;
+        }
+        if (variadic) {
+            int restn = 0;
+            for (ASTNode *a = call->rest_args; a; a = a->next) restn++;
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos,
+                "({ int __rn = 0; int __rc = 0; char **__rv = _ltng_arr_new(%d);",
+                restn > 0 ? restn : 1);
+            for (ASTNode *a = call->rest_args; a && cpos < cexpr_size - 1; a = a->next) {
+                cpos += snprintf(cexpr + cpos, cexpr_size - cpos,
+                    " { char __av[256]; snprintf(__av, sizeof(__av), \"%%s\", ");
+                append_arg_expr(cexpr, &cpos, cexpr_size, a);
+                cpos += snprintf(cexpr + cpos, cexpr_size - cpos,
+                    "); _ltng_arr_push(&__rv, &__rn, &__rc, __av); }");
+            }
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos,
+                " char *__rr = %s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
+            for (ASTNode *a = call->args; a && cpos < cexpr_size - 1; a = a->next) {
+                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", ");
+                append_arg_expr(cexpr, &cpos, cexpr_size, a);
+            }
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos,
+                ", __rn, (const char**)__rv); _ltng_arr_free(__rv, __rn); __rr; })");
+        } else {
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, "%s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
+            for (ASTNode *a = call->args; a && cpos < cexpr_size - 1; a = a->next) {
+                cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ", ");
+                append_arg_expr(cexpr, &cpos, cexpr_size, a);
+            }
+            cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ")");
+        }
+    }
     cexpr[cexpr_size - 1] = '\0';
 }
 
@@ -4478,6 +4606,7 @@ static const char *type_name_str(VarType t) {
         case TYPE_OBJECT: return "object";
         case TYPE_ARRAY: return "array";
         case TYPE_NULL: return "null";
+        case TYPE_VOID: return "void";
     }
     return "unknown";
 }
@@ -6281,11 +6410,143 @@ static void collect_return_nodes(ASTNode *node, ASTNode **nodes, int *count, int
     collect_return_nodes(node->next, nodes, count, max);
 }
 
+/* Conservative control-flow check: does this statement list always return
+   (or throw) before falling through? Loops are treated as possibly not
+   executing, which is the safe answer for diagnostics. */
+static int stmt_always_exits(ASTNode *node);
+
+static int block_always_exits(ASTNode *block) {
+    for (ASTNode *s = block; s; s = s->next) {
+        if (stmt_always_exits(s)) return 1;
+    }
+    return 0;
+}
+
+static int stmt_always_exits(ASTNode *node) {
+    if (!node) return 0;
+    switch (node->type) {
+        case NODE_RETURN:
+        case NODE_THROW:
+            return 1;
+        case NODE_BLOCK:
+            return block_always_exits(node->body);
+        case NODE_IF:
+            if (!node->orelse) return 0;
+            if (!block_always_exits(node->body)) return 0;
+            if (node->orelse->type == NODE_IF) return stmt_always_exits(node->orelse);
+            return block_always_exits(node->orelse->body);
+        case NODE_SWITCH: {
+            /* A switch only guarantees exit when it has a default case. */
+            int has_default = 0;
+            for (ASTNode *c = node->cases; c; c = c->next) {
+                if (c->is_default) { has_default = 1; break; }
+            }
+            if (!has_default) return 0;
+            for (ASTNode *c = node->cases; c; c = c->next) {
+                if (!block_always_exits(c->body)) return 0;
+            }
+            return 1;
+        }
+        default:
+            return 0;
+    }
+}
+
+static int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!ret) return 1;
+    if (ret->value[0] == '\0' && !ret->is_expr) return want == TYPE_VOID;
+    if (want == TYPE_VOID) return 0;
+    /* Pass-through variables and call results are represented as strings at
+       runtime; only reject clearly conflicting literal returns. */
+    if (ret->is_variable) return 1;
+    if (ret->value[0] == '(' || strstr(ret->value, "_ltng_") != NULL) return 1;
+
+    const char *v = ret->value;
+    while (*v == ' ' || *v == '\t') v++;
+    if (*v == '\0') return want == TYPE_VOID;
+
+    VarType got;
+    if (*v == '"') {
+        got = TYPE_STRING;
+    } else if (*v == '\'') {
+        got = TYPE_CHAR;
+    } else if (strcmp(v, "true") == 0 || strcmp(v, "false") == 0 ||
+               strcmp(v, "t") == 0 || strcmp(v, "f") == 0) {
+        got = TYPE_BOOL;
+    } else {
+        int dot = 0, numeric = 1;
+        const char *p = v;
+        if (*p == '-' || *p == '+') p++;
+        if (!*p) numeric = 0;
+        for (; *p; p++) {
+            if (*p == '.') { dot = 1; continue; }
+            if (*p < '0' || *p > '9') { numeric = 0; break; }
+        }
+        if (!numeric) {
+            /* Non-literal expressions remain permissive. */
+            return 1;
+        }
+        got = dot ? TYPE_FLOAT : TYPE_INT;
+    }
+
+    if (got == want) return 1;
+    if ((got == TYPE_INT || got == TYPE_FLOAT) &&
+        (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
+    if (want == TYPE_CHAR && (got == TYPE_STRING || got == TYPE_CHAR)) return 1;
+    if (want == TYPE_STRING && got == TYPE_CHAR) return 1;
+    if (want == TYPE_BOOL && (got == TYPE_INT || got == TYPE_BOOL)) return 1;
+    return 0;
+}
+
 static void validate_function_return_types(ASTNode *fn) {
     if (!fn) return;
     ASTNode *nodes[64];
     int count = 0;
     collect_return_nodes(fn->body, nodes, &count, 64);
+
+    if (fn->has_return_type) {
+        if (fn->return_type == TYPE_VOID) {
+            for (int i = 0; i < count; i++) {
+                if (!(nodes[i]->value[0] == '\0' && !nodes[i]->is_expr)) {
+                    char msg[256];
+                    snprintf(msg, sizeof(msg),
+                        "Void function '%s' cannot return a value",
+                        fn->for_var[0] ? fn->for_var : fn->name);
+                    error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg);
+                    return;
+                }
+            }
+            return;
+        }
+        if (count == 0) {
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                "Function '%s' is declared to return '%s' but has no return statement",
+                fn->for_var[0] ? fn->for_var : fn->name,
+                type_name_str(fn->return_type));
+            error_state_add(parser_errors, fn->line, fn->col, msg);
+            return;
+        }
+        for (int i = 0; i < count; i++) {
+            if (!return_type_matches_annotation(nodes[i], fn->return_type)) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                    "Return type mismatch in function '%s': expected '%s'",
+                    fn->for_var[0] ? fn->for_var : fn->name,
+                    type_name_str(fn->return_type));
+                error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg);
+                return;
+            }
+        }
+        if (!block_always_exits(fn->body)) {
+            char msg[256];
+            snprintf(msg, sizeof(msg),
+                "Function '%s' may not return a value on all control paths",
+                fn->for_var[0] ? fn->for_var : fn->name);
+            error_state_add(parser_errors, fn->line, fn->col, msg);
+        }
+        return;
+    }
+
     if (count <= 1) return;
     for (int i = 1; i < count; i++) {
         if (!var_types_return_compatible_nodes(nodes[0], nodes[i])) {
@@ -6348,11 +6609,291 @@ static VarType analyze_function_returns(ASTNode *node, int *has_return) {
 /* Infer the return type of a user-defined function by scanning its return statements.
    Returns TYPE_STRING if the function is not found or has mixed/no returns. */
 static VarType infer_function_return_type(const char *fname) {
-    ASTNode *fn = find_function_ast_by_name(fname);
+    ASTNode *fn = find_function_node_by_cname(fname);
+    if (!fn) fn = find_function_ast_by_name(fname);
     if (!fn) return TYPE_STRING;
+    if (fn->has_return_type) return fn->return_type;
 
     int has_return = 0;
     return analyze_function_returns(fn->body, &has_return);
+}
+
+static int function_returns_string(const char *fname) {
+    ASTNode *fn = find_function_node_by_cname(fname);
+    if (!fn) fn = find_function_ast_by_name(fname);
+    if (fn) {
+        if (fn->has_return_type) return fn->return_type == TYPE_STRING;
+        int has_return = 0;
+        VarType rt = analyze_function_returns(fn->body, &has_return);
+        return rt == TYPE_STRING;
+    }
+    /* Fall back to the prescanned signatures (for forward references whose
+       bodies have not been parsed yet). */
+    FuncInfo *fi = find_funcinfo_by_cname(fname);
+    if (!fi) {
+        for (int i = 0; i < g_func_count; i++) {
+            if (strcmp(g_funcs[i].src, fname) == 0) { fi = &g_funcs[i]; break; }
+        }
+    }
+    if (fi && fi->has_return_type) return fi->return_type == TYPE_STRING;
+    /* Unknown target: preserve legacy numeric behavior. */
+    return 0;
+}
+
+/* Find a function binding in a non-root (local/nested) scope. Top-level
+   functions are resolved through the global signature registry so overloads
+   can be selected by arity. */
+static int find_local_func_binding(SymbolTable *table, const char *src, char *out, int out_size) {
+    for (Scope *s = table; s && s->parent; s = s->parent) {
+        for (int i = 0; i < s->func_count; i++) {
+            if (strcmp(s->funcs[i].src, src) == 0) {
+                strncpy(out, s->funcs[i].cname, out_size - 1);
+                out[out_size - 1] = '\0';
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Re-evaluate a default expression captured by the signature pre-scan. Used
+   when a call appears before the function body has been parsed. Errors are
+   suppressed; on failure the expression falls back to an empty string. */
+static void eval_default_tokens(Lexer *lexer, SymbolTable *table, int start, int end,
+                                char *out, int out_size, VarType *out_type) {
+    out[0] = '\0';
+    if (out_type) *out_type = TYPE_STRING;
+    if (start < 0 || end <= start || end > lexer->count) {
+        snprintf(out, out_size, "\"\"");
+        return;
+    }
+    int n = end - start;
+    Lexer tmp;
+    memset(&tmp, 0, sizeof(tmp));
+    tmp.token_capacity = n + 8;
+    tmp.tokens = (Token *)calloc((size_t)tmp.token_capacity, sizeof(Token));
+    if (!tmp.tokens) { snprintf(out, out_size, "\"\""); return; }
+    for (int i = 0; i < n; i++) tmp.tokens[i] = lexer->tokens[start + i];
+    for (int i = n; i < tmp.token_capacity; i++) {
+        tmp.tokens[i].type = TOKEN_EOF;
+        tmp.tokens[i].value[0] = '\0';
+        tmp.tokens[i].line = n > 0 ? tmp.tokens[n - 1].line : 1;
+        tmp.tokens[i].col = 1;
+    }
+    tmp.count = tmp.token_capacity;
+    tmp.current = 0;
+    ErrorState scratch;
+    memset(&scratch, 0, sizeof(scratch));
+    ErrorState *saved = parser_errors;
+    parser_errors = &scratch;
+    VarType t = collect_expression(&tmp, table, out, out_size, 1, 1, NULL, NULL, NULL, NULL);
+    parser_errors = saved;
+    if (scratch.count > 0) {
+        snprintf(out, out_size, "\"\"");
+        t = TYPE_STRING;
+    }
+    if (out_type) *out_type = t;
+    free(tmp.tokens);
+}
+
+/* Select the overload of 'src' that best matches the supplied arguments.
+   Returns NULL when no candidate matches. *group_count receives the number of
+   top-level candidates with this name. */
+static FuncInfo *resolve_overload(const char *src, ASTNode *args, int line, int col,
+                                  int *group_count) {
+    int positional = 0;
+    for (ASTNode *a = args; a; a = a->next) {
+        if (!a->for_var[0]) positional++;
+    }
+    *group_count = 0;
+    FuncInfo *best = NULL;
+    int best_variadic = 2, best_defaults = 1 << 30, best_exact = -1;
+    int ambiguous = 0;
+    for (int i = 0; i < g_func_count; i++) {
+        FuncInfo *fi = &g_funcs[i];
+        if (!fi->top_level || strcmp(fi->src, src) != 0) continue;
+        (*group_count)++;
+
+        int provided[MAX_FUNC_PARAMS];
+        memset(provided, 0, sizeof(provided));
+        int ok = 1;
+        for (ASTNode *a = args; a && ok; a = a->next) {
+            if (!a->for_var[0]) continue;
+            int found = -1;
+            for (int p = 0; p < fi->param_count && p < MAX_FUNC_PARAMS; p++) {
+                if (strcmp(fi->param_names[p], a->for_var) == 0) { found = p; break; }
+            }
+            if (found < 0) { ok = 0; break; }
+            if (provided[found]) { ok = 0; break; }
+            provided[found] = 1;
+        }
+        if (!ok) continue;
+
+        int pos = positional;
+        int used_defaults = 0;
+        for (int p = 0; p < fi->param_count; p++) {
+            if (provided[p]) continue;
+            if (pos > 0) { pos--; provided[p] = 1; }
+            else if (fi->has_default[p]) { used_defaults++; }
+            else { ok = 0; break; }
+        }
+        if (!ok) continue;
+        int rest_used = 0;
+        if (pos > 0) {
+            if (fi->is_variadic) rest_used = 1;
+            else { ok = 0; }
+        }
+        if (!ok) continue;
+
+        int sv = fi->is_variadic ? 1 : 0;
+        int exact = (used_defaults == 0 && !rest_used) ? 1 : 0;
+        if (!best ||
+            sv < best_variadic ||
+            (sv == best_variadic && used_defaults < best_defaults) ||
+            (sv == best_variadic && used_defaults == best_defaults && exact > best_exact)) {
+            best = fi;
+            best_variadic = sv;
+            best_defaults = used_defaults;
+            best_exact = exact;
+            ambiguous = 0;
+        } else if (sv == best_variadic && used_defaults == best_defaults && exact == best_exact) {
+            /* Identical signatures are reported separately by the duplicate
+               prescan check; do not add a cascading ambiguity error. */
+            if (best && !(fi->param_count == best->param_count &&
+                          fi->required_count == best->required_count &&
+                          fi->is_variadic == best->is_variadic)) {
+                ambiguous = 1;
+            }
+        }
+    }
+    if (best && ambiguous) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Ambiguous call to overloaded function '%s'", src);
+        error_state_add(parser_errors, line, col, msg);
+    }
+    return best;
+}
+
+/* Expand supplied arguments to a full positional list for the chosen function,
+   filling defaults and splitting extra positional arguments into the variadic
+   rest list. Works with a parsed AST (fn_def) or a pre-scanned signature (fi). */
+static ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
+                                 ASTNode *fn_def, ASTNode *args, const char *fname,
+                                 int line, int col, ASTNode **out_rest) {
+    *out_rest = NULL;
+    int pc = 0;
+    int is_variadic = 0;
+    if (fn_def) {
+        for (ASTNode *p = fn_def->params; p; p = p->next) pc++;
+        is_variadic = fn_def->is_variadic;
+    } else if (fi) {
+        pc = fi->param_count;
+        is_variadic = fi->is_variadic;
+    }
+    if (pc > MAX_FUNC_PARAMS) pc = MAX_FUNC_PARAMS;
+
+    ASTNode *param_node[MAX_FUNC_PARAMS] = {0};
+    ASTNode *pn = fn_def ? fn_def->params : NULL;
+    for (int p = 0; p < pc; p++) {
+        param_node[p] = pn;
+        if (pn) pn = pn->next;
+    }
+
+    ASTNode *chosen[MAX_FUNC_PARAMS] = {0};
+    int provided[MAX_FUNC_PARAMS];
+    memset(provided, 0, sizeof(provided));
+
+    /* Map named arguments to parameters. */
+    for (ASTNode *a = args; a; a = a->next) {
+        if (!a->for_var[0]) continue;
+        int found = -1;
+        for (int p = 0; p < pc; p++) {
+            const char *pname = param_node[p] ? param_node[p]->for_var :
+                                (fi ? fi->param_names[p] : "");
+            if (pname[0] && strcmp(pname, a->for_var) == 0) { found = p; break; }
+        }
+        if (found < 0) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Unknown argument '%s' in call to '%s'", a->for_var, fname);
+            error_state_add(parser_errors, line, col, msg);
+        } else if (provided[found]) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Duplicate argument '%s' in call to '%s'", a->for_var, fname);
+            error_state_add(parser_errors, line, col, msg);
+        } else {
+            provided[found] = 1;
+            chosen[found] = a;
+        }
+    }
+
+    /* Collect positional arguments in source order. */
+    ASTNode *pos[MAX_FUNC_PARAMS * 4];
+    int pos_n = 0;
+    for (ASTNode *a = args; a; a = a->next) {
+        if (a->for_var[0]) continue;
+        if (pos_n < (int)(sizeof(pos) / sizeof(pos[0]))) pos[pos_n++] = a;
+    }
+    int pos_i = 0;
+
+    ASTNode *eff = NULL, *efflast = NULL;
+    for (int p = 0; p < pc; p++) {
+        ASTNode *outn = chosen[p];
+        if (!outn) {
+            if (pos_i < pos_n) {
+                outn = pos[pos_i++];
+            } else {
+                int hasdef = param_node[p] ? param_node[p]->has_default :
+                             (fi ? fi->has_default[p] : 0);
+                if (hasdef) {
+                    outn = create_node(NODE_PARAM, "", "");
+                    outn->is_expr = 1;
+                    outn->has_default = 1;
+                    if (param_node[p]) {
+                        snprintf(outn->value, MAX_STRING_LEN, "%s", param_node[p]->value);
+                        outn->var_type = param_node[p]->var_type;
+                    } else {
+                        char defexpr[MAX_STRING_LEN];
+                        VarType dvt = TYPE_STRING;
+                        eval_default_tokens(lexer, table, fi->def_start[p], fi->def_end[p],
+                                            defexpr, sizeof(defexpr), &dvt);
+                        snprintf(outn->value, MAX_STRING_LEN, "%s", defexpr);
+                        outn->var_type = dvt;
+                    }
+                } else {
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Missing required argument '%s' in call to '%s'",
+                        param_node[p] ? param_node[p]->for_var :
+                        (fi ? fi->param_names[p] : "?"), fname);
+                    error_state_add(parser_errors, line, col, msg);
+                    outn = create_node(NODE_PARAM, "", "\"\"");
+                    outn->var_type = TYPE_STRING;
+                    outn->is_expr = 1;
+                }
+            }
+        }
+        outn->next = NULL;
+        if (!eff) eff = efflast = outn;
+        else { efflast->next = outn; efflast = outn; }
+    }
+
+    /* Extra positional arguments become the variadic rest list. */
+    if (pos_i < pos_n) {
+        if (is_variadic) {
+            ASTNode *rest = NULL, *rlast = NULL;
+            for (; pos_i < pos_n; pos_i++) {
+                ASTNode *rn = pos[pos_i];
+                rn->next = NULL;
+                if (!rest) rest = rlast = rn;
+                else { rlast->next = rn; rlast = rn; }
+            }
+            *out_rest = rest;
+        } else {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Too many arguments in call to '%s'", fname);
+            error_state_add(parser_errors, line, col, msg);
+        }
+    }
+    return eff;
 }
 
 static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok_val, int line, int col, ASTNode *first_arg) {
@@ -6363,15 +6904,19 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     char fm[MAX_IDENTIFIER_LEN];
     int indirect = 0;
     int indirect_dynamic = 0;
+    int direct_overload = 0;
     int fr_pc = -1;
     char fr_cname[MAX_IDENTIFIER_LEN] = "";
+    char local_cname[MAX_IDENTIFIER_LEN] = "";
+    int has_local = find_local_func_binding(table, fname_tok_val, local_cname, sizeof(local_cname));
+    int scoped = is_function_name_scoped(table, fname_tok_val);
     /* indirect call through tracked function-reference variable? */
-    if (!is_function_name_scoped(table, fname_tok_val) &&
+    if (!scoped &&
         symbol_table_get_func_ref(table, fname_tok_val, fr_cname, sizeof(fr_cname), &fr_pc)) {
         indirect = 1;
         strncpy(fm, fr_cname, MAX_IDENTIFIER_LEN - 1);
         fm[MAX_IDENTIFIER_LEN - 1] = '\0';
-    } else if (!is_function_name_scoped(table, fname_tok_val)) {
+    } else if (!scoped) {
         /* dynamic indirect call through plain variable holding function name */
         char mangled[MAX_IDENTIFIER_LEN];
         mangle_name(fname_tok_val, mangled, sizeof(mangled));
@@ -6388,10 +6933,13 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
                 mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
             }
         }
+    } else if (has_local) {
+        strncpy(fm, local_cname, MAX_IDENTIFIER_LEN - 1);
+        fm[MAX_IDENTIFIER_LEN - 1] = '\0';
     } else {
-        if (!resolve_func_name(table, fname_tok_val, fm, MAX_IDENTIFIER_LEN)) {
-            mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
-        }
+        /* top-level call: overload is selected after the arguments are parsed */
+        direct_overload = 1;
+        mangle_name(fname_tok_val, fm, MAX_IDENTIFIER_LEN);
     }
     /* If calling a tracked function-ref that is actually a closure (has captures),
        we must dispatch through the variable's closure value (encoded). */
@@ -6411,9 +6959,11 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
             indirect_dynamic = 1;
         }
     }
-    strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
-    if (!indirect_dynamic && function_first_param_is_base(fm)) {
-        call->is_base_assign = 1;
+    if (!direct_overload) {
+        strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
+        if (!indirect_dynamic && function_first_param_is_base(fm)) {
+            call->is_base_assign = 1;
+        }
     }
     ASTNode *args = NULL, *alast = NULL;
     int has_named_arg = 0;
@@ -6528,120 +7078,51 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
     else { error_state_add(parser_errors, line, col, "Expected ')' after function arguments"); }
 
-    /* Fill in default values for parameters that were not supplied by the caller. */
+    /* Resolve the target and expand defaults / variadic arguments. */
     ASTNode *fn_def = NULL;
-    if (!indirect_dynamic) {
-        fn_def = find_function_ast_by_name(indirect ? fm : fname_tok_val);
-        if (!fn_def && indirect) fn_def = find_function_ast_by_name(fm);
-    }
-    if (fn_def && fn_def->params) {
-        int param_count = 0;
-        for (ASTNode *p = fn_def->params; p; p = p->next) param_count++;
-        ASTNode *eff = NULL;
-        ASTNode *efflast = NULL;
-        if (has_named_arg) {
-            /* Validate named args: unknown or duplicate parameter names. */
-            for (ASTNode *a = args; a; a = a->next) {
-                if (a->for_var[0] == '\0') continue;
-                int found = 0;
-                for (ASTNode *p = fn_def->params; p; p = p->next) {
-                    if (strcmp(a->for_var, p->for_var) == 0) { found = 1; break; }
-                }
-                if (!found) {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg), "Unknown argument '%s' in call to '%s'", a->for_var, fname_tok_val);
-                    error_state_add(parser_errors, line, col, msg);
-                }
-                int dup = 0;
-                for (ASTNode *b = args; b != a; b = b->next) {
-                    if (b->for_var[0] && strcmp(b->for_var, a->for_var) == 0) { dup = 1; break; }
-                }
-                if (dup) {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg), "Duplicate argument '%s' in call to '%s'", a->for_var, fname_tok_val);
-                    error_state_add(parser_errors, line, col, msg);
-                }
-            }
-            /* Build positional list in order (do not mutate original arg links). */
-            ASTNode *pos_list[64]; int pos_n = 0;
-            for (ASTNode *a = args; a; a = a->next) {
-                if (a->for_var[0] == '\0' && pos_n < 64) pos_list[pos_n++] = a;
-            }
-            ASTNode *out_list[64]; int out_n = 0;
-            int pos_i = 0;
-            for (ASTNode *p = fn_def->params; p; p = p->next) {
-                ASTNode *outn = NULL;
-                /* named arg for this param? */
-                for (ASTNode *a = args; a; a = a->next) {
-                    if (a->for_var[0] && strcmp(a->for_var, p->for_var) == 0) { outn = a; break; }
-                }
-                if (outn && pos_i < pos_n) {
-                    /* positional would also try to fill; check if too many positionals overall later */
-                }
-                if (!outn) {
-                    if (pos_i < pos_n) { outn = pos_list[pos_i++]; }
-                    else if (p->has_default) {
-                        outn = create_node(NODE_PARAM, "", p->value);
-                        outn->var_type = p->var_type;
-                        outn->is_expr = 1;
-                        outn->has_default = 1;
-                    }
-                }
-                if (outn) {
-                    if (out_n < 64) out_list[out_n++] = outn;
-                } else {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg), "Missing required argument '%s' in call to '%s'", p->for_var, fname_tok_val);
-                    error_state_add(parser_errors, line, col, msg);
-                    /* create placeholder to keep arity consistent in emitted code */
-                    outn = create_node(NODE_PARAM, "", "\"\"");
-                    outn->var_type = TYPE_STRING;
-                    outn->is_expr = 1;
-                    if (out_n < 64) out_list[out_n++] = outn;
-                }
-            }
-            if (pos_i < pos_n) {
+    FuncInfo *fi = NULL;
+    if (direct_overload) {
+        int group = 0;
+        fi = resolve_overload(fname_tok_val, args, line, col, &group);
+        int no_match = 0;
+        if (!fi) {
+            if (group > 1) {
+                int supplied = 0;
+                for (ASTNode *a = args; a; a = a->next) supplied++;
                 char msg[256];
-                snprintf(msg, sizeof(msg), "Too many arguments in call to '%s'", fname_tok_val);
+                snprintf(msg, sizeof(msg),
+                    "No matching overload for '%s' with %d argument(s)",
+                    fname_tok_val, supplied);
                 error_state_add(parser_errors, line, col, msg);
             }
-            for (int i = 0; i < out_n; i++) {
-                out_list[i]->next = NULL;
-                if (!eff) eff = efflast = out_list[i]; else { efflast->next = out_list[i]; efflast = out_list[i]; }
-            }
-        } else {
-            /* Count supplied positional args */
-            int supplied = 0;
-            for (ASTNode *a = args; a; a = a->next) supplied++;
-            if (supplied > param_count) {
-                char msg[256];
-                snprintf(msg, sizeof(msg), "Too many arguments in call to '%s'", fname_tok_val);
-                error_state_add(parser_errors, line, col, msg);
-            }
-            ASTNode *src = args;
-            for (ASTNode *p = fn_def->params; p; p = p->next) {
-                ASTNode *a = src;
-                if (a) src = a->next; else a = NULL;
-                ASTNode *outn = NULL;
-                if (a) {
-                    outn = a;
-                } else if (p->has_default) {
-                    outn = create_node(NODE_PARAM, "", p->value);
-                    outn->var_type = p->var_type;
-                    outn->is_expr = 1;
-                    outn->has_default = 1;
-                } else {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg), "Missing required argument '%s' in call to '%s'", p->for_var, fname_tok_val);
-                    error_state_add(parser_errors, line, col, msg);
-                    outn = create_node(NODE_PARAM, "", "\"\"");
-                    outn->var_type = TYPE_STRING;
-                    outn->is_expr = 1;
+            no_match = 1;
+            /* Pick the first candidate so codegen can continue after an error. */
+            for (int i = 0; i < g_func_count; i++) {
+                if (g_funcs[i].top_level && strcmp(g_funcs[i].src, fname_tok_val) == 0) {
+                    fi = &g_funcs[i];
+                    break;
                 }
-                outn->next = NULL;
-                if (!eff) eff = efflast = outn; else { efflast->next = outn; efflast = outn; }
             }
         }
+        if (fi) {
+            strncpy(fm, fi->name, MAX_IDENTIFIER_LEN - 1);
+            fm[MAX_IDENTIFIER_LEN - 1] = '\0';
+            fn_def = find_function_node_by_cname(fi->name);
+        }
+        strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
+        if (!indirect_dynamic && function_first_param_is_base(fm)) {
+            call->is_base_assign = 1;
+        }
+    } else if (!indirect_dynamic) {
+        fn_def = find_function_node_by_cname(fm);
+        if (!fn_def) fn_def = find_function_ast_by_name(fm);
+    }
+
+    if (!indirect_dynamic && (fi || fn_def)) {
+        ASTNode *rest = NULL;
+        ASTNode *eff = expand_call_args(lexer, table, fi, fn_def, args,
+                                        fname_tok_val, line, col, &rest);
+        call->rest_args = rest;
         call->args = eff;
     } else {
         call->args = args;
@@ -6937,7 +7418,21 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     char fname_short[MAX_IDENTIFIER_LEN];
     mangle_name(name.value, fname_short, MAX_IDENTIFIER_LEN);
     char cname[MAX_IDENTIFIER_LEN];
-    if (enclosing_cname && enclosing_cname[0]) {
+    int top_level_named = (!is_anon && !(enclosing_cname && enclosing_cname[0]));
+    FuncInfo *sig = NULL;
+    if (top_level_named) {
+        for (int i = 0; i < g_func_count; i++) {
+            if (g_funcs[i].line == name.line && g_funcs[i].col == name.col &&
+                strcmp(g_funcs[i].src, name.value) == 0) {
+                sig = &g_funcs[i];
+                break;
+            }
+        }
+    }
+    if (sig) {
+        strncpy(cname, sig->name, MAX_IDENTIFIER_LEN - 1);
+        cname[MAX_IDENTIFIER_LEN - 1] = 0;
+    } else if (enclosing_cname && enclosing_cname[0]) {
         snprintf(cname, sizeof(cname), "%s__%s", enclosing_cname, fname_short);
     } else {
         strncpy(cname, fname_short, MAX_IDENTIFIER_LEN - 1);
@@ -6957,13 +7452,21 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     }
     /* bind short name in enclosing scope (so calls inside it resolve) - named only */
     if (!is_anon && table) symbol_table_add_func(table, name.value, cname, 0);
-    /* register lifted C name globally for codegen/prototypes */
-    {
+    /* register lifted C name globally for codegen/prototypes (nested/anon only;
+       top-level signatures were already registered by prescan_functions). */
+    if (!sig) {
         if (g_func_count < MAX_FUNCS) {
-            strncpy(g_funcs[g_func_count].name, cname, MAX_IDENTIFIER_LEN - 1);
-            g_funcs[g_func_count].name[MAX_IDENTIFIER_LEN - 1] = 0;
-            g_funcs[g_func_count].param_count = 0;
-            g_func_count++;
+            FuncInfo *nf = &g_funcs[g_func_count++];
+            memset(nf, 0, sizeof(*nf));
+            strncpy(nf->name, cname, MAX_IDENTIFIER_LEN - 1);
+            nf->name[MAX_IDENTIFIER_LEN - 1] = 0;
+            strncpy(nf->src, name.value, MAX_IDENTIFIER_LEN - 1);
+            nf->src[MAX_IDENTIFIER_LEN - 1] = 0;
+            nf->param_count = 0;
+            nf->required_count = 0;
+            nf->return_type = TYPE_STRING;
+            nf->line = name.line;
+            nf->col = name.col;
         }
     }
 
@@ -6979,6 +7482,8 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     ASTNode *params = NULL;
     ASTNode *plast = NULL;
     int pcount = 0;
+    int variadic = 0;
+    char variadic_name[MAX_IDENTIFIER_LEN] = "";
     /* function body scope: parent is enclosing function scope
        (so sibling nested functions are visible to each other) */
     Scope *func_scope = (Scope *)malloc(sizeof(Scope));
@@ -6991,6 +7496,29 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     if (lexer_peek(lexer).type != TOKEN_RPAREN) {
         while (1) {
             Token p = lexer_next(lexer);
+            if (p.type == TOKEN_ELLIPSIS) {
+                Token rn = lexer_next(lexer);
+                if (!token_is_name(rn) || is_ltng_reserved(rn.value)) {
+                    error_state_add(parser_errors, rn.line, rn.col,
+                        "Expected a valid name for the variadic parameter");
+                    skip_to_newline(lexer);
+                    free(func_scope);
+                    return NULL;
+                }
+                variadic = 1;
+                strncpy(variadic_name, rn.value, MAX_IDENTIFIER_LEN - 1);
+                variadic_name[MAX_IDENTIFIER_LEN - 1] = '\0';
+                char rm[MAX_IDENTIFIER_LEN];
+                mangle_name(rn.value, rm, MAX_IDENTIFIER_LEN);
+                symbol_table_add_param(func_scope, rm, TYPE_ARRAY);
+                int zero_dim = 0;
+                symbol_table_set_array_dims(func_scope, rm, 1, &zero_dim);
+                if (lexer_peek(lexer).type == TOKEN_COMMA) {
+                    error_state_add(parser_errors, rn.line, rn.col,
+                        "Variadic parameter must be the last parameter");
+                }
+                break;
+            }
             if (!token_is_name(p)) {
                 error_state_add(parser_errors, p.line, p.col,
                     "Expected parameter name");
@@ -7028,9 +7556,31 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
             break;
         }
     }
-    /* update param count on the lifted registration and local binding */
-    for (int i = 0; i < g_func_count; i++) {
-        if (strcmp(g_funcs[i].name, cname) == 0) { g_funcs[i].param_count = pcount; break; }
+    /* update metadata on the signature/registration and local binding */
+    {
+        FuncInfo *fi = sig;
+        if (!fi) {
+            for (int i = 0; i < g_func_count; i++) {
+                if (strcmp(g_funcs[i].name, cname) == 0) { fi = &g_funcs[i]; break; }
+            }
+        }
+        if (fi) {
+            fi->param_count = pcount;
+            int req = 0;
+            int pi = 0;
+            for (ASTNode *pp = params; pp; pp = pp->next) {
+                if (!pp->has_default) req++;
+                if (pi < MAX_FUNC_PARAMS) {
+                    strncpy(fi->param_names[pi], pp->for_var, MAX_IDENTIFIER_LEN - 1);
+                    fi->param_names[pi][MAX_IDENTIFIER_LEN - 1] = '\0';
+                    fi->has_default[pi] = pp->has_default;
+                    pi++;
+                }
+            }
+            fi->required_count = req;
+            fi->is_variadic = variadic;
+            fi->defined = 1;
+        }
     }
     if (!is_anon && table) symbol_table_add_func(table, name.value, cname, pcount);
 
@@ -7041,6 +7591,26 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
         skip_to_newline(lexer);
         free(func_scope);
         return NULL;
+    }
+
+    /* Optional return type annotation: function f(...) -> int { ... } */
+    int has_return_type = 0;
+    VarType return_type = TYPE_STRING;
+    while (lexer_peek(lexer).type == TOKEN_NEWLINE) lexer_next(lexer);
+    if (lexer_peek(lexer).type == TOKEN_ARROW) {
+        Token arrow = lexer_next(lexer);
+        Token rt = lexer_next(lexer);
+        if (rt.type == TOKEN_IDENT && is_return_type_keyword(rt.value)) {
+            has_return_type = 1;
+            return_type = type_keyword_to_vartype(rt.value);
+        } else {
+            error_state_add(parser_errors, arrow.line, arrow.col,
+                "Expected a return type after '->'");
+            skip_to_newline(lexer);
+            free(func_scope);
+            return NULL;
+        }
+        while (lexer_peek(lexer).type == TOKEN_NEWLINE) lexer_next(lexer);
     }
 
     Token lb = lexer_next(lexer);
@@ -7057,6 +7627,17 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     if (!is_anon) strncpy(fn->for_var, name.value, MAX_IDENTIFIER_LEN - 1);
     else fn->for_var[0] = '\0';
     fn->params = params;
+    fn->has_return_type = has_return_type;
+    fn->return_type = return_type;
+    fn->is_variadic = variadic;
+    if (variadic) {
+        strncpy(fn->variadic_name, variadic_name, MAX_IDENTIFIER_LEN - 1);
+        fn->variadic_name[MAX_IDENTIFIER_LEN - 1] = '\0';
+    }
+    if (sig) {
+        sig->has_return_type = has_return_type;
+        sig->return_type = return_type;
+    }
     char saved_enc[MAX_IDENTIFIER_LEN];
     strncpy(saved_enc, g_enclosing_cname, MAX_IDENTIFIER_LEN - 1);
     saved_enc[MAX_IDENTIFIER_LEN - 1] = 0;
@@ -7078,6 +7659,8 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
             if (p->for_var[0]) add_capture_name(locals, &locals_n, 64, p->for_var);
             if (p->name[0]) add_capture_name(locals, &locals_n, 64, p->name);
         }
+        if (fn->is_variadic && fn->variadic_name[0])
+            add_capture_name(locals, &locals_n, 64, fn->variadic_name);
         collect_declared_locals(fn->body, locals, &locals_n, 64, 0);
         collect_used_idents(fn->body, used, &used_n, 64, 0);
         for (int i = 0; i < used_n && fn->capture_count < 8; i++) {
@@ -7559,6 +8142,149 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
     }
 }
 
+/* Skip a default-value expression token range until ',' or ')' at depth 0.
+   Returns the index of the separator token (or EOF). */
+static int skip_default_expr(Lexer *lexer, int start) {
+    int i = start, paren = 0, brack = 0, brace = 0;
+    while (i < lexer->count) {
+        TokenType tt = lexer->tokens[i].type;
+        if (tt == TOKEN_NEWLINE) { i++; continue; }
+        if (tt == TOKEN_LPAREN) paren++;
+        else if (tt == TOKEN_RPAREN) {
+            if (paren == 0 && brack == 0 && brace == 0) return i;
+            if (paren > 0) paren--;
+        } else if (tt == TOKEN_LBRACKET) brack++;
+        else if (tt == TOKEN_RBRACKET) { if (brack > 0) brack--; }
+        else if (tt == TOKEN_LBRACE) brace++;
+        else if (tt == TOKEN_RBRACE) { if (brace > 0) brace--; }
+        else if (tt == TOKEN_COMMA && paren == 0 && brack == 0 && brace == 0) return i;
+        else if (tt == TOKEN_EOF) return i;
+        i++;
+    }
+    return i;
+}
+
+/* Scan the token stream for top-level function signatures. This makes forward
+   references aware of defaults, variadic parameters, return annotations, and
+   overload arities before any function body is parsed. */
+static void prescan_functions(Lexer *lexer) {
+    int depth = 0;
+    for (int i = 0; i < lexer->count; i++) {
+        TokenType tt = lexer->tokens[i].type;
+        if (tt == TOKEN_LBRACE) { depth++; continue; }
+        if (tt == TOKEN_RBRACE) { if (depth > 0) depth--; continue; }
+        if (tt != TOKEN_FUNCTION || depth != 0) continue;
+        if (i + 2 >= lexer->count) continue;
+        Token nm = lexer->tokens[i + 1];
+        if (nm.type != TOKEN_IDENT) continue;
+        if (lexer->tokens[i + 2].type != TOKEN_LPAREN) continue;
+        if (g_func_count >= MAX_FUNCS) break;
+
+        FuncInfo *fi = &g_funcs[g_func_count];
+        memset(fi, 0, sizeof(*fi));
+        fi->top_level = 1;
+        strncpy(fi->src, nm.value, MAX_IDENTIFIER_LEN - 1);
+        fi->src[MAX_IDENTIFIER_LEN - 1] = '\0';
+        fi->line = nm.line;
+        fi->col = nm.col;
+        fi->return_type = TYPE_STRING;
+
+        int k = i + 3;
+        int pc = 0, req = 0, variadic = 0;
+        while (k < lexer->count && lexer->tokens[k].type != TOKEN_RPAREN) {
+            if (lexer->tokens[k].type == TOKEN_NEWLINE) { k++; continue; }
+            if (lexer->tokens[k].type == TOKEN_ELLIPSIS) {
+                variadic = 1;
+                k++;
+                if (k < lexer->count && lexer->tokens[k].type == TOKEN_IDENT) k++;
+                while (k < lexer->count && lexer->tokens[k].type == TOKEN_NEWLINE) k++;
+                break;
+            }
+            if (lexer->tokens[k].type != TOKEN_IDENT) break;
+            if (pc < MAX_FUNC_PARAMS) {
+                int hasdef = 0, ds = -1, de = -1;
+                strncpy(fi->param_names[pc], lexer->tokens[k].value, MAX_IDENTIFIER_LEN - 1);
+                fi->param_names[pc][MAX_IDENTIFIER_LEN - 1] = '\0';
+                k++;
+                if (k < lexer->count && lexer->tokens[k].type == TOKEN_EQUALS) {
+                    hasdef = 1;
+                    k++;
+                    ds = k;
+                    de = skip_default_expr(lexer, k);
+                    k = de;
+                }
+                fi->has_default[pc] = hasdef;
+                fi->def_start[pc] = ds;
+                fi->def_end[pc] = de;
+                if (!hasdef) req++;
+            } else {
+                /* Too many parameters to track; keep scanning to find the close. */
+                while (k < lexer->count && lexer->tokens[k].type != TOKEN_RPAREN &&
+                       lexer->tokens[k].type != TOKEN_COMMA &&
+                       lexer->tokens[k].type != TOKEN_NEWLINE) k++;
+            }
+            pc++;
+            while (k < lexer->count && lexer->tokens[k].type == TOKEN_NEWLINE) k++;
+            if (k < lexer->count && lexer->tokens[k].type == TOKEN_COMMA) { k++; continue; }
+            break;
+        }
+        fi->param_count = pc;
+        fi->required_count = req;
+        fi->is_variadic = variadic;
+
+        while (k < lexer->count && lexer->tokens[k].type == TOKEN_NEWLINE) k++;
+        if (k < lexer->count && lexer->tokens[k].type == TOKEN_RPAREN) k++;
+        while (k < lexer->count && lexer->tokens[k].type == TOKEN_NEWLINE) k++;
+        if (k < lexer->count && lexer->tokens[k].type == TOKEN_ARROW) {
+            k++;
+            while (k < lexer->count && lexer->tokens[k].type == TOKEN_NEWLINE) k++;
+            if (k < lexer->count && lexer->tokens[k].type == TOKEN_IDENT &&
+                is_return_type_keyword(lexer->tokens[k].value)) {
+                fi->has_return_type = 1;
+                fi->return_type = type_keyword_to_vartype(lexer->tokens[k].value);
+                k++;
+            }
+        }
+        g_func_count++;
+        i = k - 1;
+    }
+
+    /* Assign unique emitted C names. Non-overloaded functions keep their
+       historical mangled name so existing IR/C output is unchanged. */
+    for (int a = 0; a < g_func_count; a++) {
+        int group = 0, idx = 0;
+        for (int b = 0; b < g_func_count; b++) {
+            if (strcmp(g_funcs[a].src, g_funcs[b].src) != 0) continue;
+            group++;
+            if (b < a) idx++;
+        }
+        char mangled[MAX_IDENTIFIER_LEN];
+        mangle_name(g_funcs[a].src, mangled, sizeof(mangled));
+        if (group <= 1) {
+            strncpy(g_funcs[a].name, mangled, MAX_IDENTIFIER_LEN - 1);
+            g_funcs[a].name[MAX_IDENTIFIER_LEN - 1] = '\0';
+        } else {
+            snprintf(g_funcs[a].name, MAX_IDENTIFIER_LEN, "%s__ov%d", mangled, idx);
+        }
+    }
+
+    /* Reject duplicate overload signatures (same fixed arity and variadic-ness). */
+    for (int a = 0; a < g_func_count; a++) {
+        for (int b = 0; b < a; b++) {
+            if (strcmp(g_funcs[a].src, g_funcs[b].src) != 0) continue;
+            if (g_funcs[a].param_count == g_funcs[b].param_count &&
+                g_funcs[a].required_count == g_funcs[b].required_count &&
+                g_funcs[a].is_variadic == g_funcs[b].is_variadic) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                    "Function '%s' with the same parameter list is already defined",
+                    g_funcs[a].src);
+                error_state_add(parser_errors, g_funcs[a].line, g_funcs[a].col, msg);
+            }
+        }
+    }
+}
+
 Program *parse(Lexer *lexer, ErrorState *errors) {
     parser_errors = errors;
     g_list = NULL;
@@ -7567,7 +8293,6 @@ Program *parse(Lexer *lexer, ErrorState *errors) {
     g_in_function = 0;
     g_in_catch = 0;
     g_enclosing_cname[0] = 0;
-
     Program *program = (Program *)malloc(sizeof(Program));
     if (!program) {
         fprintf(stderr, "Error: Memory allocation failed\n");
@@ -7579,23 +8304,9 @@ Program *parse(Lexer *lexer, ErrorState *errors) {
     scope_init(&program->symbol_table, NULL, 0);
     g_program_ref = program;
 
-    /* Pre-scan to register top-level function names for forward references */
-    {
-        int saved = lexer->current;
-        int depth = 0;
-        for (int i = 0; i < lexer->count; i++) {
-            TokenType tt = lexer->tokens[i].type;
-            if (tt == TOKEN_LBRACE) depth++;
-            else if (tt == TOKEN_RBRACE) { if (depth > 0) depth--; }
-            else if (tt == TOKEN_FUNCTION && depth == 0 && i + 1 < lexer->count &&
-                     lexer->tokens[i+1].type == TOKEN_IDENT) {
-                if (!is_function_name(lexer->tokens[i+1].value)) {
-                    register_function(lexer->tokens[i+1].value, 0);
-                }
-            }
-        }
-        lexer->current = saved;
-    }
+    /* Pre-scan top-level function signatures for forward references,
+       defaults, variadic parameters, return annotations, and overloading. */
+    prescan_functions(lexer);
 
     while (lexer->current < lexer->count) {
         Token token = lexer_peek(lexer);

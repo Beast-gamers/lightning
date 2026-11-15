@@ -80,7 +80,9 @@ typedef enum {
     TOKEN_LBRACE,
     TOKEN_RBRACE,
     TOKEN_LBRACKET,
-    TOKEN_RBRACKET
+    TOKEN_RBRACKET,
+    TOKEN_ARROW,
+    TOKEN_ELLIPSIS
 } TokenType;
 
 typedef struct {
@@ -110,7 +112,8 @@ typedef enum {
     TYPE_BOOL,
     TYPE_OBJECT,
     TYPE_NULL,
-    TYPE_ARRAY
+    TYPE_ARRAY,
+    TYPE_VOID
 } VarType;
 
 typedef enum {
@@ -163,6 +166,11 @@ typedef struct ASTNode {
     int has_else;       /* NODE_TRY: else (success) clause present */
     int has_finally;    /* NODE_TRY: finally clause present */
     int has_default;    /* NODE_PARAM: default value expression supplied */
+    int has_return_type;/* NODE_FUNCTION: explicit '-> type' annotation present */
+    VarType return_type;/* NODE_FUNCTION: annotated return type */
+    int is_variadic;    /* NODE_FUNCTION: has a trailing '...rest' parameter */
+    int is_variadic_rest; /* NODE_PARAM: this param is the variadic rest collector */
+    char variadic_name[MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: source name of ...rest */
     int capture_count;  /* NODE_FUNCTION: number of captured variables from enclosing scope */
     char captures[8][MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: cnames of captured variables */
     char for_var[MAX_IDENTIFIER_LEN];
@@ -184,6 +192,7 @@ typedef struct ASTNode {
     struct ASTNode *cases;    /* NODE_TRY: finally body */
     struct ASTNode *params;  /* function parameters (NODE_PARAM/name chain) */
     struct ASTNode *args;    /* call arguments (expression nodes chain) */
+    struct ASTNode *rest_args; /* NODE_CALL: variadic extra arguments */
     struct ASTNode *next;
     /* Array support */
     int array_dim_count;     /* number of dimensions (0 if not an array) */

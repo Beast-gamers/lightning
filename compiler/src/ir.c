@@ -50,6 +50,7 @@ static const char *var_type_name_ir(VarType t) {
         case TYPE_OBJECT: return "object";
         case TYPE_NULL: return "null";
         case TYPE_ARRAY: return "array";
+        case TYPE_VOID: return "void";
         default: return "unknown";
     }
 }

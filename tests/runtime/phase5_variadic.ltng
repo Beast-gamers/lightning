@@ -1,0 +1,18 @@
+# Variadic arguments: ...rest collects extra positional arguments
+function count(...nums) -> int {
+    return nums.length
+}
+
+function join(...parts) -> string {
+    let out = ""
+    for (i from 1 to parts.length) {
+        set out = out + parts[i]
+    }
+    return out
+}
+
+write(count(1, 2, 3, 4))
+write(count())
+write(join("x", "y", "z"))
+write(join("a", join("b", "c"), "d"))
+write(join("x", "y") + "!")

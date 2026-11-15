@@ -1,0 +1,3 @@
+function bad(...rest, x) -> int {
+    return 1
+}
