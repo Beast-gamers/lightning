@@ -53,6 +53,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Corrected declaration/reference handling for block-scoped and shadowed variables in key parse/codegen paths.
 - Corrected array `slice(start, end)` runtime semantics to use 1-based start and 1-based exclusive end (with negative-index support), aligning behavior with documented examples.
 - Improved sole-call RHS type inference and numeric codegen for inferred int/float function results (including calls with expression arguments), fixing incorrect string typing/invalid generated C in affected cases.
+- Fixed chained immediate-call typing for sole `set` assignments to numeric-locked variables and added bounds/complexity guards for deep chained-call expression building (with compile-time rejection beyond internal limits).
 - Fixed indirect/dynamic function-call emission in numeric-expression contexts and in-scope named function self-reference resolution for first-class function values.
 - Addressed several compiler-source warnings in feasible paths (unused functions/parameters/variables, missing switch/default handling in key cases, label/declaration formatting issue, embedded-NUL format issue, const-correctness in helper path, and increased output/path buffer sizing in `main.c`); format-truncation warnings remain in complex expression/codegen formatting paths.
 
