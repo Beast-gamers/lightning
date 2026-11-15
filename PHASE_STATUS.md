@@ -232,14 +232,14 @@
 - **Closures / shared mutable capture:** anonymous/nested functions capture enclosing-scope variables (parameters and locals) with **shared, mutable** semantics via heap-allocated storage; mutations are visible across the closure and creating scope, and captured state remains valid when closures escape. Tests: `tests/runtime/phase5_closures.ltng`, `tests/runtime/phase5_closure_mutable.ltng`.
 - **Named function references as first-class values:** existing named functions can be referenced as values (e.g. `let f = add1`), assigned, passed, returned, and invoked through variables/parameters. Includes in-scope self-references (e.g. `let fn = fact` inside `fact`). Tests: `tests/runtime/phase5_named_func_refs.ltng`, `tests/runtime/phase5_nfr_self_ref.ltng`.
 - **Function values / dynamic dispatch:** function values (closures and named function references) can be called through variables and parameters via runtime dispatch. Tests: `tests/runtime/phase5_indirect_call_in_expr.ltng`.
-- **Immediate chained call syntax (initial):** chained immediate invocation of call results is supported in sole RHS call contexts (`let`/`const`/`set`/`return`), `write(...)` sole-call arguments, and standalone call statements (e.g. `maker()(5)`, `a()(2)(3)`).
+- **Immediate chained call syntax:** chained immediate invocation of call results is supported in general expression contexts, including sole RHS call contexts (`let`/`const`/`set`/`return`), conditions/comparisons, arithmetic expressions, `write(...)` arguments, and standalone call statements (e.g. `maker()(5)`, `a()(2)(3)`, `if (maker()(5) == 6)`, `write(1 + maker()(5))`).
 - **Call-result typing/codegen fixes:** sole-call RHS type inference and numeric codegen now correctly handle inferred numeric function results (including arguments containing expressions), avoiding prior string-typed/invalid-C emission in affected cases.
 
 ### Edge-case fixes (this pass)
 - Fixed indirect/dynamic function-call emission in numeric-expression contexts (correct `__ltng_call_indirect` handling for callable-identified function values), preventing generated C/internal compile failures when function values are called inside expressions (e.g. `sum + fn(10)`).
 - Fixed named function reference resolution for in-scope functions not yet linked in the AST (e.g. taking a self-reference inside the function body).
 - Corrected array `slice(start, end)` runtime semantics to 1-based start with 1-based exclusive end (including negative-index handling), matching documented behavior and existing examples.
-- Improved sole-call assignment/initialization typing and codegen for numeric call results and chained immediate calls.
+- Improved sole-call assignment/initialization typing and codegen for numeric call results and chained immediate calls in general expression contexts.
 
 ### Test results
 - Full suite: **PASS=142 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`, native compile+execute validation), including array slice coverage, mutable/shared capture, named function references/self-ref, indirect-call-in-expression, chained call forms, and exception trace/buffer regression coverage.

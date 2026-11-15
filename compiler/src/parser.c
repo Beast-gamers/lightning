@@ -801,6 +801,7 @@ static void transform_string_multiply(char *expr, int size) {
 
 static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok_val, int line, int col, ASTNode *first_arg);
 static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size);
+static void append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size);
 static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok);
 
 
@@ -1348,28 +1349,10 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         pos += snprintf(out + pos, out_size - pos, "0");
                         break;
                     }
-                    if (strcmp(call->name, "__ltng_indirect") == 0) {
-                        int argc = 0;
-                        for (ASTNode *a = call->args; a; a = a->next) argc++;
-                        pos += snprintf(out + pos, out_size - pos, "atof(__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d",
-                            call->for_var, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1, argc);
-                    } else {
-                        pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
-                    }
-                    for (ASTNode *a = call->args; a; a = a->next) {
-                        if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-                            pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                        } else if (a->is_variable && a->value[0] != '\0') {
-                            pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                        } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                            pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                        } else if (a->value[0] == '\0') {
-                            pos += snprintf(out + pos, out_size - pos, ", \"\"");
-                        } else {
-                            pos += snprintf(out + pos, out_size - pos, ", _ltng_ad((double)(%s))", a->value);
-                        }
-                    }
-                    pos += snprintf(out + pos, out_size - pos, "))");
+                    char cexpr[MAX_STRING_LEN];
+                    build_call_cexpr(call, cexpr, sizeof(cexpr));
+                    append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
+                    pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
                     if (!type_locked) result_type = TYPE_INT;
                 } else if (lexer_peek(lexer).type == TOKEN_LPAREN && strcmp(tok.value, "typeof") != 0) {
                     char mangled[MAX_IDENTIFIER_LEN];
@@ -1385,43 +1368,10 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "0");
                             break;
                         }
-                        if (strcmp(call->name, "__ltng_indirect") == 0) {
-                            /* emit indirect call: __ltng_call_indirect(target, _ret, cl, cc, argc, args...) */
-                            int argc = 0;
-                            for (ASTNode *a = call->args; a; a = a->next) argc++;
-                            pos += snprintf(out + pos, out_size - pos, "__ltng_call_indirect(%s, _ltng_retbuf(), %d, %d, %d",
-                                call->for_var, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1, argc);
-                            for (ASTNode *a = call->args; a; a = a->next) {
-                                if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                                } else if (a->is_variable && a->value[0] != '\0') {
-                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                                } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                                } else if (a->value[0] == '\0') {
-                                    pos += snprintf(out + pos, out_size - pos, ", \"\"");
-                                } else {
-                                    pos += snprintf(out + pos, out_size - pos, ", _ltng_ad((double)(%s))", a->value);
-                                }
-                            }
-                            pos += snprintf(out + pos, out_size - pos, ")");
-                        } else {
-                            pos += snprintf(out + pos, out_size - pos, "%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
-                            for (ASTNode *a = call->args; a; a = a->next) {
-                                if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                                } else if (a->is_variable && a->value[0] != '\0') {
-                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                                } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                                    pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                                } else if (a->value[0] == '\0') {
-                                    pos += snprintf(out + pos, out_size - pos, ", \"\"");
-                                } else {
-                                    pos += snprintf(out + pos, out_size - pos, ", _ltng_ad((double)(%s))", a->value);
-                                }
-                            }
-                            pos += snprintf(out + pos, out_size - pos, ")");
-                        }
+                        char cexpr[MAX_STRING_LEN];
+                        build_call_cexpr(call, cexpr, sizeof(cexpr));
+                        append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
+                        pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
                         if (!type_locked) result_type = TYPE_STRING;
                     } else {
                         goto collect_ident_var;
@@ -1470,23 +1420,10 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "0");
                             break;
                         }
-                        pos += snprintf(out + pos, out_size - pos, "atof(%s(_ltng_retbuf(), %d, %d", call->name, call->line > 0 ? call->line : 1, call->col > 0 ? call->col : 1);
-                        for (ASTNode *a = call->args; a; a = a->next) {
-                            if (a->var_type == TYPE_STRING && a->value[0] == '"') {
-                                pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                            } else if (a->is_variable && a->value[0] != '\0') {
-                                pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                            } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                                pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                            } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
-                                pos += snprintf(out + pos, out_size - pos, ", %s", a->value);
-                            } else if (a->value[0] == '\0') {
-                                pos += snprintf(out + pos, out_size - pos, ", \"\"");
-                            } else {
-                                pos += snprintf(out + pos, out_size - pos, ", _ltng_ad((double)(%s))", a->value);
-                            }
-                        }
-                        pos += snprintf(out + pos, out_size - pos, "))");
+                        char cexpr[MAX_STRING_LEN];
+                        build_call_cexpr(call, cexpr, sizeof(cexpr));
+                        append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
+                        pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
                         if (!type_locked) result_type = TYPE_INT;
                     } else if (mname.type == TOKEN_IDENT || token_is_name(mname)) {
                         /* property access: obj.field */
@@ -3418,6 +3355,55 @@ static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
     }
     cpos += snprintf(cexpr + cpos, cexpr_size - cpos, ")");
     cexpr[cexpr_size - 1] = '\0';
+}
+
+static void append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size) {
+    while (lexer_peek(lexer).type == TOKEN_LPAREN) {
+        int cline = lexer_peek(lexer).line, ccol = lexer_peek(lexer).col;
+        lexer_next(lexer); /* consume ( */
+        ASTNode *args = NULL, *last = NULL;
+        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+            while (1) {
+                char arg_expr[MAX_STRING_LEN];
+                VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 1, NULL, NULL, NULL, NULL);
+                ASTNode *an = create_node(NODE_PARAM, "", arg_expr);
+                an->var_type = at; an->is_expr = 1;
+                an->v_sl = g_expr_sl; an->v_sc = g_expr_sc; an->v_el = g_expr_el; an->v_ec = g_expr_ec;
+                if (!args) args = last = an; else { last->next = an; last = an; }
+                Token sep = lexer_peek(lexer);
+                if (sep.type == TOKEN_COMMA) { lexer_next(lexer); continue; }
+                break;
+            }
+        }
+        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+            error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col,
+                "Expected ')' in chained call");
+            return;
+        }
+        lexer_next(lexer); /* consume ) */
+        int argc = 0; for (ASTNode *a = args; a; a = a->next) argc++;
+        char next_expr[MAX_STRING_LEN]; int p = 0;
+        static int _chain_id = 0; int cid = _chain_id++;
+        p += snprintf(next_expr + p, sizeof(next_expr) - p,
+            "({ char __ct%d[256]; snprintf(__ct%d,256,\"%%s\",%s); __ltng_call_indirect(__ct%d,_ltng_retbuf(),%d,%d,%d",
+            cid, cid, cexpr, cid, cline > 0 ? cline : 1, ccol > 0 ? ccol : 1, argc);
+        for (ASTNode *a = args; a; a = a->next) {
+            if (a->var_type == TYPE_STRING && a->value[0] == '"')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",%s", a->value);
+            else if (a->is_variable && a->value[0] != '\0')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",%s", a->value);
+            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",%s", a->value);
+            else if (a->value[0] == '\0')
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",\"\"");
+            else
+                p += snprintf(next_expr + p, sizeof(next_expr) - p, ",_ltng_ad((double)(%s))", a->value);
+        }
+        p += snprintf(next_expr + p, sizeof(next_expr) - p, "); })");
+        next_expr[sizeof(next_expr) - 1] = '\0';
+        strncpy(cexpr, next_expr, cexpr_size - 1);
+        cexpr[cexpr_size - 1] = '\0';
+    }
 }
 
 static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok) {
