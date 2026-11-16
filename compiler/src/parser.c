@@ -1537,6 +1537,308 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
 }
 
 
+
+static int expr_is_string_value(const char *expr) {
+    const char *p = expr;
+    while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    if (*p == '\0') return 0;
+    /* Unwrap simple outer parentheses around the whole expression */
+    const char *pend = p + strlen(p);
+    while (*p == '(') {
+        if (p[1] == '{') break; /* statement expression */
+        int d = 0, inq = 0; char qc = 0; const char *endp = NULL;
+        for (const char *q = p; q < pend; q++) {
+            if (inq) { if (*q == '\\' && q[1] && q+1 < pend) { q++; continue; } if (*q == qc) inq = 0; continue; }
+            if (*q == '"' || *q == '\'') { inq = 1; qc = *q; continue; }
+            if (*q == '(') d++;
+            else if (*q == ')') { d--; if (d == 0) { endp = q; break; } }
+        }
+        if (!endp) break;
+        const char *after = endp + 1;
+        while (after < pend && (*after == ' ' || *after == '\t' || *after == '\n')) after++;
+        if (after == pend) {
+            p++;
+            pend = endp;
+            while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+            while (pend > p && (pend[-1] == ' ' || pend[-1] == '\t' || pend[-1] == '\n')) pend--;
+            continue;
+        }
+        break;
+    }
+    char inner_buf[4096];
+    size_t ilen = (size_t)(pend - p);
+    if (ilen >= sizeof(inner_buf)) ilen = sizeof(inner_buf) - 1;
+    memcpy(inner_buf, p, ilen);
+    inner_buf[ilen] = '\0';
+    p = inner_buf;
+
+    /* String literal */
+    if (*p == '"') return 1;
+    /* Numeric literal */
+    {
+        const char *q = p;
+        if (*q == '-' || *q == '+') q++;
+        int has_digit = 0, all_num = 1;
+        while (*q) {
+            if (isdigit((unsigned char)*q)) { has_digit = 1; q++; }
+            else if (*q == '.' && has_digit) { q++; }
+            else { all_num = 0; break; }
+        }
+        if (all_num && has_digit) return 0;
+    }
+    /* Known numeric conversion wrappers / casts => numeric */
+    if (strncmp(p, "atoi(", 5) == 0 || strncmp(p, "atoll(", 6) == 0 || strncmp(p, "atof(", 5) == 0)
+        return 0;
+    if (strncmp(p, "(long long)", 11) == 0 || strncmp(p, "(int)", 5) == 0 ||
+        strncmp(p, "(double)", 8) == 0 || strncmp(p, "(float)", 7) == 0)
+        return 0;
+    /* Bool numeric forms */
+    if (strstr(p, "[0]=='t'") != NULL || strstr(p, "[0]=='T'") != NULL) return 0;
+    /* Known string-producing helpers/exprs (not generic buffers like _ltng_retbuf/_ltng_ad) */
+    if (strstr(p, "_ltng_add_sn(") || strstr(p, "_ltng_repeat(") ||
+        strstr(p, "_ltng_as(") || strstr(p, "_ltng_concat(") ||
+        strstr(p, "_ltng_oret_"))
+        return 1;
+    /* Statement expression that builds strings */
+    if (strncmp(p, "({", 2) == 0) {
+        if (strstr(p, "_ltng_add_sn") || strstr(p, "_ltng_repeat") ||
+            strstr(p, "_ltng_as(") || strstr(p, "_ltng_concat") ||
+            strstr(p, "_ltng_oret_"))
+            return 1;
+        if (strstr(p, "char _ltc") || strstr(p, "char _ltm"))
+            return 1;
+        return 0;
+    }
+    /* Bare identifier => char buffer (string var emitted raw, numeric as atoi/atoll/atof) */
+    {
+        const char *q = p;
+        if (*q == '_' || isalpha((unsigned char)*q)) {
+            while (*q && (isalnum((unsigned char)*q) || *q == '_')) q++;
+            while (*q == ' ' || *q == '\t') q++;
+            if (*q == '\0') return 1;
+        }
+    }
+    /* Contains C string literals => string expression */
+    if (strchr(p, '"') != NULL) return 1;
+    /* Numeric conversion calls anywhere => numeric expression */
+    if (strstr(p, "atof(") || strstr(p, "atoi(") || strstr(p, "atoll(")) return 0;
+    /* Other specific string helpers */
+    if (strstr(p, "_ltng_add_sn") || strstr(p, "_ltng_repeat") || strstr(p, "_ltng_oret_"))
+        return 1;
+    /* No string indicators: detect string concat/repeat of bare identifiers */
+    {
+        int has_op = 0, has_ident = 0;
+        for (const char *q = p; *q; q++) {
+            unsigned char c = (unsigned char)*q;
+            if (c=='+' || c=='*') has_op = 1;
+            if (isalpha(c) || c == '_') has_ident = 1;
+        }
+        if (has_op && has_ident) return 1;
+    }
+    /* Pure numeric expression */
+    {
+        int all_num_expr = 1, has_num_char = 0;
+        for (const char *q = p; *q; q++) {
+            unsigned char c = (unsigned char)*q;
+            if (isdigit(c) || c=='+' || c=='-' || c=='*' || c=='/' || c=='%' ||
+                c=='(' || c==')' || c==' ' || c=='\t' || c=='.') { has_num_char = 1; }
+            else { all_num_expr = 0; break; }
+        }
+        if (all_num_expr && has_num_char) return 0;
+    }
+    /* Generic function calls / unknown => not treated as string by default */
+    return 0;
+}
+static void trim_c_expr(char *s) {
+    char *p = s;
+    while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    if (p != s) memmove(s, p, strlen(p) + 1);
+    size_t len = strlen(s);
+    while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n')) { s[--len] = '\0'; }
+}
+
+/* Normalize a value subexpression that may be a string concat/repeat. */
+static void normalize_value_expr(char *buf, int buf_size, int array_access_used) {
+    trim_c_expr(buf);
+    if (!buf[0]) return;
+    /* Check for + or * at any depth (outside C string literals) */
+    int has_plus = 0, has_star = 0, in = 0; char qc = 0;
+    for (const char *p = buf; *p; p++) {
+        if (in) { if (*p == '\\' && p[1]) { p++; continue; } if (*p == qc) in = 0; continue; }
+        if (*p == '"' || *p == '\'') { in = 1; qc = *p; continue; }
+        if (*p == '+') has_plus = 1;
+        if (*p == '*') has_star = 1;
+    }
+    if (has_plus || has_star) {
+        /* Normalize if it's a string expression, or if it has string indicators */
+        if (expr_is_string_value(buf) ||
+            strchr(buf, '"') || strstr(buf, "_ltng_add_sn") || strstr(buf, "_ltng_repeat") ||
+            strstr(buf, "_ltng_as(") || strstr(buf, "_ltng_ad(")) {
+            normalize_string_expr(buf, buf_size, array_access_used);
+        }
+    }
+}
+
+static int split_top_level(const char *s, const char *op, char *left, int lsz, char *right, int rsz) {
+    /* Find rightmost? or leftmost? For comparisons (non-assoc chain) and for &&/|| (left-assoc)
+       we want leftmost split to preserve left-to-right: a&&b&&c => (a&&b)&&c - but easier to split
+       leftmost for correct grouping? C is left-assoc for &&/||, so splitting at leftmost top-level
+       gives left = "a", right = "b&&c" if we recurse on left? No. Better split at rightmost for
+       left-associativity: "a&&b&&c" split on && rightmost => left="a&&b", right="c"? actually
+       to produce (a&&b)&&c we can process left-to-right; splitting rightmost gives leftmost group.
+       Simpler: find leftmost occurrence and recurse on right side when rebuilding - not quite.
+       For correctness with same-precedence ops, split on rightmost: left = everything before last op,
+       right = after. But we need to handle multi-char ops. */
+    int oplen = (int)strlen(op);
+    int found = -1;
+    int d = 0, in = 0; char qc = 0;
+    for (int i = 0; s[i]; i++) {
+        char c = s[i];
+        if (in) { if (c == '\\' && s[i+1]) { i++; continue; } if (c == qc) in = 0; continue; }
+        if (c == '"' || c == '\'') { in = 1; qc = c; continue; }
+        if (c == '(' || c == '{' || c == '[') { d++; continue; }
+        if (c == ')' || c == '}' || c == ']') { if (d > 0) d--; continue; }
+        if (d == 0 && strncmp(s + i, op, oplen) == 0) {
+            /* Avoid matching < in <=, > in >=, = in ==, ! in !=, & in &&, | in || */
+            if (oplen == 1) {
+                if (op[0] == '<' && s[i+1] == '=') continue;
+                if (op[0] == '>' && s[i+1] == '=') continue;
+                if (op[0] == '!' && s[i+1] == '=') continue;
+                if (op[0] == '=' && s[i+1] == '=') continue;
+                if (op[0] == '&' && s[i+1] == '&') continue;
+                if (op[0] == '|' && s[i+1] == '|') continue;
+            }
+            found = i; /* keep last (rightmost) for left-assoc */
+        }
+    }
+    if (found < 0) return 0;
+    int llen = found;
+    if (llen >= lsz) llen = lsz - 1;
+    memcpy(left, s, llen); left[llen] = '\0';
+    strncpy(right, s + found + oplen, rsz - 1); right[rsz - 1] = '\0';
+    trim_c_expr(left); trim_c_expr(right);
+    return 1;
+}
+
+static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used);
+
+static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
+    char left[4096], right[4096];
+    if (split_top_level(buf, "||", left, sizeof(left), right, sizeof(right))) {
+        normalize_mixed_expr(left, sizeof(left), array_access_used);
+        normalize_mixed_expr(right, sizeof(right), array_access_used);
+        snprintf(buf, buf_size, "(%s) || (%s)", left, right);
+        return;
+    }
+    /* try && */
+    if (split_top_level(buf, "&&", left, sizeof(left), right, sizeof(right))) {
+        normalize_mixed_expr(left, sizeof(left), array_access_used);
+        normalize_mixed_expr(right, sizeof(right), array_access_used);
+        snprintf(buf, buf_size, "(%s) && (%s)", left, right);
+        return;
+    }
+    /* comparisons: == != <= >= < > (check two-char first) */
+    const char *ops[] = {"==", "!=", "<=", ">=", "<", ">", NULL};
+    for (int i = 0; ops[i]; i++) {
+        if (split_top_level(buf, ops[i], left, sizeof(left), right, sizeof(right))) {
+            int is_str_cmp = 0;
+            if (strcmp(ops[i], "==") == 0 || strcmp(ops[i], "!=") == 0) {
+                char ltmp[4096], rtmp[4096];
+                strncpy(ltmp, left, sizeof(ltmp)-1); ltmp[sizeof(ltmp)-1]=0;
+                strncpy(rtmp, right, sizeof(rtmp)-1); rtmp[sizeof(rtmp)-1]=0;
+                trim_c_expr(ltmp); trim_c_expr(rtmp);
+                int lv = expr_is_string_value(ltmp);
+                int rv = expr_is_string_value(rtmp);
+                if (lv || rv) is_str_cmp = 1;
+            }
+            if (is_str_cmp) {
+                /* Normalize both sides as string expressions (handle + / * concat/repeat) */
+                /* In string comparison context, +/* on bare-buffer operands are string ops */
+                {
+                    int hp=0,hs=0,in=0; char qc=0;
+                    for(const char *p=left;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
+                    if(hp||hs) normalize_string_expr(left,sizeof(left),array_access_used);
+                }
+                {
+                    int hp=0,hs=0,in=0; char qc=0;
+                    for(const char *p=right;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
+                    if(hp||hs) normalize_string_expr(right,sizeof(right),array_access_used);
+                }
+                normalize_value_expr(left, sizeof(left), array_access_used);
+                normalize_value_expr(right, sizeof(right), array_access_used);
+                if (strcmp(ops[i], "==") == 0)
+                    snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", left, right);
+                else
+                    snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", left, right);
+            } else {
+                normalize_value_expr(left, sizeof(left), array_access_used);
+                normalize_value_expr(right, sizeof(right), array_access_used);
+                /* Handle char*-returning calls compared with numeric literals: compare as strings */
+                if (strcmp(ops[i], "==") == 0 || strcmp(ops[i], "!=") == 0) {
+                    int ln = 0, rn = 0, lc = 0, rc = 0;
+                    {
+                        const char *q = left; while (*q==' '||*q=='\t') q++;
+                        if (*q=='-'||*q=='+') q++;
+                        if (isdigit((unsigned char)*q)) { ln = 1; while (*q) { if (!isdigit((unsigned char)*q) && *q!='.') { ln = 0; break; } q++; } }
+                        q = right; while (*q==' '||*q=='\t') q++;
+                        if (*q=='-'||*q=='+') q++;
+                        if (isdigit((unsigned char)*q)) { rn = 1; while (*q) { if (!isdigit((unsigned char)*q) && *q!='.') { rn = 0; break; } q++; } }
+                        q = left; while (*q==' '||*q=='\t') q++;
+                        if (*q=='_'||isalpha((unsigned char)*q)) {
+                            const char *fn = q;
+                            while (*q && (isalnum((unsigned char)*q)||*q=='_')) q++;
+                            int fnlen = (int)(q - fn);
+                            while (*q==' '||*q=='\t') q++;
+                            if (*q=='(') {
+                                /* Exclude numeric conversion functions */
+                                if (!((fnlen==4 && strncmp(fn,"atoi",4)==0) ||
+                                      (fnlen==4 && strncmp(fn,"atof",4)==0) ||
+                                      (fnlen==5 && strncmp(fn,"atoll",5)==0)))
+                                    lc = 1;
+                            }
+                        }
+                        q = right; while (*q==' '||*q=='\t') q++;
+                        if (*q=='_'||isalpha((unsigned char)*q)) {
+                            const char *fn = q;
+                            while (*q && (isalnum((unsigned char)*q)||*q=='_')) q++;
+                            int fnlen = (int)(q - fn);
+                            while (*q==' '||*q=='\t') q++;
+                            if (*q=='(') {
+                                if (!((fnlen==4 && strncmp(fn,"atoi",4)==0) ||
+                                      (fnlen==4 && strncmp(fn,"atof",4)==0) ||
+                                      (fnlen==5 && strncmp(fn,"atoll",5)==0)))
+                                    rc = 1;
+                            }
+                        }
+                    }
+                    if ((ln && rc) || (rn && lc)) {
+                        char lq[4096], rq[4096];
+                        if (ln) snprintf(lq, sizeof(lq), "\"%s\"", left); else { strncpy(lq,left,sizeof(lq)-1); lq[sizeof(lq)-1]=0; }
+                        if (rn) snprintf(rq, sizeof(rq), "\"%s\"", right); else { strncpy(rq,right,sizeof(rq)-1); rq[sizeof(rq)-1]=0; }
+                        if (strcmp(ops[i], "==") == 0)
+                            snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lq, rq);
+                        else
+                            snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lq, rq);
+                        return;
+                    }
+                }
+                snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
+            }
+            return;
+        }
+    }
+    /* No top-level logical/comparison op: treat as value expr */
+    normalize_value_expr(buf, buf_size, array_access_used);
+}
+
+static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used) {
+    trim_c_expr(buf);
+    /* Unwrap fully-enclosing outer parens if they wrap the whole expr? Not necessary;
+       but split_top_level works on current level. Handle leading unary ! at top? */
+    normalize_or_expr(buf, buf_size, array_access_used);
+}
+
+
 static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                   char *out, int out_size,
                                   int stop_on_rparen, int stop_on_comma,
@@ -2518,6 +2820,34 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     if (!has_string_concat && !has_string_mult && result_type != TYPE_STRING) {
         while (optimize_add_concat(out, out_size, pos)) {
             result_type = TYPE_STRING;
+        }
+    }
+    /* If the expression contains top-level comparisons or logical operators,
+       normalize string subexpressions per-segment and emit proper string
+       comparisons (strcmp) instead of treating the whole buffer as one
+       string concat/mult expression. */
+    {
+        int _has_cmp = 0, _d = 0, _in = 0; char _qc = 0;
+        for (const char *_p = out; *_p; _p++) {
+            if (_in) { if (*_p == '\\' && _p[1]) { _p++; continue; } if (*_p == _qc) _in = 0; continue; }
+            if (*_p == '"' || *_p == '\'') { _in = 1; _qc = *_p; continue; }
+            if (*_p == '(' || *_p == '{' || *_p == '[') { _d++; continue; }
+            if (*_p == ')' || *_p == '}' || *_p == ']') { if (_d > 0) _d--; continue; }
+            if (_d == 0) {
+                if ((_p[0]=='='&&_p[1]=='=') || (_p[0]=='!'&&_p[1]=='=') ||
+                    (_p[0]=='<'&&_p[1]=='=') || (_p[0]=='>'&&_p[1]=='=') ||
+                    (_p[0]=='&'&&_p[1]=='&') || (_p[0]=='|'&&_p[1]=='|')) { _has_cmp = 1; break; }
+                if (*_p == '<' || *_p == '>') { _has_cmp = 1; break; }
+            }
+        }
+        if (_has_cmp) {
+            normalize_mixed_expr(out, out_size, array_access_used);
+            result_type = TYPE_INT;
+            if (out_sl) *out_sl = sl;
+            if (out_sc) *out_sc = sc;
+            if (out_el) *out_el = el;
+            if (out_ec) *out_ec = ec;
+            return result_type;
         }
     }
     if (has_string_concat || has_string_mult || array_access_used || (result_type == TYPE_STRING && (strstr(out, "+") != NULL || strstr(out, "*") != NULL))) {
@@ -6056,6 +6386,17 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                     "Expected ':' after case value");
                 skip_to_newline(lexer);
                 continue;
+            }
+            /* Normalize string expressions in case values (e.g. "a"+"b", s*2) */
+            if (ctype == TYPE_STRING || strchr(cexpr, '"') != NULL) {
+                int _hp=0,_hs=0,_in=0; char _qc=0;
+                for (const char *_p = cexpr; *_p; _p++) {
+                    if (_in) { if (*_p == '\\' && _p[1]) { _p++; continue; } if (*_p == _qc) _in = 0; continue; }
+                    if (*_p == '"' || *_p == '\'') { _in = 1; _qc = *_p; continue; }
+                    if (*_p == '+') _hp = 1;
+                    if (*_p == '*') _hs = 1;
+                }
+                if (_hp || _hs) normalize_string_expr(cexpr, sizeof(cexpr), 0);
             }
 ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
             cnode->is_default = 0;
