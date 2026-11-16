@@ -4,8 +4,8 @@
 
 Testing infrastructure for the Lightning compiler/runtime. The goal is reproducible validation across compiler stages and native executable behavior.
 
-- Compiler source: `compiler/src/*`
-- Build: `cd compiler && make` (produces `compiler/ltng`)
+- Compiler source: `source_code/compiler/src/*`
+- Build: `cd source_code/compiler && make` (produces `source_code/compiler/ltng`)
 - Test runner: `bash tests/run_tests.sh`
 
 The test runner:
@@ -62,7 +62,7 @@ bash tests/run_tests.sh
 ```bash
 cd compiler && make
 # then copy if needed:
-cp compiler/ltng /tmp/opencode/ltng && chmod +x /tmp/opencode/ltng
+cp source_code/compiler/ltng /tmp/opencode/ltng && chmod +x /tmp/opencode/ltng
 ```
 
 ## Baseline regression corpus

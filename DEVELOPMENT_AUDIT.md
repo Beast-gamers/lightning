@@ -7,8 +7,8 @@ Scope: Initial codebase audit per mission requirements before implementing enhan
 
 - Git repo: yes. Recent commits show incremental feature work (arrays push/pop/set, exit, escape sequences). Working tree has untracked `code/compiled/` (preserved).
 - Primary artifacts:
-  - `compiler/src/`: C99 compiler sources (`ltng.h`, `lexer.c`, `parser.c`, `codegen.c`, `errors.c`, `main.c`).
-  - `compiler/Makefile`: builds `compiler/ltng` with `cc -Wall -Wextra -pedantic -std=c99`.
+  - `source_code/compiler/src/`: C99 compiler sources (`ltng.h`, `lexer.c`, `parser.c`, `codegen.c`, `errors.c`, `main.c`).
+  - `source_code/compiler/Makefile`: builds `source_code/compiler/ltng` with `cc -Wall -Wextra -pedantic -std=c99`.
   - `bolt`: POSIX shell driver for compile-and-run, `--check`, `--compile` (universal packaging), install helpers.
   - `documentation.md`: user-facing language documentation (claims partial implementation; notes missing features).
   - `AUDIT_REPORT.md`: prior stabilization audit (2026-era in file) documenting bug fixes and array work.
@@ -18,7 +18,7 @@ Scope: Initial codebase audit per mission requirements before implementing enhan
 
 ## 2. Existing features and actual implementation status (verified from source/tests)
 
-### Lexer/tokenizer (`compiler/src/lexer.c`)
+### Lexer/tokenizer (`source_code/compiler/src/lexer.c`)
 - Dynamic token array (grows via realloc from initial `MAX_TOKENS`).
 - Tokens: keywords/statements (`write`, `read`, `let`, `const`, `set`, `if/else`, `switch/case/default`, `break/continue`, `while`, `do`, `for/from/to/step`, `function/return`, `exit`), literals (string, char, int, float), identifiers, operators (`+ - * / %`, `++ --`, compound assignments, comparisons, `&& || ^^ !`, `and/or/not` aliases), punctuation (`(){}[],:.`), newline, EOF/error.
 - String escapes handled in lexer: `\n \t \\ \" \' \0 \< \>`. Unterminated strings and format-specifier `%` usage produce lexer errors. String length capped by `MAX_STRING_LEN` (4096).
@@ -26,7 +26,7 @@ Scope: Initial codebase audit per mission requirements before implementing enhan
 - Comments `#` to end-of-line. Newlines are significant tokens.
 - Identifiers truncated at `MAX_IDENTIFIER_LEN-1`.
 
-### Parser and AST (`compiler/src/parser.c`, `ltng.h`)
+### Parser and AST (`source_code/compiler/src/parser.c`, `ltng.h`)
 - Builds AST nodes and maintains symbol tables/scopes; performs substantial semantic checking during parsing (not a separate semantic pass module).
 - Node types include program/statements, control flow, functions/returns/calls/params, array literal/access/push/pop/set, exit.
 - Program split into `functions` list and top-level statement list; functions lifted/emitted separately in codegen.
@@ -39,7 +39,7 @@ Scope: Initial codebase audit per mission requirements before implementing enhan
 - Control flow: if/else, while, do-while, for-from-to-step, switch/case/default, break/continue, exit.
 - Baseline (non-error, excluding lock/type-change error tests by name pattern): 76/76 runnable tests pass with expected outputs where provided. 2 additional files (`t_lock_null.ltng`, `t_lock_type_change.ltng`) are intentional compile-error tests.
 
-### Code generator (`compiler/src/codegen.c`)
+### Code generator (`source_code/compiler/src/codegen.c`)
 - Emits a single C translation unit to temp file (or `--emit-c` target), then invokes C compiler (`cc` by default, `-w -static` in `main.c`; debug shows compiler output).
 - Runtime model: almost all values represented as fixed-size `char[256]` buffers/strings in generated code. Numeric operations emitted as C integer/double expressions or via runtime helpers depending on context.
 - Emitted runtime helpers include: `_ltng_concat`, `_ltng_repeat`, `_ltng_arr_get`, `_ltng_idx2`, `_ltng_idx3`, `_ltng_retbuf` (32-slot rotating buffer), `_ltng_ad/_ltng_as/_ltng_from_int/_ltng_from_double`, `_ltng_is_num_str`, `_ltng_add_sn` (numeric-add-or-string-concat heuristic).
@@ -48,9 +48,9 @@ Scope: Initial codebase audit per mission requirements before implementing enhan
 
 ### CLI and build system
 - `compiler/Makefile`: simple build/clean for `ltng`.
-- `compiler/src/main.c`: argument parsing (`--debug`, `--check`, `--emit-c`, `--cc`), temp C emission, compile to output (default `compiled/<base>` next to source), check-only mode returns 0 on success.
+- `source_code/compiler/src/main.c`: argument parsing (`--debug`, `--check`, `--emit-c`, `--cc`), temp C emission, compile to output (default `compiled/<base>` next to source), check-only mode returns 0 on success.
 - `bolt`: wrapper resolving compiler binary, supports `--debug/--check/--compile/--install/...`, run mode compiles to `/tmp` binary and executes with forwarded args (args after source passed through - important for CLI phase), universal compile mode packages per-arch binaries. Truncated tail in some views but full script present.
-- On this environment, `compiler/ltng` lacked execute permission after build; copying to `/tmp/opencode` and `chmod +x` allowed execution (noted for testing).
+- On this environment, `source_code/compiler/ltng` lacked execute permission after build; copying to `/tmp/opencode` and `chmod +x` allowed execution (noted for testing).
 
 ### Tests, examples, documentation
 - `code/`: extensive ad-hoc regression/feature corpus (`test_*.ltng`, `tc_*.ltng`, demos, `*_errors.ltng`/`test_err_*`, `.expected` for 8 cases including arrays, locks, typeconv/typeof/tofunc3).

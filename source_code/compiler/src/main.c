@@ -102,6 +102,10 @@ static void log_stage(const char *stage, const char *msg) {
 }
 
 int main(int argc, char *argv[]) {
+    if (!getenv("LTNG_BOLT")) {
+        fprintf(stderr, "Error: lightning compiler must be invoked through bolt\n");
+        return 1;
+    }
     int debug = 0;
     int check_only = 0;
     int emit_c = 0;

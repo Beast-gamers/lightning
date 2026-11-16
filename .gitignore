@@ -6,7 +6,7 @@
 /compiled/
 /tmp/ltng_*
 ltng
-compiler/ltng
+source_code/compiler/ltng
 compiler/hello
 *.universal
 

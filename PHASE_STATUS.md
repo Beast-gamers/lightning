@@ -66,7 +66,7 @@
 - Updated existing expected output: `code/t_null_set_type_change.expected` changed final typeof from `int` to `float` for `3.14`.
 
 ### Changed files
-- `compiler/src/parser.c`
+- `source_code/compiler/src/parser.c`
 - `code/t_null_set_type_change.expected`
 - `tests/runtime/phase1_types_smoke.ltng`
 - `CHANGELOG.md`
@@ -88,7 +88,7 @@
   - inline declaration emission for block/function-local `let`/`const` (instead of incorrect broad hoisting)
   - block-local declarations in `if`/`else`, `while`, `do-while`, `for`, `switch` case blocks, and nested blocks
   - correct handling of shadowed variable reads/writes/sets and loop variable scoping
-- Fixed C compilation failure propagation in `compiler/src/main.c` to return non-zero when backend C compilation fails.
+- Fixed C compilation failure propagation in `source_code/compiler/src/main.c` to return non-zero when backend C compilation fails.
 - Fixed object-literal handling for `set` assignments (emit assignment/update semantics instead of redeclaration) to remain compatible with inline declaration changes.
 
 ### Verified
@@ -104,10 +104,10 @@
 - Phase 2 semantic/runtime checks continue to pass (including block scope, nested scopes, shadowing, switch-case declarations, duplicate/const/undefined negatives).
 
 ### Changed files
-- `compiler/src/ltng.h` (added `NODE_BLOCK`)
-- `compiler/src/parser.c`
-- `compiler/src/codegen.c`
-- `compiler/src/main.c`
+- `source_code/compiler/src/ltng.h` (added `NODE_BLOCK`)
+- `source_code/compiler/src/parser.c`
+- `source_code/compiler/src/codegen.c`
+- `source_code/compiler/src/main.c`
 - `tests/semantic/phase2_scope_block_let.ltng`
 - `tests/semantic/phase2_shadowing.ltng`
 - `tests/semantic/phase2_nested_blocks.ltng`
@@ -142,11 +142,11 @@
 - Phase 3/array coverage: `tests/runtime/phase3_arrays.ltng` (+ `.expected`), `code/array_test.ltng` (comprehensive native test including copy/slice in `set`, for-each, edge cases).
 
 ### Changed files
-- `compiler/src/ltng.h`
-- `compiler/src/lexer.c`
-- `compiler/src/parser.c`
-- `compiler/src/codegen.c`
-- `compiler/ltng` (rebuilt)
+- `source_code/compiler/src/ltng.h`
+- `source_code/compiler/src/lexer.c`
+- `source_code/compiler/src/parser.c`
+- `source_code/compiler/src/codegen.c`
+- `source_code/compiler/ltng` (rebuilt)
 - `documentation.md`
 - `CHANGELOG.md`
 - `PHASE_STATUS.md`
@@ -163,7 +163,7 @@
 
 ### Additional compiler pipeline update (post-Phase 3)
 
-- **Implemented:** IR stage added after parsing/before C code generation (`compiler/src/ir.c`, integrated in `compiler/src/main.c`, build updated). Generates `<source basename>.ltng_ir` and cleans it up on successful non-debug operations; `--debug` preserves artifacts in `debug/<source basename>/` (`source.ltng`, `intermediete.ltng_ir`, `emitted.c` when available), captures timestamped/staged `logs.txt` (printed to console at end) and `compiler_log.txt` (best-effort Lightning source line to emitted C mapping), preserves real C compiler warnings/output in debug flows, and on successful native compilation produces a copied binary, debug-symbol binary (`.dbg`), object (`.o`), and assembly (`.s`) files.
+- **Implemented:** IR stage added after parsing/before C code generation (`source_code/compiler/src/ir.c`, integrated in `source_code/compiler/src/main.c`, build updated). Generates `<source basename>.ltng_ir` and cleans it up on successful non-debug operations; `--debug` preserves artifacts in `debug/<source basename>/` (`source.ltng`, `intermediete.ltng_ir`, `emitted.c` when available), captures timestamped/staged `logs.txt` (printed to console at end) and `compiler_log.txt` (best-effort Lightning source line to emitted C mapping), preserves real C compiler warnings/output in debug flows, and on successful native compilation produces a copied binary, debug-symbol binary (`.dbg`), object (`.o`), and assembly (`.s`) files.
 - **Verification:** targeted manual checks for normal compile, `--check`, `--emit-c`, and `--debug` (including debug artifacts, logs, compiler_log mapping, binary/obj/asm/dbg); full suite `PASS=111 FAIL=0 SKIP=0`.
 
 ## Phase 4 — Exception handling
@@ -197,12 +197,12 @@
 - Nested catch variables with the same source name could collide; catch variables now always receive unique emitted C names and schemas are registered under those names.
 
 ### Changed files
-- `compiler/src/ltng.h`
-- `compiler/src/lexer.c`
-- `compiler/src/parser.c`
-- `compiler/src/codegen.c`
-- `compiler/src/ir.c`
-- `compiler/ltng` (rebuilt)
+- `source_code/compiler/src/ltng.h`
+- `source_code/compiler/src/lexer.c`
+- `source_code/compiler/src/parser.c`
+- `source_code/compiler/src/codegen.c`
+- `source_code/compiler/src/ir.c`
+- `source_code/compiler/ltng` (rebuilt)
 - `tests/run_tests.sh`
 - `tests/runtime/phase4_*.ltng` + `.expected`/`.exitcode`/`.stderr`
 - `tests/semantic/phase4_*_neg.ltng`

@@ -2,25 +2,47 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "$SCRIPT_DIR/compiler/ltng" ]; then
-    LTNG_BIN="$SCRIPT_DIR/compiler/ltng"
+# Prefer universal compiler when available, then local/native/internal builds
+if [ -f "$SCRIPT_DIR/dist/ltng_universal" ]; then
+    LTNG_BIN="$SCRIPT_DIR/dist/ltng_universal"
 elif [ -f "$SCRIPT_DIR/ltng" ]; then
     LTNG_BIN="$SCRIPT_DIR/ltng"
+elif [ -f "$SCRIPT_DIR/../compiler/ltng" ]; then
+    LTNG_BIN="$SCRIPT_DIR/../compiler/ltng"
+elif [ -f "$SCRIPT_DIR/../../ltng" ]; then
+    LTNG_BIN="$SCRIPT_DIR/../../ltng"
+elif [ -f "/usr/local/lib/bolt/ltng" ]; then
+    LTNG_BIN="/usr/local/lib/bolt/ltng"
+elif [ -f "/usr/local/lib/ltng/compiler" ]; then
+    LTNG_BIN="/usr/local/lib/ltng/compiler"
 else
     echo "Error: ltng compiler not found"
     exit 1
 fi
 
+
+run_ltng() {
+    export LTNG_BOLT=1
+    if [ -x "$LTNG_BIN" ]; then
+        "$LTNG_BIN" "$@"
+    elif [ -f "$LTNG_BIN" ]; then
+        case "$LTNG_BIN" in
+            *.sh|*/ltng_universal|*universal*) sh "$LTNG_BIN" "$@" ;;
+            *) "$LTNG_BIN" "$@" ;;
+        esac
+    else
+        echo "Error: ltng compiler not found: $LTNG_BIN" >&2
+        return 127
+    fi
+}
+
 install_zig() {
     if command -v zig >/dev/null 2>&1; then
-        echo "Zig already installed: $(command -v zig)"
         return 0
     fi
     if [ -x /usr/local/bin/zig ]; then
-        echo "Zig already installed: /usr/local/bin/zig"
         return 0
     fi
-    echo "Installing Zig..."
     ZIG_ARCH=""
     case "$(uname -m)" in
         aarch64|arm64) ZIG_ARCH="aarch64-linux" ;;
@@ -28,46 +50,83 @@ install_zig() {
         armv7l|armv7*) ZIG_ARCH="arm-linux" ;;
         i686|i386|x86) ZIG_ARCH="x86-linux" ;;
         riscv64) ZIG_ARCH="riscv64-linux" ;;
-        *) echo "Warning: Unsupported architecture for Zig auto-install: $(uname -m)"; return 0 ;;
+        *) return 0 ;;
     esac
     ZIG_URL="https://ziglang.org/download/0.14.1/zig-${ZIG_ARCH}-0.14.1.tar.xz"
     ZIG_TMP="/tmp/zig_install_$$.tar.xz"
     ZIG_DIR="/usr/local/zig"
     if command -v curl >/dev/null 2>&1; then
-        curl -fL --progress-bar -o "$ZIG_TMP" "$ZIG_URL" || { echo "Warning: Failed to download Zig"; rm -f "$ZIG_TMP"; return 0; }
+        curl -fsSL -o "$ZIG_TMP" "$ZIG_URL" >/dev/null 2>&1 || { rm -f "$ZIG_TMP"; return 0; }
     elif command -v wget >/dev/null 2>&1; then
-        wget -O "$ZIG_TMP" "$ZIG_URL" || { echo "Warning: Failed to download Zig"; rm -f "$ZIG_TMP"; return 0; }
+        wget -q -O "$ZIG_TMP" "$ZIG_URL" >/dev/null 2>&1 || { rm -f "$ZIG_TMP"; return 0; }
     else
-        echo "Warning: curl/wget not found, cannot install Zig"
         return 0
     fi
     rm -rf "$ZIG_DIR" /tmp/zig-extract-$$
     mkdir -p /tmp/zig-extract-$$
-    tar -xf "$ZIG_TMP" -C /tmp/zig-extract-$$ || { echo "Warning: Failed to extract Zig"; rm -f "$ZIG_TMP"; rm -rf /tmp/zig-extract-$$; return 0; }
+    tar -xf "$ZIG_TMP" -C /tmp/zig-extract-$$ >/dev/null 2>&1 || { rm -f "$ZIG_TMP"; rm -rf /tmp/zig-extract-$$; return 0; }
     extracted="$(find /tmp/zig-extract-$$ -maxdepth 1 -type d -name 'zig-*' | head -1)"
     if [ -z "$extracted" ]; then
-        echo "Warning: Zig extraction failed"
         rm -f "$ZIG_TMP"; rm -rf /tmp/zig-extract-$$
         return 0
     fi
-    mv "$extracted" "$ZIG_DIR"
-    ln -sf "$ZIG_DIR/zig" /usr/local/bin/zig
+    mv "$extracted" "$ZIG_DIR" >/dev/null 2>&1 || { rm -f "$ZIG_TMP"; rm -rf /tmp/zig-extract-$$; return 0; }
+    ln -sf "$ZIG_DIR/zig" /usr/local/bin/zig >/dev/null 2>&1 || true
     rm -f "$ZIG_TMP"
     rm -rf /tmp/zig-extract-$$
-    echo "Installed Zig: $(/usr/local/bin/zig version 2>/dev/null || echo unknown)"
+    return 0
+}
+
+print_help() {
+    cat <<'EOF'
+Usage: bolt [--debug] [--check] [--compile] [--emit-c] [--version] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]
+Options:
+  --compile    Compile to a universal executable in the compiled folder
+  --check      Only check for errors, don't compile
+  --emit-c     Emit generated C code
+  --debug      Show compilation log
+  --version    Show version
+  --install    Install bolt (and internal compiler) to the system
+  --uninstall  Remove bolt and internal compiler from the system
+  --reinstall  Uninstall then install
+EOF
 }
 
 install_compiler() {
-    if [ ! -f "$LTNG_BIN" ]; then
+    # Prefer universal compiler for installation (multi-architecture)
+    LTNG_INSTALL_BIN=""
+    if [ -f "$SCRIPT_DIR/dist/ltng_universal" ]; then
+        LTNG_INSTALL_BIN="$SCRIPT_DIR/dist/ltng_universal"
+    elif [ -f "$SCRIPT_DIR/../dist/ltng_universal" ]; then
+        LTNG_INSTALL_BIN="$SCRIPT_DIR/../dist/ltng_universal"
+    elif [ -f "$SCRIPT_DIR/ltng" ]; then
+        LTNG_INSTALL_BIN="$SCRIPT_DIR/ltng"
+    elif [ -f "$LTNG_BIN" ]; then
+        LTNG_INSTALL_BIN="$LTNG_BIN"
+    else
         echo "Building ltng compiler..."
-        make -C "$SCRIPT_DIR/compiler" clean && make -C "$SCRIPT_DIR/compiler"
+        make -C "$SCRIPT_DIR" clean >/dev/null 2>&1 && make -C "$SCRIPT_DIR" >/dev/null 2>&1
+        if [ -f "$SCRIPT_DIR/dist/ltng_universal" ]; then
+            LTNG_INSTALL_BIN="$SCRIPT_DIR/dist/ltng_universal"
+        elif [ -f "$SCRIPT_DIR/ltng" ]; then
+            LTNG_INSTALL_BIN="$SCRIPT_DIR/ltng"
+        elif [ -f "$LTNG_BIN" ]; then
+            LTNG_INSTALL_BIN="$LTNG_BIN"
+        fi
     fi
 
-    install -d /usr/local/bin
-
-    if [ "$LTNG_BIN" != "/usr/local/bin/ltng" ]; then
-        install -m 755 "$LTNG_BIN" /usr/local/bin/ltng
+    if [ -z "$LTNG_INSTALL_BIN" ] || [ ! -f "$LTNG_INSTALL_BIN" ]; then
+        echo "Error: ltng compiler binary not found for installation"
+        exit 1
     fi
+
+    install -d /usr/local/bin /usr/local/lib/bolt
+
+    if [ "$LTNG_INSTALL_BIN" != "/usr/local/lib/bolt/ltng" ]; then
+        install -m 755 "$LTNG_INSTALL_BIN" /usr/local/lib/bolt/ltng
+    fi
+    # remove legacy ltng trigger if present
+    rm -f /usr/local/bin/ltng
 
     if [ -f "$SCRIPT_DIR/bolt" ] && [ "$SCRIPT_DIR" != "/usr/local/bin" ]; then
         install -m 755 "$SCRIPT_DIR/bolt" /usr/local/bin/bolt
@@ -75,18 +134,21 @@ install_compiler() {
 
     install_zig
 
-    echo "Installed ltng and bolt to /usr/local/bin/"
+    echo "installed bolt (lightning compiler) successfully."
+    print_help
 }
 
 uninstall_compiler() {
     rm -f /usr/local/bin/ltng
     rm -f /usr/local/bin/bolt
-    echo "Uninstalled ltng and bolt from /usr/local/bin/"
+    rm -f /usr/local/lib/bolt/ltng
+    rmdir /usr/local/lib/bolt 2>/dev/null || true
 }
 
 debug=""
 check=""
 compile_mode=""
+emit_c=""
 ltng_args=""
 
 for arg in "$@"; do
@@ -94,17 +156,12 @@ for arg in "$@"; do
         --install) install_compiler; exit 0 ;;
         --uninstall) uninstall_compiler; exit 0 ;;
         --reinstall) uninstall_compiler; install_compiler; exit 0 ;;
+        --version) echo "1.0.0"; exit 0 ;;
         --debug) debug="--debug" ;;
         --check) check="--check" ;;
         --compile) compile_mode="1" ;;
-        --help) echo "Usage: bolt [--debug] [--check] [--compile] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]
-Options:
-  --compile    Compile to a universal executable in the compiled folder
-  --check      Only check for errors, don't compile
-  --debug      Show compilation log
-  --install    Install ltng and bolt to /usr/local/bin/
-  --uninstall  Remove ltng and bolt from /usr/local/bin/
-  --reinstall  Uninstall then install"; exit 0 ;;
+        --emit-c) emit_c="--emit-c" ;;
+        --help) print_help; exit 0 ;;
         *) ltng_args="$ltng_args $arg" ;;
     esac
 done
@@ -112,12 +169,7 @@ done
 set -- $ltng_args
 
 if [ $# -lt 1 ]; then
-    echo "Usage: bolt [--debug] [--check] [--compile] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]"
-    echo ""
-    echo "Options:"
-    echo "  --compile    Compile to a universal executable in the compiled folder"
-    echo "  --check      Only check for errors, don't compile"
-    echo "  --debug      Show compilation log"
+    print_help
     exit 1
 fi
 
@@ -139,8 +191,18 @@ if ! echo "$input" | grep -q '\.ltng$'; then
     exit 1
 fi
 
+if [ -n "$emit_c" ]; then
+    out="$1"
+    if [ -n "$out" ]; then
+        run_ltng $debug --emit-c "$input" "$out"
+    else
+        run_ltng $debug --emit-c "$input"
+    fi
+    exit $?
+fi
+
 if [ -n "$check" ]; then
-    "$LTNG_BIN" $debug --check "$input"
+    run_ltng $debug --check "$input"
     exit $?
 fi
 
@@ -152,7 +214,7 @@ if [ -n "$compile_mode" ]; then
     tmpc="/tmp/ltng_uc_$$_${base}.c"
     
     # Emit C
-    "$LTNG_BIN" $debug --emit-c "$input" "$tmpc"
+    run_ltng $debug --emit-c "$input" "$tmpc"
     if [ $? -ne 0 ]; then
         rm -f "$tmpc"
         exit 1
@@ -347,7 +409,7 @@ fi
 # Normal run mode - compile to temp and run (no compiled output left behind)
 tmpbin="/tmp/ltng_run_$$"
 
-"$LTNG_BIN" $debug $check "$input" "$tmpbin"
+run_ltng $debug $check "$input" "$tmpbin"
 ret=$?
 
 if [ -n "$check" ]; then

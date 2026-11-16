@@ -6,14 +6,14 @@ implementation. No new features, no syntax changes, no redesign. Everything
 reported here is supported by actual test execution.
 
 ## Components inspected
-- compiler/src/ltng.h          - types, token types, AST, scope, declarations
-- compiler/src/lexer.c         - lexer/tokenizer
-- compiler/src/parser.c        - parser, expression collector, type inference
-- compiler/src/codegen.c       - C code generation + runtime helpers
-- compiler/src/errors.c        - error state/reporting
-- compiler/src/main.c          - compiler driver (compile/check/emit-c)
+- source_code/compiler/src/ltng.h          - types, token types, AST, scope, declarations
+- source_code/compiler/src/lexer.c         - lexer/tokenizer
+- source_code/compiler/src/parser.c        - parser, expression collector, type inference
+- source_code/compiler/src/codegen.c       - C code generation + runtime helpers
+- source_code/compiler/src/errors.c        - error state/reporting
+- source_code/compiler/src/main.c          - compiler driver (compile/check/emit-c)
 - bolt                         - CLI driver (compile-and-run wrapper)
-- compiler/ltng                - rebuilt compiler binary (now reflects fixes)
+- source_code/compiler/ltng                - rebuilt compiler binary (now reflects fixes)
 - code/*.ltng (92 files)       - existing test programs (regression baseline)
 
 ## Implemented feature inventory (from source)
@@ -158,13 +158,13 @@ intentional error-test files fail compilation as expected. Zero crashes across
 the entire corpus.
 
 ## Files modified
-- compiler/src/ltng.h      (VarEntry array dimension metadata)
-- compiler/src/parser.c  (BUG-1, BUG-4 fixes; debug fprintf removal; array
+- source_code/compiler/src/ltng.h      (VarEntry array dimension metadata)
+- source_code/compiler/src/parser.c  (BUG-1, BUG-4 fixes; debug fprintf removal; array
                           literal parsing, multi-dim access, interpolation
                           depth scanning, string-repeat guard)
-- compiler/src/codegen.c (BUG-2, BUG-3 fixes; array runtime helpers, depth-aware
+- source_code/compiler/src/codegen.c (BUG-2, BUG-3 fixes; array runtime helpers, depth-aware
                           interpolation scanning)
-- compiler/ltng          (rebuilt binary)
+- source_code/compiler/ltng          (rebuilt binary)
 - code/test_arrays.ltng / .expected (array regression coverage)
 - documentation.md       (arrays section: multi-dim indexing, elements in
                           expressions; removed the multi-dim limitation)
