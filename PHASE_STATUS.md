@@ -234,7 +234,7 @@
 - **Function values / dynamic dispatch:** function values (closures and named function references) can be called through variables and parameters via runtime dispatch. Tests: `tests/runtime/phase5_indirect_call_in_expr.ltng`.
 - **Immediate chained call syntax:** chained immediate invocation of call results is supported in general expression contexts, including sole RHS call contexts (`let`/`const`/`set`/`return`), conditions/comparisons, arithmetic expressions, `write(...)` arguments, and standalone call statements (e.g. `maker()(5)`, `a()(2)(3)`, `if (maker()(5) == 6)`, `write(1 + maker()(5))`).
 - **Call-result typing/codegen fixes:** sole-call RHS type inference and numeric codegen now correctly handle inferred numeric function results (including arguments containing expressions), avoiding prior string-typed/invalid-C emission in affected cases.
-- **Return-type annotations:** named functions may declare `-> type` return annotations (`int`, `float`, `string`, `char`, `bool`, `object`, or `void`); return paths are validated (missing returns, void-return violations, type mismatches).
+- **Return-type annotations:** named functions may declare `-> type` return annotations (`int`, `float`, `string`, `char`, `bool`, `obj`, or `void`); return paths are validated (missing returns, void-return violations, type mismatches).
 
 ### Edge-case fixes (this pass)
 - Fixed indirect/dynamic function-call emission in numeric-expression contexts (correct `__ltng_call_indirect` handling for callable-identified function values), preventing generated C/internal compile failures when function values are called inside expressions (e.g. `sum + fn(10)`).

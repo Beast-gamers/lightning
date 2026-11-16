@@ -22,6 +22,34 @@ static ASTNode *g_codegen_current_fn = NULL;
 static ASTNode *g_codegen_all_fns = NULL;
 static ASTNode *g_codegen_program_fns = NULL;
 
+static void pad(FILE *out, int indent);
+
+static ObjSchema *fn_return_obj_schema(ASTNode *fn) {
+    if (!fn || !fn->return_obj_base[0]) return NULL;
+    if (fn->return_type != TYPE_OBJECT) return NULL;
+    return obj_lookup(fn->return_obj_base);
+}
+
+static void emit_obj_return_staging(FILE *out, ASTNode *fn, ASTNode *ret_node, int indent) {
+    ObjSchema *sc = fn_return_obj_schema(fn);
+    if (!sc || !ret_node) return;
+    if (ret_node->var_type != TYPE_OBJECT || !ret_node->value[0]) return;
+    /* only for variable/base returns (object value in a named object) */
+    if (ret_node->value[0] == '"' || ret_node->value[0] == '(') return;
+    char stage_base[MAX_IDENTIFIER_LEN*2+16];
+    snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", fn->name);
+    for (int i = 0; i < sc->count; i++) {
+        char src_f[MAX_IDENTIFIER_LEN*2+8], dst_f[MAX_IDENTIFIER_LEN*2+8];
+        obj_resolve_field(ret_node->value, sc->fields[i].name, src_f, sizeof(src_f));
+        obj_resolve_field(stage_base, sc->fields[i].name, dst_f, sizeof(dst_f));
+        int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
+        pad(out, indent);
+        fprintf(out, "snprintf(%s, %d, \"%%s\", %s);\n", dst_f, bsz, src_f);
+    }
+    pad(out, indent);
+    fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", stage_base, ret_node->value);
+}
+
 void codegen_set_log(CodegenLog *log) {
     codegen_log = log;
 }
@@ -484,6 +512,10 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             pad(out, indent);
             fprintf(out, "snprintf(%s, 256, \"%%s\", \"\");\n", node->name);
         }
+        if (node->is_expr && node->value[0]) {
+            pad(out, indent);
+            fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
+        }
         return;
     }
     if (node->var_type == TYPE_ARRAY) {
@@ -523,14 +555,19 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             while (*end && *end != '|') end++;
             int vlen = (int)(end - val);
             pad(out, indent);
-            fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, \"",
-                arrname, node->name, node->name);
-            for (int i = 0; i < vlen; i++) {
-                if (val[i] == '"') fputc('\\', out);
-                if (val[i] == '\\') fputc('\\', out);
-                fputc(val[i], out);
+            if (vlen > 0 && val[0] == '\x01') {
+                /* Variable/C-expression element - push its value directly */
+                fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, %.*s);\n",
+                    arrname, node->name, node->name, vlen - 1, val + 1);
+            } else {
+                fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, \"",
+                    arrname, node->name, node->name);
+                for (int i = 0; i < vlen; i++) {
+                    if (val[i] == '"' || val[i] == '\\') fputc('\\', out);
+                    fputc(val[i], out);
+                }
+                fprintf(out, "\");\n");
             }
-            fprintf(out, "\");\n");
             val = end;
             elem_idx++;
         }
@@ -548,8 +585,11 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n",
-                node->name, node->value);
+            {
+                size_t _nlen = strlen(node->name);
+                int _nbuf = (_nlen >= 5 && strcmp(node->name + _nlen - 5, "__obj") == 0) ? 512 : 256;
+                fprintf(out, "snprintf(%s, %d, \"%%s\", %s);\n", node->name, _nbuf, node->value);
+            }
         } else {
             pad(out, indent);
             int _is_call_res = node->is_default || (strncmp(node->value, "({ char __ct", 12) == 0);
@@ -742,13 +782,18 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
             while (*end && *end != '|') end++;
             int vlen = (int)(end - val);
             pad(out, indent);
-            fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, \"",
-                arrname, node->name, node->name);
-            for (int i = 0; i < vlen; i++) {
-                if (val[i] == '"' || val[i] == '\\') fputc('\\', out);
-                fputc(val[i], out);
+            if (vlen > 0 && val[0] == '\x01') {
+                fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, %.*s);\n",
+                    arrname, node->name, node->name, vlen - 1, val + 1);
+            } else {
+                fprintf(out, "_ltng_arr_push(&%s, &%s_len, &%s_cap, \"",
+                    arrname, node->name, node->name);
+                for (int i = 0; i < vlen; i++) {
+                    if (val[i] == '"' || val[i] == '\\') fputc('\\', out);
+                    fputc(val[i], out);
+                }
+                fprintf(out, "\");\n");
             }
-            fprintf(out, "\");\n");
             val = end;
             elem_idx++;
         }
@@ -1479,6 +1524,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             if (g_cleanup_count > 0) {
                 pad(out, indent); fprintf(out, "{\n");
                 pad(out, indent + 1); fprintf(out, "char _ltng_rv[256] = \"\";\n");
+                if (g_codegen_current_fn) emit_obj_return_staging(out, g_codegen_current_fn, node, indent + 1);
                 emit_return_value(out, node, "_ltng_rv", indent + 1);
                 emit_cleanup_unwind(out, table, indent + 1, 0);
                 if (g_codegen_in_function) {
@@ -1487,6 +1533,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
                 pad(out, indent + 1); fprintf(out, "snprintf(_ret, 256, \"%%s\", _ltng_rv); return _ret;\n");
                 pad(out, indent); fprintf(out, "}\n");
             } else {
+                if (g_codegen_current_fn) emit_obj_return_staging(out, g_codegen_current_fn, node, indent);
                 if (g_codegen_in_function) {
                     pad(out, indent); fprintf(out, "_ltng_fn_pop();\n");
                 }
@@ -1823,6 +1870,24 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_ptr_to_str(void *p){ static char b[32][32]; static int i; i=(i+1)%%32; snprintf(b[i], sizeof(b[i]), \"%%llu\", (unsigned long long)(uintptr_t)p); return b[i]; }\n");
     fprintf(out, "static void *_ltng_str_to_ptr(const char *s){ if(!s||!*s) return NULL; return (void*)(uintptr_t)strtoull(s, NULL, 10); }\n");
     fprintf(out, "\n");
+
+    /* Staging storage for object-returning functions */
+    if (program->functions) {
+        for (ASTNode *fn = program->functions; fn; fn = fn->next) {
+            ObjSchema *sc = fn_return_obj_schema(fn);
+            if (!sc) continue;
+            char stage_base[MAX_IDENTIFIER_LEN*2+16];
+            snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", fn->name);
+            fprintf(out, "static char %s[256] = \"\";\n", stage_base);
+            for (int i = 0; i < sc->count; i++) {
+                char dst_f[MAX_IDENTIFIER_LEN*2+8];
+                obj_resolve_field(stage_base, sc->fields[i].name, dst_f, sizeof(dst_f));
+                int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
+                fprintf(out, "static char %s[%d] = \"\";\n", dst_f, bsz);
+            }
+        }
+        fprintf(out, "\n");
+    }
 
     /* Indirect call dispatcher prototype */
     fprintf(out, "static char *__ltng_call_indirect(const char *target, char *_ret, int _ltng_cl, int _ltng_cc, int argc, ...);\n\n");

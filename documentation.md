@@ -1268,7 +1268,7 @@ function cleanup() -> void {
 }
 ```
 
-- The annotation may be `int`, `float`, `string`, `char`, `bool`, or `object`.
+- The annotation may be `int`, `float`, `string`, `char`, `bool`, `obj`, or `void`.
 - `void` is permitted only as a return annotation; a `void` function may not return a value.
 - Return statements are checked when the types are clear (annotations and literals): a declared return type that cannot hold the returned value is a compile-time error, a function declared to return a type without a valid return path is an error, and a non-`void` function returning on only some paths is an error.
 

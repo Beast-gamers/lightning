@@ -173,6 +173,7 @@ typedef struct ASTNode {
     char variadic_name[MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: source name of ...rest */
     int capture_count;  /* NODE_FUNCTION: number of captured variables from enclosing scope */
     char captures[8][MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: cnames of captured variables */
+    char return_obj_base[MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: schema var for object return */
     char for_var[MAX_IDENTIFIER_LEN];
     char for_start[MAX_STRING_LEN];
     char for_end[MAX_STRING_LEN];

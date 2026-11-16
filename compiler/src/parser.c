@@ -17,6 +17,7 @@ typedef struct {
     int is_variadic;                 /* trailing ...rest parameter present */
     int has_return_type;             /* explicit -> type annotation */
     VarType return_type;             /* annotated return type */
+    char return_obj_base[MAX_IDENTIFIER_LEN]; /* schema source for object returns */
     int line, col;                   /* source position of the function name */
     int defined;                     /* body has been parsed */
     int top_level;                   /* signature discovered by the top-level prescan */
@@ -124,6 +125,7 @@ static void register_function(const char *name, int param_count) {
     g_funcs[g_func_count].is_variadic = 0;
     g_funcs[g_func_count].has_return_type = 0;
     g_funcs[g_func_count].return_type = TYPE_STRING;
+    g_funcs[g_func_count].return_obj_base[0] = '\0';
     g_funcs[g_func_count].line = 0;
     g_funcs[g_func_count].col = 0;
     g_funcs[g_func_count].defined = 0;
@@ -776,6 +778,57 @@ static void transform_string_multiply(char *expr, int size) {
             }
             strncpy(right, s, 511);
             right[511] = 0;
+            /* trim trailing tokens that belong to outer context (e.g. closing parens of wrapper) */
+            /* keep only the first simple operand: number, identifier, or parenthesized expr */
+            {
+                char *rp = right;
+                /* if starts with '(' (but not stmt expr), take balanced paren group */
+                if (rp[0] == '(' && !(rp[0]=='(' && rp[1]=='{')) {
+                    int d=0, inq2=0; char qc2=0; char *p2=rp;
+                    for (; *p2; p2++) {
+                        if (inq2) { if (*p2=='\\' && p2[1]) { p2++; continue; } if (*p2==qc2) inq2=0; continue; }
+                        if (*p2=='"'||*p2=='\'') { inq2=1; qc2=*p2; continue; }
+                        if (*p2=='(') d++; else if (*p2==')') { d--; if (d==0) { p2++; break; } }
+                    }
+                    *p2 = 0;
+                } else if (isdigit((unsigned char)rp[0]) || (rp[0]=='-' && isdigit((unsigned char)rp[1]))) {
+                    char *p2 = rp; if (*p2=='-') p2++;
+                    while (isdigit((unsigned char)*p2) || *p2=='.') p2++;
+                    *p2 = 0;
+                } else if (isalpha((unsigned char)rp[0]) || rp[0]=='_') {
+                    char *p2 = rp; while (isalnum((unsigned char)*p2) || *p2=='_') p2++;
+                    *p2 = 0;
+                } else if (rp[0]=='(' && rp[1]=='{') {
+                    /* statement expr - find matching close: ({ ... }) */
+                    int d=0, inq2=0; char qc2=0; char *p2=rp;
+                    for (; *p2; p2++) {
+                        if (inq2) { if (*p2=='\\' && p2[1]) { p2++; continue; } if (*p2==qc2) inq2=0; continue; }
+                        if (*p2=='"'||*p2=='\'') { inq2=1; qc2=*p2; continue; }
+                        if (*p2=='(') d++; else if (*p2==')') { d--; if (d==0) { p2++; break; } }
+                    }
+                    *p2 = 0;
+                }
+            }
+            /* trim trailing whitespace again */
+            { char *e = right + strlen(right) - 1; while (e >= right && (*e==' '||*e=='\t')) { *e=0; e--; } }
+            /* balance left side: if it has unmatched leading '(' due to outer wrapper, strip it */
+            {
+                int balance = 0, inq2 = 0; char qc2 = 0;
+                for (char *p2 = left; *p2; p2++) {
+                    if (inq2) { if (*p2=='\\' && p2[1]) { p2++; continue; } if (*p2==qc2) inq2=0; continue; }
+                    if (*p2=='"'||*p2=='\'') { inq2=1; qc2=*p2; continue; }
+                    if (*p2=='(') balance++; else if (*p2==')') balance--;
+                }
+                while (balance > 0 && left[0] == '(') {
+                    /* try removing leading '(' */
+                    char *ls = left + 1;
+                    while (*ls == ' ' || *ls == '\t') ls++;
+                    memmove(left, ls, strlen(ls) + 1);
+                    balance--;
+                    /* re-trim */
+                    char *e = left + strlen(left) - 1; while (e >= left && (*e==' '||*e=='\t')) { *e=0; e--; }
+                }
+            }
             found = 1;
         }
     }
@@ -874,6 +927,255 @@ static void sanitize_mod_atof(char *out, int out_size) {
     out[out_size - 1] = 0;
 }
 
+static int part_is_stringy(const char *part);
+
+/* Normalize a string-expression fragment: resolve '+' (concat) and '*'
+   (repeat) with correct operator precedence, resolving innermost
+   parenthesized groups first.  Statement expressions ({ ... }) are treated
+   as atomic operands.  array_access_used selects _ltng_add_sn (array
+   elements) vs the snprintf(...) concat form (general contexts).  Each
+   pass resolves one group, so the number of passes is bounded by the
+   string length - no fixed depth cap that would crash on deeply nested
+   parentheses. */
+static void normalize_string_expr(char *buf, int buf_size, int array_access_used) {
+    if (!buf || buf_size < 2) return;
+    char work[8192];
+    strncpy(work, buf, sizeof(work) - 1);
+    work[sizeof(work) - 1] = 0;
+    int just_wrapped = 0;
+
+    for (int pass = 0; pass < (int)strlen(work); pass++) {
+        int wlen = (int)strlen(work);
+        int bs = -1, be = -1;
+        int do_plus = 0, do_mul = 0;
+        for (int ii = 0; ii < wlen; ii++) {
+            if (work[ii] != '(') continue;
+            if (ii + 1 < wlen && work[ii + 1] == '{') continue;
+            int d = 0, inq = 0; char qc = 0; int jj = ii;
+            while (jj < wlen) {
+                if (inq) { if (work[jj] == '\\' && jj + 1 < wlen) { jj += 2; continue; } if (work[jj] == qc) inq = 0; jj++; continue; }
+                if (work[jj] == '"' || work[jj] == '\'') { inq = 1; qc = work[jj]; jj++; continue; }
+                if (work[jj] == '(') d++;
+                else if (work[jj] == ')') { d--; if (d == 0) break; }
+                jj++;
+            }
+            if (jj >= wlen) continue;
+            int is_whole_wrap = 0;
+            { char *pre = work; while (*pre == ' ' || *pre == '\t') pre++; const char *aft = work + jj + 1; while (*aft == ' ' || *aft == '\t') aft++; if (pre == work + ii && *aft == '\0') is_whole_wrap = 1; }
+            int id = 0, iin = 0; char iqc = 0; int hp = 0, hm = 0;
+            for (int kk = ii + 1; kk < jj; kk++) {
+                char cc = work[kk];
+                if (iin) { if (cc == '\\' && kk + 1 < jj) { kk++; continue; } if (cc == iqc) iin = 0; continue; }
+                if (cc == '"' || cc == '\'') { iin = 1; iqc = cc; continue; }
+                if (cc == '(' || cc == '{' || cc == '[') id++;
+                else if (cc == ')' || cc == '}' || cc == ']') { if (id > 0) id--; }
+                else if (cc == '+' && id == 0) hp = 1;
+                else if (cc == '*' && id == 0) hm = 1;
+            }
+            if (!hp && !hm) continue;
+            int has_inner = 0;
+            for (int xi = ii + 1; xi < jj; xi++) {
+                if (work[xi] != '(') continue;
+                if (xi + 1 < wlen && work[xi + 1] == '{') continue;
+                int xd = 0, xinq = 0; char xqc = 0; int xj = xi;
+                while (xj < jj) {
+                    if (xinq) { if (work[xj] == '\\' && xj + 1 < jj) { xj += 2; continue; } if (work[xj] == xqc) xinq = 0; xj++; continue; }
+                    if (work[xj] == '"' || work[xj] == '\'') { xinq = 1; xqc = work[xj]; xj++; continue; }
+                    if (work[xj] == '(') xd++;
+                    else if (work[xj] == ')') { xd--; if (xd == 0) break; }
+                    xj++;
+                }
+                if (xj >= jj) continue;
+                int xid = 0, xiin = 0; char xiqc = 0; int xhp = 0, xhm = 0;
+                for (int xk = xi + 1; xk < xj; xk++) {
+                    char xc = work[xk];
+                    if (xiin) { if (xc == '\\' && xk + 1 < xj) { xk++; continue; } if (xc == xiqc) xiin = 0; continue; }
+                    if (xc == '"' || xc == '\'') { xiin = 1; xiqc = xc; continue; }
+                    if (xc == '(' || xc == '{' || xc == '[') xid++;
+                    else if (xc == ')' || xc == '}' || xc == ']') { if (xid > 0) xid--; }
+                    else if (xc == '+' && xid == 0) xhp = 1;
+                    else if (xc == '*' && xid == 0) xhm = 1;
+                }
+                if (xhp || xhm) { has_inner = 1; break; }
+            }
+            if (has_inner) continue;
+            /* If the whole buffer is a single wrapped group with no inner
+               resolvable groups, allow it to be resolved (e.g. when a
+               prior pass produced ((result) * N)). */
+            if (is_whole_wrap) just_wrapped = 0;
+            bs = ii; be = jj; do_plus = hp; do_mul = hm; break;
+        }
+        if (bs == -1) {
+            /* No parenthesized group needs resolving.  If a top-level
+               '+' or '*' remains (expression not wrapped in parens), wrap
+               the buffer in parentheses and let the next pass resolve it. */
+            int wlen = (int)strlen(work);
+            int d = 0, inq = 0; char qc = 0; int hp = 0, hm = 0;
+            for (int kk = 0; kk < wlen; kk++) {
+                char cc = work[kk];
+                if (inq) { if (cc == '\\' && kk + 1 < wlen) { kk++; continue; } if (cc == qc) inq = 0; continue; }
+                if (cc == '"' || cc == '\'') { inq = 1; qc = cc; continue; }
+                if (cc == '(' || cc == '{' || cc == '[') d++; else if (cc == ')' || cc == '}' || cc == ']') { if (d > 0) d--; }
+                else if (cc == '+' && d == 0) hp = 1;
+                else if (cc == '*' && d == 0) hm = 1;
+            }
+            if (hp || hm) {
+                char wbuf[8192];
+                snprintf(wbuf, sizeof(wbuf), "(%s)", work);
+                strncpy(work, wbuf, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+                just_wrapped = 1;
+                continue;
+            }
+            break;
+        }
+        int clen = be - bs - 1;
+        char content[4096];
+        if (clen >= (int)sizeof(content)) clen = sizeof(content) - 1;
+        memcpy(content, work + bs + 1, clen);
+        content[clen] = 0;
+
+        if (do_plus) {
+            char parts[16][2048]; int nip = 0; char *ist = content;
+            int idp = 0, idb = 0, idbr = 0, iins = 0; char iq2 = 0;
+            for (char *pp = content; *pp && nip < 16; pp++) {
+                if (iins) { if (*pp == iq2 && pp > content && *(pp - 1) != '\\') iins = 0; continue; }
+                if (*pp == '"' || *pp == '\'') { iins = 1; iq2 = *pp; continue; }
+                if (*pp == '(') idp++; else if (*pp == ')') { if (idp > 0) idp--; }
+                else if (*pp == '[') idb++; else if (*pp == ']') { if (idb > 0) idb--; }
+                else if (*pp == '{') idbr++; else if (*pp == '}') { if (idbr > 0) idbr--; }
+                else if (*pp == '+' && idp == 0 && idb == 0 && idbr == 0) {
+                    *pp = 0; char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++;
+                    char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; }
+                    strncpy(parts[nip++], s2, sizeof(parts[0]) - 1); parts[nip - 1][sizeof(parts[0]) - 1] = 0; ist = pp + 1;
+                }
+            }
+            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } strncpy(parts[nip++], s2, sizeof(parts[0]) - 1); parts[nip - 1][sizeof(parts[0]) - 1] = 0; }
+            if (nip < 2) break;
+            /* Helper logic inline: normalize a part and make it stringy for concat */
+            char ires[4096];
+            strncpy(ires, parts[0], sizeof(ires) - 1); ires[sizeof(ires) - 1] = 0;
+            normalize_string_expr(ires, sizeof(ires), array_access_used);
+            for (int k = 1; k < nip; k++) {
+                char p[2048];
+                strncpy(p, parts[k], sizeof(p) - 1); p[sizeof(p) - 1] = 0;
+                normalize_string_expr(p, sizeof(p), array_access_used);
+                /* Build concat step. In array-access context use _ltng_add_sn.
+                   Otherwise, if either side is not stringy (e.g. atoi(x) from
+                   int var in mixed context, or numeric literal), convert to
+                   string form or use _ltng_add_sn. */
+                char lhs[4096]; strncpy(lhs, ires, sizeof(lhs)-1); lhs[sizeof(lhs)-1]=0;
+                char rhs[2048]; strncpy(rhs, p, sizeof(rhs)-1); rhs[sizeof(rhs)-1]=0;
+                /* If a part is atoi(ident) or atof(ident), in string concat we
+                   want the original buffer (vars are char buffers). */
+                {
+                    char *sides[2] = {lhs, rhs};
+                    int slens[2] = {(int)sizeof(lhs), (int)sizeof(rhs)};
+                    for (int si = 0; si < 2; si++) {
+                        char *s = sides[si];
+                        while (*s==' '||*s=='\t') s++;
+                        if (strncmp(s, "atoi(", 5) == 0 || strncmp(s, "atof(", 5) == 0) {
+                            const char *inner = s + 5;
+                            const char *start = inner;
+                            while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
+                            if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
+                                char tmp[512]; int tl = (int)(inner - start);
+                                if (tl >= (int)sizeof(tmp)) tl = sizeof(tmp)-1;
+                                memcpy(tmp, start, tl); tmp[tl]=0;
+                                strncpy(sides[si], tmp, slens[si]-1); sides[si][slens[si]-1]=0;
+                            }
+                        }
+                    }
+                }
+                char st[5000];
+                if (array_access_used) {
+                    snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs, rhs);
+                } else {
+                    /* If parts aren't clearly stringy, fall back to _ltng_add_sn
+                       which handles numeric-or-string at runtime. */
+                    int lhs_s = part_is_stringy(lhs);
+                    int rhs_s = part_is_stringy(rhs);
+                    if (lhs_s && rhs_s)
+                        snprintf(st, sizeof(st), "({ char _ltc[512]; snprintf(_ltc,512,\"%%s%%s\", %s, %s); _ltc; })", lhs, rhs);
+                    else
+                        snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs, rhs);
+                }
+                strncpy(ires, st, sizeof(ires) - 1); ires[sizeof(ires) - 1] = 0;
+            }
+            char nb[8192];
+            snprintf(nb, sizeof(nb), "%.*s%s%s", bs, work, ires, work + be + 1);
+            strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+        } else if (do_mul) {
+            int d = 0, inq = 0; char qc = 0; int star = -1;
+            for (int kk = 0; kk < clen; kk++) {
+                char cc = content[kk];
+                if (inq) { if (cc == '\\' && kk + 1 < clen) { kk++; continue; } if (cc == qc) inq = 0; continue; }
+                if (cc == '"' || cc == '\'') { inq = 1; qc = cc; continue; }
+                if (cc == '(') d++; else if (cc == ')') { if (d > 0) d--; }
+                else if (cc == '[') d++; else if (cc == ']') { if (d > 0) d--; }
+                else if (cc == '{') d++; else if (cc == '}') { if (d > 0) d--; }
+                else if (cc == '*' && d == 0) {
+                    const char *pp2 = content + kk + 1;
+                    while (*pp2 == ' ' || *pp2 == '\t') pp2++;
+                    if (*pp2 == '*' || *pp2 == ')' || *pp2 == '\0') continue;
+                    star = kk; break;
+                }
+            }
+            if (star < 0) break;
+            char left[4096] = {0}, right[1024] = {0};
+            int llen = star; if (llen >= (int)sizeof(left)) llen = sizeof(left) - 1;
+            memcpy(left, content, llen); left[llen] = 0;
+            int rlen = clen - star - 1; if (rlen >= (int)sizeof(right)) rlen = sizeof(right) - 1;
+            memcpy(right, content + star + 1, rlen); right[rlen] = 0;
+            { char *s = left; while (*s == ' ' || *s == '\t') s++; if (s != left) memmove(left, s, strlen(s) + 1); }
+            { char *e = left + strlen(left) - 1; while (e >= left && (*e == ' ' || *e == '\t')) { *e = 0; e--; } }
+            { char *s = right; while (*s == ' ' || *s == '\t') s++; if (s != right) memmove(right, s, strlen(s) + 1); }
+            { char *e = right + strlen(right) - 1; while (e >= right && (*e == ' ' || *e == '\t')) { *e = 0; e--; } }
+            if (left[0] == '\0' || right[0] == '\0') break;
+            /* Determine numeric/string roles for repeat(count vs string). */
+            int right_is_num = 1;
+            {
+                const char *rsp = right;
+                if (*rsp == '-') rsp++;
+                if (*rsp == 0) right_is_num = 0;
+                else { int hd = 0; for (; *rsp; rsp++) { if (isdigit((unsigned char)*rsp)) hd = 1; else if (*rsp == '.') {} else { right_is_num = 0; break; } } if (!hd) right_is_num = 0; }
+            }
+            int left_is_num = 1;
+            {
+                const char *lsp = left;
+                while (*lsp == ' ' || *lsp == '\t') lsp++;
+                if (*lsp == '-') lsp++;
+                if (*lsp == 0) left_is_num = 0;
+                else { int hd = 0; for (; *lsp; lsp++) { if (isdigit((unsigned char)*lsp)) hd = 1; else if (*lsp == '.') {} else { left_is_num = 0; break; } } if (!hd) left_is_num = 0; }
+            }
+            char str_operand[4096];
+            char countbuf[256];
+            if (left_is_num && !right_is_num) {
+                /* number * "string" (or number * string-expr) */
+                strncpy(str_operand, right, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
+                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
+                snprintf(countbuf, sizeof(countbuf), "%s", left);
+            } else if (right_is_num) {
+                strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
+                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
+                snprintf(countbuf, sizeof(countbuf), "%s", right);
+            } else {
+                /* variable * variable: assume left is string, right is count */
+                strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
+                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
+                snprintf(countbuf, sizeof(countbuf), "atoi(%s)", right);
+            }
+            char rep[8192];
+            snprintf(rep, sizeof(rep), "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", str_operand, countbuf);
+            char nb[8192];
+            snprintf(nb, sizeof(nb), "%.*s%s%s", bs, work, rep, work + be + 1);
+            strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+        }
+    }
+
+    strncpy(buf, work, buf_size - 1);
+    buf[buf_size - 1] = 0;
+}
+
 /* Post-process: replace atof(X) + atof(Y), atof(X) + _ltng_add_sn(Y, Z),
    _ltng_add_sn(X, Y) + atof(Z), etc. with _ltng_add_sn(...) for runtime
    string/number detection on buffer variables (e.g. function params typed
@@ -939,12 +1241,12 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
                                             *after_right == ',' || *after_right == ' ' ||
                                             *after_right == '\t')) after_right++;
                     while (*after_right == ' ' || *after_right == '\t') after_right++;
-                    /* Skip replacement if followed by another operator or closing paren */
+                    /* Skip replacement if followed by another operator that would change precedence/meaning.
+                       Note: ')' can close a grouping around the addition, so allow replacement. */
                     int next_op = (*after_right == '*' || *after_right == '/' || *after_right == '%' ||
                                    *after_right == '+' || *after_right == '-' || *after_right == '^' ||
                                    *after_right == '&' || *after_right == '|' || *after_right == '<' ||
-                                   *after_right == '>' || *after_right == '!' || *after_right == '=' ||
-                                   *after_right == ')');
+                                   *after_right == '>' || *after_right == '!' || *after_right == '=');
                     if (!next_op) {
                         int n = snprintf(dst, 4096 - (int)(dst - result),
                                          "_ltng_add_sn(%s, %s)", left, right);
@@ -973,39 +1275,111 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
 
 static const char *type_name_str(VarType t);
 
-/* Return 1 if a concat part is already a char* expression: a string literal,
-   a simple identifier (all variables are char buffers in generated C), or a
-   statement expression produced by transform_string_multiply (returns char*). */
-static int part_is_stringy(const char *part);
 static int function_returns_string(const char *fname);
 
 static int part_is_stringy(const char *part) {
-    if (part[0] == '"') return 1;
     const char *q = part;
     while (*q == ' ' || *q == '\t') q++;
-    if (*q == '_') {
-        const char *qq = q;
-        while (*qq && (isalnum((unsigned char)*qq) || *qq == '_')) qq++;
-        if (*qq == '\0') return 1;
+    /* Strip one layer of balanced outer parentheses to inspect inner expression. */
+    if (*q == '(' && strncmp(q, "({", 2) != 0) {
+        int depth = 0, in_str = 0; char sq = 0;
+        const char *end = NULL;
+        for (const char *p = q; *p; p++) {
+            if (in_str) {
+                if (*p == '\\' && p[1]) { p++; continue; }
+                if (*p == sq) in_str = 0;
+                continue;
+            }
+            if (*p == '"' || *p == '\'') { in_str = 1; sq = *p; continue; }
+            if (*p == '(') depth++;
+            else if (*p == ')') {
+                depth--;
+                if (depth == 0) { end = p; break; }
+            }
+        }
+        if (end) {
+            const char *after = end + 1;
+            while (*after == ' ' || *after == '\t') after++;
+            if (*after == '\0') {
+                /* whole part is wrapped in (...) - analyze inside */
+                char inner[4096];
+                size_t ilen = (size_t)(end - (q + 1));
+                if (ilen >= sizeof(inner)) ilen = sizeof(inner) - 1;
+                memcpy(inner, q + 1, ilen);
+                inner[ilen] = '\0';
+                /* Trim */
+                char *is = inner; while (*is == ' ' || *is == '\t') is++;
+                char *ie = is + strlen(is);
+                while (ie > is && (ie[-1] == ' ' || ie[-1] == '\t')) { ie--; *ie = '\0'; }
+                /* If inner has top-level '+' or known string helpers, treat as stringy */
+                {
+                    int d = 0, in = 0; char qc = 0, has_plus = 0, has_star = 0;
+                    for (const char *p = is; *p; p++) {
+                        if (in) { if (*p == '\\' && p[1]) { p++; continue; } if (*p == qc) in = 0; continue; }
+                        if (*p == '"' || *p == '\'') { in = 1; qc = *p; continue; }
+                        if (*p == '(' || *p == '{' || *p == '[') d++;
+                        else if (*p == ')' || *p == '}' || *p == ']') { if (d > 0) d--; }
+                        else if (*p == '+' && d == 0) { has_plus = 1; break; }
+                        else if (*p == '*' && d == 0) { has_star = 1; break; }
+                    }
+                    if (has_plus || has_star) return 1;
+                }
+                if (strstr(is, "_ltng_add_sn") != NULL || strstr(is, "_ltng_concat") != NULL)
+                    return 1;
+                return part_is_stringy(is);
+            }
+        }
     }
-    if (isalpha((unsigned char)*q) || *q == '_') {
+
+    if (*q == '"') return 1;
+    if (strncmp(q, "({", 2) == 0) {
+        if (strstr(part, "_ltng_repeat") != NULL || strstr(part, "_ltng_arr") != NULL ||
+            strstr(part, "_ltng_add_sn") != NULL || strstr(part, "_ltng_concat") != NULL)
+            return 1;
+        /* statement expressions returning string results (e.g. variadic call builders) */
+        if (strstr(part, "_ltng_retbuf") != NULL || strstr(part, "_ltng_arr_free") != NULL)
+            return 1;
+        return 0;
+    }
+    if (*q == '_' || isalpha((unsigned char)*q)) {
         const char *e = q;
         while (*e && (isalnum((unsigned char)*e) || *e == '_')) e++;
         if (*e == '(') {
-            /* Function call: decide by the callee's return type so that
-               string-returning calls (incl. variadic statement expressions)
-               participate in string concatenation. */
+            /* Function call: decide by the callee's return type. */
             char callee[MAX_IDENTIFIER_LEN];
             int cl = (int)(e - q);
             if (cl >= MAX_IDENTIFIER_LEN) cl = MAX_IDENTIFIER_LEN - 1;
             memcpy(callee, q, (size_t)cl);
             callee[cl] = '\0';
+            /* runtime helpers that return char* */
+            if (strcmp(callee, "_ltng_add_sn") == 0 || strcmp(callee, "_ltng_concat") == 0 ||
+                strcmp(callee, "_ltng_repeat") == 0 || strcmp(callee, "_ltng_as") == 0 ||
+                strcmp(callee, "_ltng_ad") == 0 || strcmp(callee, "_ltng_retbuf") == 0)
+                return 1;
             return function_returns_string(callee);
         }
-        if (*e == '\0') return 1;
+        /* simple identifier: treat as stringy (variables stored as char buffers) */
+        const char *end = e;
+        while (*end == ' ' || *end == '\t') end++;
+        if (*end == '\0') return 1;
+        /* identifier followed by '*' is a string repeat (stringy) */
+        if (*end == '*') return 1;
     }
-    if (strncmp(q, "({", 2) == 0 &&
-        (strstr(part, "_ltng_repeat") != NULL || strstr(part, "_ltng_arr") != NULL)) return 1;
+    /* contains string literal -> likely string expression */
+    if (strchr(q, '"') != NULL) return 1;
+    /* contains top-level '+' or '*' -> likely a string concat/repeat expression
+       (e.g. (a+b)*2 in a larger concat context); treat as stringy so the
+       normalizer can process it rather than misclassifying as numeric. */
+    {
+        int d = 0, in = 0; char qc = 0;
+        for (const char *p = q; *p; p++) {
+            if (in) { if (*p == '\\' && p[1]) { p++; continue; } if (*p == qc) in = 0; continue; }
+            if (*p == '"' || *p == '\'') { in = 1; qc = *p; continue; }
+            if (*p == '(' || *p == '{' || *p == '[') d++;
+            else if (*p == ')' || *p == '}' || *p == ']') { if (d > 0) d--; }
+            else if ((*p == '+' || *p == '*') && d == 0) return 1;
+        }
+    }
     return 0;
 }
 
@@ -1024,10 +1398,12 @@ static VarType infer_function_return_type(const char *fname);
 static int function_returns_string(const char *fname);
 
 static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
-    (void)table;
     /* The caller has already consumed the opening '['. Parse the remaining
        elements/nested arrays until the matching ']'. Arrays are stored as a
-       flat, row-major list of values. Arrays may have any number of dimensions. */
+       flat, row-major list of values. Arrays may have any number of dimensions.
+       Element encoding in node->value (pipe-separated): a leading '\x01' marks
+       a variable/C-expression element (its C name follows); otherwise the text
+       is pushed as a string literal value. */
     int depth = 1;                 /* nesting level, outer '[' already consumed */
     int max_depth = 1;             /* deepest nesting level seen */
     int elem_count = 0;
@@ -1097,6 +1473,22 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
         char val[MAX_STRING_LEN] = "";
         if (t.type == TOKEN_CHAR) {
             snprintf(val, sizeof(val), "'%s'", t.value);
+        } else if (t.type == TOKEN_IDENT && !is_bool_value(t.value) && !is_type_keyword(t.value)) {
+            char m[MAX_IDENTIFIER_LEN];
+            mangle_name(t.value, m, sizeof(m));
+            if (symbol_table_has(table, m) || symbol_table_has(table, t.value)) {
+                const char *cname = symbol_table_has(table, m) ? symbol_table_get_cname(table, m) : symbol_table_get_cname(table, t.value);
+                val[0] = '\x01';
+                strncpy(val + 1, cname, sizeof(val) - 2);
+                val[sizeof(val) - 1] = '\0';
+            } else {
+                snprintf(val, sizeof(val), "%s", t.value);
+            }
+        } else if (t.type == TOKEN_IDENT && is_bool_value(t.value)) {
+            if (strcmp(t.value, "true") == 0 || strcmp(t.value, "t") == 0)
+                snprintf(val, sizeof(val), "true");
+            else
+                snprintf(val, sizeof(val), "false");
         } else {
             snprintf(val, sizeof(val), "%s", t.value);
         }
@@ -2128,7 +2520,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             result_type = TYPE_STRING;
         }
     }
-    if (has_string_concat || has_string_mult || (result_type == TYPE_STRING && (strstr(out, "+") != NULL || strstr(out, "*") != NULL))) {
+    if (has_string_concat || has_string_mult || array_access_used || (result_type == TYPE_STRING && (strstr(out, "+") != NULL || strstr(out, "*") != NULL))) {
         /* Handle multiplication with higher precedence - split by + at top level first */
         if (strstr(out, "+") != NULL) {
             /* split by + */
@@ -2175,12 +2567,74 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 parts[nparts-1][sizeof(parts[0]) - 1] = 0;
             }
             /* transform each part */
-            for (int i = 0; i < nparts; i++) {
-                transform_string_multiply(parts[i], 512);
+            /* If no actual concatenation at top level (e.g. all '+' inside parens),
+               try to normalize by unwrapping outer parens to expose top-level '+'. */
+            if (nparts <= 1 && has_string_concat) {
+                char norm_buf[2048];
+                strncpy(norm_buf, parts[0], sizeof(norm_buf) - 1);
+                norm_buf[sizeof(norm_buf) - 1] = 0;
+                /* Unwrap whole-expression paren layers dynamically. Each pass either
+                   exposes a top-level '+' (then we split) or strips one wrapping layer,
+                   so the number of passes is bounded by the string length - no fixed
+                   depth cap that would crash on deeply nested parentheses. */
+                int unwrap_limit = (int)strlen(norm_buf);
+                if (unwrap_limit < 1) unwrap_limit = 1;
+                for (int unwrap_try = 0; unwrap_try < unwrap_limit && nparts <= 1; unwrap_try++) {
+                    /* try splitting current norm_buf by top-level '+' first */
+                    {
+                        char split_tmp[2048]; strncpy(split_tmp, norm_buf, sizeof(split_tmp)-1); split_tmp[sizeof(split_tmp)-1]=0;
+                        char *ist2 = split_tmp; int d2p=0,d2b=0,d2br=0,in2=0; char q2c=0; int new_n=0; char new_parts[32][2048];
+                        for (char *pp = split_tmp; *pp && new_n < 32; pp++) {
+                            if (in2) { if (*pp == q2c && (pp == split_tmp || *(pp-1) != '\\')) in2 = 0; continue; }
+                            if (*pp == '"' || *pp == '\'') { in2 = 1; q2c = *pp; continue; }
+                            if (*pp == '(') d2p++; else if (*pp == ')') { if (d2p>0) d2p--; }
+                            else if (*pp == '[') d2b++; else if (*pp == ']') { if (d2b>0) d2b--; }
+                            else if (*pp == '{') d2br++; else if (*pp == '}') { if (d2br>0) d2br--; }
+                            else if (*pp == '+' && d2p==0 && d2b==0 && d2br==0) {
+                                *pp = 0; char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
+                                char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
+                                strncpy(new_parts[new_n++], s2, sizeof(new_parts[0])-1); new_parts[new_n-1][sizeof(new_parts[0])-1]=0; ist2 = pp+1;
+                            }
+                        }
+                        { char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
+                          char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
+                          strncpy(new_parts[new_n++], s2, sizeof(new_parts[0])-1); new_parts[new_n-1][sizeof(new_parts[0])-1]=0; }
+                        if (new_n > 1) {
+                            for (int pi = 0; pi < new_n && pi < 32; pi++) { strncpy(parts[pi], new_parts[pi], sizeof(parts[0])-1); parts[pi][sizeof(parts[0])-1]=0; }
+                            nparts = new_n;
+                            break;
+                        }
+                    }
+                    /* if not splittable, try to unwrap one layer of whole-expression parens */
+                    char *nq = norm_buf; while (*nq == ' ' || *nq == '\t') nq++;
+                    if (!(nq[0] == '(' && strncmp(nq, "({", 2) != 0)) break;
+                    int npd = 0, nins = 0; char nsq = 0; const char *nend = NULL;
+                    for (const char *pp = nq; *pp; pp++) {
+                        if (nins) { if (*pp == '\\' && pp[1]) { pp++; continue; } if (*pp == nsq) nins = 0; continue; }
+                        if (*pp == '"' || *pp == '\'') { nins = 1; nsq = *pp; continue; }
+                        if (*pp == '(') npd++; else if (*pp == ')') { npd--; if (npd == 0) { nend = pp; break; } }
+                    }
+                    if (!nend) break;
+                    const char *naft = nend + 1; while (*naft == ' ' || *naft == '\t') naft++;
+                    if (*naft != '\0') break; /* doesn't wrap whole expression, can't unwrap */
+                    size_t nil = (size_t)(nend - (nq + 1));
+                    char inner_tmp[2048]; if (nil >= sizeof(inner_tmp)) nil = sizeof(inner_tmp) - 1;
+                    memcpy(inner_tmp, nq + 1, nil); inner_tmp[nil] = 0;
+                    strncpy(norm_buf, inner_tmp, sizeof(norm_buf)-1); norm_buf[sizeof(norm_buf)-1]=0;
+                    strncpy(parts[0], inner_tmp, sizeof(parts[0])-1); parts[0][sizeof(parts[0])-1]=0;
+                }
             }
             /* If no actual concatenation (single part), skip wrapping */
             if (nparts <= 1) {
-                /* No concatenation needed, keep original expression */
+                /* Handle string-multiply of a (possibly nested) string-concat expression: e.g. (a+b)*n, ((a+b)*n + "x")*m */
+                if (has_string_concat && has_string_mult) {
+                    /* Resolve nested '+' (concat) and '*' (repeat) with correct
+                       precedence, handling arbitrary parenthesis depth. */
+                    normalize_string_expr(out, out_size, array_access_used);
+                    result_type = TYPE_STRING;
+                    nparts = -1;
+                }
+                /* No concatenation needed, keep original expression, or handled above */
             } else if (array_access_used) {
                 /* Array elements are string buffers; use the runtime
                    numeric-or-string add so `arr[1] + arr[2]` adds numbers
@@ -2198,6 +2652,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     } else {
                         strncpy(cparts[i], part, sizeof(cparts[i]) - 1);
                         cparts[i][sizeof(cparts[i]) - 1] = 0;
+                        normalize_string_expr(cparts[i], sizeof(cparts[i]), array_access_used);
+
                     }
                 }
                 char add_result[2048] = {0};
@@ -2214,7 +2670,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 out[out_size - 1] = 0;
                 result_type = TYPE_STRING;
             } else {
-            /* concatenate */
+            /* concatenate: build expression from parts */
             char add_result[2048] = {0};
             int all_stringy = 1;
             for (int i = 0; i < nparts; i++) {
@@ -2230,6 +2686,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 } else {
                     strncpy(cpart, part, sizeof(cpart) - 1);
                     cpart[sizeof(cpart) - 1] = 0;
+                    normalize_string_expr(cpart, sizeof(cpart), array_access_used);
+
                 }
                 if (i == 0) {
                     strncpy(add_result, cpart, sizeof(add_result) - 1);
@@ -2237,8 +2695,6 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 } else {
                     char step[2048];
                     if (all_stringy) {
-                        /* Pure string concatenation: snprintf "%s%s" keeps plain
-                           string semantics (numeric-looking strings stay text). */
                         snprintf(step, sizeof(step), "({ char _ltc[512]; snprintf(_ltc,512,\"%%s%%s\", %s, %s); _ltc; })", add_result, cpart);
                     } else {
                         snprintf(step, sizeof(step), "_ltng_add_sn(%s, %s)", add_result, cpart);
@@ -2252,7 +2708,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             result_type = TYPE_STRING;
             }
         } else if (strstr(out, "*") != NULL) {
-            transform_string_multiply(out, out_size);
+            /* Use normalize_string_expr for general multiply expressions
+               (including nested/chained repeats like (("a"*2)*2)*2). */
+            normalize_string_expr(out, out_size, array_access_used);
             result_type = TYPE_STRING;
         }
     }
@@ -3595,10 +4053,11 @@ static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok) {
     return recv;
 }
 
-static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign, VarType *out_type) {
+static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign, VarType *out_type, char *out_call_cname, int out_call_cname_sz) {
     Token first = lexer_peek(lexer);
     int saved = lexer->current;
     if (out_type) *out_type = TYPE_STRING;
+    if (out_call_cname && out_call_cname_sz > 0) out_call_cname[0] = '\0';
     ASTNode *call = NULL;
     int is_method_form = 0;
 
@@ -3705,6 +4164,10 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
         if (chain) *out_type = TYPE_INT; /* dynamic result, assume numeric-compatible */
         else if (strcmp(call->name, "__ltng_indirect") == 0) *out_type = TYPE_STRING;
         else *out_type = infer_function_return_type(call->name);
+    }
+    if (out_call_cname && out_call_cname_sz > 0 && !chain) {
+        strncpy(out_call_cname, call->name, out_call_cname_sz - 1);
+        out_call_cname[out_call_cname_sz - 1] = '\0';
     }
     return 1;
 }
@@ -4239,11 +4702,56 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
-                    symbol_table_add_locked(table, mangled, call_type);
+                char call_cname[MAX_IDENTIFIER_LEN] = "";
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type, call_cname, sizeof(call_cname))) {
+                    VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
+                    ObjSchema *ret_sc = NULL;
+                    if (store_type == TYPE_OBJECT && call_cname[0]) {
+                        FuncInfo *cfi = find_funcinfo_by_cname(call_cname);
+                        if (!cfi) {
+                            for (int i = 0; i < g_func_count; i++) {
+                                if (strcmp(g_funcs[i].src, call_cname) == 0 || strcmp(g_funcs[i].name, call_cname) == 0) { cfi = &g_funcs[i]; break; }
+                            }
+                        }
+                        if (cfi && cfi->return_obj_base[0]) ret_sc = obj_lookup(cfi->return_obj_base);
+                        if (!ret_sc) {
+                            ASTNode *cfn = find_function_node_by_cname(call_cname);
+                            if (cfn && cfn->return_obj_base[0]) ret_sc = obj_lookup(cfn->return_obj_base);
+                        }
+                    }
+                    if (ret_sc) {
+                        const char *cname = symbol_table_get_cname(table, mangled);
+                        symbol_table_add_locked(table, mangled, TYPE_OBJECT);
+                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
+                        strncpy(ds.var, cname, MAX_IDENTIFIER_LEN - 1);
+                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
+                        ds.count = ret_sc->count;
+                        obj_build_all(&ds);
+                        obj_register(cname, &ds);
+                        ASTNode *node = create_node(NODE_LET, cname, expr);
+                        node->var_type = TYPE_OBJECT;
+                        node->is_expr = 1;
+                        node->is_default = 1;
+                        emit(node);
+                        /* copy returned object fields from function staging area */
+                        for (int i = 0; i < ret_sc->count; i++) {
+                            char df[MAX_IDENTIFIER_LEN*2+8], sf[MAX_IDENTIFIER_LEN*2+8];
+                            obj_resolve_field(cname, ret_sc->fields[i].name, df, sizeof(df));
+                            char stage_base[MAX_IDENTIFIER_LEN*2+16];
+                            snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", call_cname);
+                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
+                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            sn->var_type = TYPE_STRING;
+                            sn->is_expr = 1;
+                            sn->is_variable = 1;
+                            emit(sn);
+                        }
+                        return;
+                    }
+                    symbol_table_add_locked(table, mangled, store_type);
                     const char *cname = symbol_table_get_cname(table, mangled);
                     ASTNode *node = create_node(NODE_LET, cname, expr);
-                    node->var_type = call_type;
+                    node->var_type = store_type;
                     node->is_expr = 1;
                     node->is_default = 1; /* sole call result */
                     emit(node);
@@ -4481,11 +4989,57 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
-                    symbol_table_add_locked(table, mangled, call_type);
+                char call_cname[MAX_IDENTIFIER_LEN] = "";
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type, call_cname, sizeof(call_cname))) {
+                    VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
+                    ObjSchema *ret_sc = NULL;
+                    if (store_type == TYPE_OBJECT && call_cname[0]) {
+                        FuncInfo *cfi = find_funcinfo_by_cname(call_cname);
+                        if (!cfi) {
+                            for (int i = 0; i < g_func_count; i++) {
+                                if (strcmp(g_funcs[i].src, call_cname) == 0 || strcmp(g_funcs[i].name, call_cname) == 0) { cfi = &g_funcs[i]; break; }
+                            }
+                        }
+                        if (cfi && cfi->return_obj_base[0]) ret_sc = obj_lookup(cfi->return_obj_base);
+                        if (!ret_sc) {
+                            ASTNode *cfn = find_function_node_by_cname(call_cname);
+                            if (cfn && cfn->return_obj_base[0]) ret_sc = obj_lookup(cfn->return_obj_base);
+                        }
+                    }
+                    if (ret_sc) {
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        symbol_table_add_locked(table, mangled, TYPE_OBJECT);
+                        symbol_table_set_const(table, mangled, 1);
+                        
+                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
+                        strncpy(ds.var, dcname, MAX_IDENTIFIER_LEN - 1);
+                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
+                        ds.count = ret_sc->count;
+                        obj_build_all(&ds);
+                        obj_register(dcname, &ds);
+                        ASTNode *node = create_node(NODE_CONST, dcname, expr);
+                        node->var_type = TYPE_OBJECT;
+                        node->is_expr = 1;
+                        node->is_default = 1;
+                        emit(node);
+                        for (int i = 0; i < ret_sc->count; i++) {
+                            char df[MAX_IDENTIFIER_LEN*2+8], sf[MAX_IDENTIFIER_LEN*2+8];
+                            obj_resolve_field(dcname, ret_sc->fields[i].name, df, sizeof(df));
+                            char stage_base[MAX_IDENTIFIER_LEN*2+16];
+                            snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", call_cname);
+                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
+                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            sn->var_type = TYPE_STRING;
+                            sn->is_expr = 1;
+                            sn->is_variable = 1;
+                            emit(sn);
+                        }
+                        return;
+                    }
+                    symbol_table_add_locked(table, mangled, store_type);
                     symbol_table_set_const(table, mangled, 1);
                     ASTNode *node = create_node(NODE_CONST, mangled, expr);
-                    node->var_type = call_type;
+                    node->var_type = store_type;
                     node->is_expr = 1;
                     node->is_default = 1; /* sole call result */
                     emit(node);
@@ -5032,8 +5586,54 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
-                    vtype = call_type;
+                char call_cname[MAX_IDENTIFIER_LEN] = "";
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type, call_cname, sizeof(call_cname))) {
+                    VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
+                    ObjSchema *ret_sc = NULL;
+                    if (store_type == TYPE_OBJECT && call_cname[0]) {
+                        FuncInfo *cfi = find_funcinfo_by_cname(call_cname);
+                        if (!cfi) {
+                            for (int i = 0; i < g_func_count; i++) {
+                                if (strcmp(g_funcs[i].src, call_cname) == 0 || strcmp(g_funcs[i].name, call_cname) == 0) { cfi = &g_funcs[i]; break; }
+                            }
+                        }
+                        if (cfi && cfi->return_obj_base[0]) ret_sc = obj_lookup(cfi->return_obj_base);
+                        if (!ret_sc) {
+                            ASTNode *cfn = find_function_node_by_cname(call_cname);
+                            if (cfn && cfn->return_obj_base[0]) ret_sc = obj_lookup(cfn->return_obj_base);
+                        }
+                    }
+                    if (ret_sc) {
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        if (!check_set_type_immutable(table, mangled, TYPE_OBJECT, type_tok.line, type_tok.col, lexer)) return;
+                        symbol_table_update(table, mangled, TYPE_OBJECT);
+                        
+                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
+                        strncpy(ds.var, dcname, MAX_IDENTIFIER_LEN - 1);
+                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
+                        ds.count = ret_sc->count;
+                        obj_build_all(&ds);
+                        obj_register(dcname, &ds);
+                        ASTNode *node = create_node(NODE_SET, dcname, expr);
+                        node->var_type = TYPE_OBJECT;
+                        node->is_expr = 1;
+                        node->is_default = 1;
+                        emit(node);
+                        for (int i = 0; i < ret_sc->count; i++) {
+                            char df[MAX_IDENTIFIER_LEN*2+8], sf[MAX_IDENTIFIER_LEN*2+8];
+                            obj_resolve_field(dcname, ret_sc->fields[i].name, df, sizeof(df));
+                            char stage_base[MAX_IDENTIFIER_LEN*2+16];
+                            snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", call_cname);
+                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
+                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            sn->var_type = TYPE_STRING;
+                            sn->is_expr = 1;
+                            sn->is_variable = 1;
+                            emit(sn);
+                        }
+                        return;
+                    }
+                    vtype = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
                     if (!check_set_type_immutable(table, mangled, vtype, type_tok.line, type_tok.col, lexer))
                         return;
                     symbol_table_update(table, mangled, vtype);
@@ -5215,8 +5815,54 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type)) {
-                    vtype = call_type;
+                char call_cname[MAX_IDENTIFIER_LEN] = "";
+                if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &call_type, call_cname, sizeof(call_cname))) {
+                    VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
+                    ObjSchema *ret_sc = NULL;
+                    if (store_type == TYPE_OBJECT && call_cname[0]) {
+                        FuncInfo *cfi = find_funcinfo_by_cname(call_cname);
+                        if (!cfi) {
+                            for (int i = 0; i < g_func_count; i++) {
+                                if (strcmp(g_funcs[i].src, call_cname) == 0 || strcmp(g_funcs[i].name, call_cname) == 0) { cfi = &g_funcs[i]; break; }
+                            }
+                        }
+                        if (cfi && cfi->return_obj_base[0]) ret_sc = obj_lookup(cfi->return_obj_base);
+                        if (!ret_sc) {
+                            ASTNode *cfn = find_function_node_by_cname(call_cname);
+                            if (cfn && cfn->return_obj_base[0]) ret_sc = obj_lookup(cfn->return_obj_base);
+                        }
+                    }
+                    if (ret_sc) {
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        if (!check_set_type_immutable(table, mangled, TYPE_OBJECT, set_tok.line, set_tok.col, lexer)) return;
+                        symbol_table_update(table, mangled, TYPE_OBJECT);
+                        
+                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
+                        strncpy(ds.var, dcname, MAX_IDENTIFIER_LEN - 1);
+                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
+                        ds.count = ret_sc->count;
+                        obj_build_all(&ds);
+                        obj_register(dcname, &ds);
+                        ASTNode *node = create_node(NODE_SET, dcname, expr);
+                        node->var_type = TYPE_OBJECT;
+                        node->is_expr = 1;
+                        node->is_default = 1;
+                        emit(node);
+                        for (int i = 0; i < ret_sc->count; i++) {
+                            char df[MAX_IDENTIFIER_LEN*2+8], sf[MAX_IDENTIFIER_LEN*2+8];
+                            obj_resolve_field(dcname, ret_sc->fields[i].name, df, sizeof(df));
+                            char stage_base[MAX_IDENTIFIER_LEN*2+16];
+                            snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", call_cname);
+                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
+                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            sn->var_type = TYPE_STRING;
+                            sn->is_expr = 1;
+                            sn->is_variable = 1;
+                            emit(sn);
+                        }
+                        return;
+                    }
+                    vtype = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
                     if (!check_set_type_immutable(table, mangled, vtype, set_tok.line, set_tok.col, lexer))
                         return;
                     symbol_table_update(table, mangled, vtype);
@@ -6559,55 +7205,46 @@ static void validate_function_return_types(ASTNode *fn) {
     }
 }
 
-/* Recursively scan an AST subtree for NODE_RETURN nodes and tally their var_types.
-   Returns the dominant return type, or TYPE_STRING if mixed/none. */
+/* Recursively scan an AST subtree for NODE_RETURN nodes and determine the
+   dominant return type. Sets *has_return when any return statement is found. */
 static VarType analyze_function_returns(ASTNode *node, int *has_return) {
-    if (!node) return TYPE_STRING;
+    if (!node) return TYPE_VOID;
 
     if (node->type == NODE_RETURN) {
         *has_return = 1;
         return node->var_type;
     }
 
-    VarType result = TYPE_STRING;
+    VarType result = TYPE_VOID;
+    int have_type = 0;
     VarType child;
-    int child_has_return = 0;
 
-    child = analyze_function_returns(node->body, &child_has_return);
-    if (child_has_return) {
-        *has_return = 1;
-        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
+    ASTNode *kids[5] = { node->body, node->orelse, node->cases, node->else_body, node->next };
+    for (int k = 0; k < 5; k++) {
+        int child_has_return = 0;
+        child = analyze_function_returns(kids[k], &child_has_return);
+        if (child_has_return) {
+            *has_return = 1;
+            if (!have_type) { result = child; have_type = 1; }
+            else if (result == child) { /* same */ }
+            else if ((result == TYPE_INT || result == TYPE_FLOAT) &&
+                     (child == TYPE_INT || child == TYPE_FLOAT)) {
+                result = (result == TYPE_FLOAT || child == TYPE_FLOAT) ? TYPE_FLOAT : TYPE_INT;
+            } else if ((result == TYPE_STRING || result == TYPE_CHAR) &&
+                       (child == TYPE_STRING || child == TYPE_CHAR)) {
+                result = TYPE_STRING;
+            } else {
+                /* Mixed/incompatible (e.g. value vs bare/void, or object vs int). */
+                result = TYPE_STRING;
+            }
+        }
     }
-
-    child = analyze_function_returns(node->orelse, &child_has_return);
-    if (child_has_return) {
-        *has_return = 1;
-        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
-    }
-
-    child = analyze_function_returns(node->cases, &child_has_return);
-    if (child_has_return) {
-        *has_return = 1;
-        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
-    }
-
-    child = analyze_function_returns(node->else_body, &child_has_return);
-    if (child_has_return) {
-        *has_return = 1;
-        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
-    }
-
-    child = analyze_function_returns(node->next, &child_has_return);
-    if (child_has_return) {
-        *has_return = 1;
-        result = (result == TYPE_STRING || result == child) ? child : TYPE_STRING;
-    }
-
     return result;
 }
 
-/* Infer the return type of a user-defined function by scanning its return statements.
-   Returns TYPE_STRING if the function is not found or has mixed/no returns. */
+/* Infer the effective return type of a user-defined function. For annotated
+   functions returns the annotation; otherwise analyzes return statements.
+   If no return statements are present, returns TYPE_VOID. */
 static VarType infer_function_return_type(const char *fname) {
     ASTNode *fn = find_function_node_by_cname(fname);
     if (!fn) fn = find_function_ast_by_name(fname);
@@ -6615,7 +7252,9 @@ static VarType infer_function_return_type(const char *fname) {
     if (fn->has_return_type) return fn->return_type;
 
     int has_return = 0;
-    return analyze_function_returns(fn->body, &has_return);
+    VarType rt = analyze_function_returns(fn->body, &has_return);
+    if (!has_return) return TYPE_VOID;
+    return rt;
 }
 
 static int function_returns_string(const char *fname) {
@@ -7130,6 +7769,21 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
     return call;
 }
 
+static void record_return_obj_schema(const char *obj_base) {
+    if (!obj_base || !obj_base[0] || !g_enclosing_cname[0]) return;
+    if (!obj_lookup(obj_base)) return;
+    FuncInfo *fi = find_funcinfo_by_cname(g_enclosing_cname);
+    if (fi && fi->return_obj_base[0] == '\0') {
+        strncpy(fi->return_obj_base, obj_base, MAX_IDENTIFIER_LEN - 1);
+        fi->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+    }
+    ASTNode *fn = find_function_node_by_cname(g_enclosing_cname);
+    if (fn && fn->return_obj_base[0] == '\0') {
+        strncpy(fn->return_obj_base, obj_base, MAX_IDENTIFIER_LEN - 1);
+        fn->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+    }
+}
+
 static void parse_return(Lexer *lexer, SymbolTable *table) {
     Token kw = lexer_next(lexer);
     if (!g_in_function) {
@@ -7208,7 +7862,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             }
             /* fall through to full expression parsing */
         }
-        /* sole variable - pass through as string to preserve value */
+        /* sole variable - pass through while preserving its type when known */
         if (next.type == TOKEN_IDENT && !is_bool_value(next.value) && !is_type_keyword(next.value) && !is_function_name_scoped(table, next.value)) {
             int saved = lexer->current;
             Token id = lexer_next(lexer);
@@ -7221,10 +7875,20 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 const char *cname = symbol_table_get_cname(table, m);
                 strncpy(expr, cname, sizeof(expr) - 1);
                 expr[sizeof(expr) - 1] = '\0';
-                etype = TYPE_STRING;
+                VarType vtype2 = TYPE_STRING;
+                if (symbol_table_has(table, m)) vtype2 = symbol_table_get(table, m);
+                /* Preserve legacy pass-through behavior (values are string buffers at runtime),
+                   but detect object returns for inference/schema propagation. */
+                if (vtype2 == TYPE_OBJECT) {
+                    etype = TYPE_OBJECT;
+                } else {
+                    etype = TYPE_STRING;
+                }
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
                 node->is_expr = 1;
+                node->is_variable = 1;
+                if (etype == TYPE_OBJECT) record_return_obj_schema(cname);
                 emit(node);
                 return;
             }
@@ -7236,7 +7900,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
               lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
               (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0, NULL)) {
+            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0, NULL, NULL, 0)) {
                 etype = TYPE_STRING;
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
@@ -7254,8 +7918,10 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             parse_object_literal(lexer, table, temp_mangled, 0, 0);
             /* parse_object_literal emitted a NODE_LET to init fields; now emit return */
             ASTNode *node = create_node(NODE_RETURN, "", temp_mangled);
-            node->var_type = TYPE_STRING;
+            node->var_type = TYPE_OBJECT;
             node->is_expr = 1;
+            node->is_variable = 1;
+            record_return_obj_schema(temp_mangled);
             emit(node);
             return;
         }
@@ -7270,10 +7936,11 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
         emit(node);
         return;
     }
+    /* bare return (no value) */
     ASTNode *node = create_node(NODE_RETURN, "", expr);
     node->line = kw.line; node->col = kw.col;
-    node->var_type = etype;
-    node->is_expr = 1;
+    node->var_type = TYPE_VOID;
+    node->is_expr = 0;
     emit(node);
 }
 
@@ -7714,6 +8381,33 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
 
     free(func_scope);
     validate_function_return_types(fn);
+    /* Propagate inferred return type and object-return schema for unannotated functions. */
+    {
+        FuncInfo *fi2 = NULL;
+        if (sig) fi2 = sig;
+        else {
+            for (int i = 0; i < g_func_count; i++) {
+                if (strcmp(g_funcs[i].name, cname) == 0) { fi2 = &g_funcs[i]; break; }
+            }
+        }
+        if (!fn->has_return_type) {
+            int has_ret = 0;
+            VarType irt = analyze_function_returns(fn->body, &has_ret);
+            if (!has_ret) irt = TYPE_VOID;
+            fn->return_type = irt;
+            if (fi2) {
+                if (!fi2->has_return_type) fi2->return_type = irt;
+            }
+        }
+        if (fi2 && fn->return_obj_base[0] == '\0' && fi2->return_obj_base[0] != '\0') {
+            strncpy(fn->return_obj_base, fi2->return_obj_base, MAX_IDENTIFIER_LEN - 1);
+            fn->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+        }
+        if (fi2 && fi2->return_obj_base[0] == '\0' && fn->return_obj_base[0] != '\0') {
+            strncpy(fi2->return_obj_base, fn->return_obj_base, MAX_IDENTIFIER_LEN - 1);
+            fi2->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+        }
+    }
     (void)kw;
     return fn;
 }
