@@ -5,8 +5,6 @@
 *.c.bak
 /compiled/
 /tmp/ltng_*
-ltng
-source_code/compiler/ltng
 compiler/hello
 *.universal
 
