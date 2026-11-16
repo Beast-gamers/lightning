@@ -8,7 +8,7 @@ Scope: Initial codebase audit per mission requirements before implementing enhan
 - Git repo: yes. Recent commits show incremental feature work (arrays push/pop/set, exit, escape sequences). Working tree has untracked `code/compiled/` (preserved).
 - Primary artifacts:
   - `source_code/compiler/src/`: C99 compiler sources (`ltng.h`, `lexer.c`, `parser.c`, `codegen.c`, `errors.c`, `main.c`).
-  - `source_code/compiler/Makefile`: builds `source_code/compiler/ltng` with `cc -Wall -Wextra -pedantic -std=c99`.
+  - `source_code/compiler/Makefile`: builds `source_code/builds/bin/ltng` from `source_code/compiler/source/src` with `cc -Wall -Wextra -pedantic -std=c99`.
   - `bolt`: POSIX shell driver for compile-and-run, `--check`, `--compile` (universal packaging), install helpers.
   - `documentation.md`: user-facing language documentation (claims partial implementation; notes missing features).
   - `AUDIT_REPORT.md`: prior stabilization audit (2026-era in file) documenting bug fixes and array work.

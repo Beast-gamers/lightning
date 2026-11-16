@@ -1,11 +1,13 @@
 CC = cc
 CFLAGS = -Wall -Wextra -pedantic -std=c99
-SRC = src/main.c src/lexer.c src/parser.c src/codegen.c src/errors.c src/ir.c
-OUT = ltng
+SRCDIR = source/src
+SRC = $(SRCDIR)/main.c $(SRCDIR)/lexer.c $(SRCDIR)/parser.c $(SRCDIR)/codegen.c $(SRCDIR)/errors.c $(SRCDIR)/ir.c
+OUT = ../builds/bin/ltng
 
 all: $(OUT)
 
-$(OUT): $(SRC) src/ltng.h
+$(OUT): $(SRC) $(SRCDIR)/ltng.h
+	@mkdir -p ../builds/bin
 	$(CC) $(CFLAGS) -o $(OUT) $(SRC)
 
 clean:

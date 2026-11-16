@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LTNG_SRC="$ROOT/source_code/compiler/ltng"
+LTNG_SRC="$ROOT/source_code/builds/bin/ltng"
 LTNG="/tmp/opencode/ltng"
 TMP="/tmp/opencode/ltng_tests"
 mkdir -p "$TMP" /tmp/opencode
