@@ -1,0 +1,8 @@
+let x=5
+let y=6
+let z=[x,y,4]
+let w="hi"+" , "+"bye"
+write(w)
+write((((((z[1]+","+z[2])*5)+"1")*5)+(",2,"*3))*3)
+write(typeof(z))
+if(typeof(z)=="array"){write("hiiiii")}

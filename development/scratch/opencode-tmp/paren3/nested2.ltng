@@ -1,0 +1,2 @@
+function dbl(x) -> int { return x * 2 }
+write(dbl(dbl(3)))

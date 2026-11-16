@@ -1,0 +1,10 @@
+let a = [10,20,30,40]
+write(a[1])
+write(a[2])
+write(a[3])
+write(a[4])
+let b = a.slice(2,4)
+write("len")
+write(b.length)
+write(b[1])
+write(b[2])

@@ -1,0 +1,13 @@
+42
+3.14
+hello
+true
+hello world, value is 42
+int
+The value of x is 42 and it is of type int
+$[x]
+<hello>
+<>
+<<>>
+before $[s] after
+Result: 42 float

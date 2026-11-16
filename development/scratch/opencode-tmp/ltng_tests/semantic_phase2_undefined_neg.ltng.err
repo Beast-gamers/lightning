@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase2_undefined_neg.ltng:2:7
+   |
+ 2 | write(no_such_var)
+   |       ^
+   = error: Variable not declared
+
+Check failed: 1 error(s)

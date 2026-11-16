@@ -1,0 +1,8 @@
+function testfn(){
+    try {
+        throw "x"
+    } finally {
+        return 42
+    }
+}
+write(testfn())

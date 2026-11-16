@@ -1,0 +1,4 @@
+let a="ab"
+let b=2
+let c=3
+write((a * b) + (a * c))

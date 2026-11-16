@@ -1,0 +1,40 @@
+# --- let b = a.copy() ---
+let c1 = [10, 20, 30]
+let c2 = c1.copy()
+write(c2[1])
+write(c2[2])
+write(c2[3])
+c2.push(40)
+write(c1.length)   # original unchanged
+write(c2.length)   # copy has 4
+
+# --- let b = a.slice(start, end) ---
+let s1 = [1, 2, 3, 4, 5]
+let s2 = s1.slice(2, 4)   # elements at positions 2,3 = [2, 3]
+write(s2[1])
+write(s2[2])
+write(s2.length)
+let s3 = s1.slice(-3, -1) # elements at positions 3,4 (from end)
+write(s3[1])
+write(s3[2])
+write(s3.length)
+
+# --- Empty arrays ---
+let empty = array
+write(empty.length)
+empty.push(100)
+write(empty[1])
+write(empty.length)
+write(empty.pop())
+write(empty.length)
+
+# --- Invalid index 0 ---
+let z = [10, 20, 30]
+write(z[0])          # index 0 invalid -> ""
+write(z[-0])         # same as 0 -> ""
+
+# --- Out of bounds ---
+write(z[99])         # out of bounds -> ""
+write(z[-99])        # out of bounds -> ""
+
+# --- String arrays with push/pop ---

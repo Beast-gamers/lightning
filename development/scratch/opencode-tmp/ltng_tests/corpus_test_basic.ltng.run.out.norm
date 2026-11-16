@@ -1,0 +1,10 @@
+hello world
+
+has no special chars
+special: !@#$^&*()
+line1
+line2
+tab	here
+back\slash
+say "hello"
+single 'quote'

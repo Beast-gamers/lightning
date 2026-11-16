@@ -1,0 +1,7 @@
+write("<<>")
+write("<>>")
+write("<a>")
+write("<<a>>")
+write("<x><y>")
+write("<<<>>>")
+write("<a<b>")

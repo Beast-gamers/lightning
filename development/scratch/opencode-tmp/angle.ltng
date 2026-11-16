@@ -1,0 +1,8 @@
+write("<raw>")
+write("<b>bold</b>")
+write("2 < 3")
+write("a<b")
+write("<<")
+write("<<>")
+let x = 5
+write("$[x] and <$[x]>")

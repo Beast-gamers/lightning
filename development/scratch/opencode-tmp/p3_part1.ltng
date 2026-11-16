@@ -1,0 +1,30 @@
+# --- Basic dynamic push beyond initial capacity ---
+let arr = [1, 2, 3]
+arr.push(4)
+arr.push(5)
+arr.push(6)
+arr.push(7)
+arr.push(8)
+write(arr[1])
+write(arr[2])
+write(arr[3])
+write(arr[4])
+write(arr[5])
+write(arr[6])
+write(arr[7])
+write(arr.length)
+
+# --- Pop ---
+write(arr.pop())
+write(arr.pop())
+write(arr.length)
+write(arr[6])
+
+# --- Pop with index ---
+let pa3 = [10, 20, 30, 40, 50]
+write(pa3.pop(2))
+write(pa3[2])
+write(pa3[4])
+write(pa3.pop(-1))
+write(pa3[4])
+write("part1_done")

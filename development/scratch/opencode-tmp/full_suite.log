@@ -1,0 +1,4 @@
+== Lightning test run ==
+Compiler: /tmp/opencode/ltng
+FAIL: corpus/string_multiplication.ltng
+  compile failed; rc=0; Error: internal error occured 

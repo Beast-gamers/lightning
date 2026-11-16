@@ -1,0 +1,12 @@
+let ran = 0
+let fn = function(){ throw "boom" }
+try {
+    try {
+        fn()
+    } finally {
+        set ran = 1
+    }
+} catch (e) {
+    write(ran)
+    write(e.message)
+}

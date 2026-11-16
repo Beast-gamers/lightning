@@ -1,0 +1,15 @@
+function makeAdder(n) {
+    let adder = function(x) {
+        return x + n
+    }
+    return adder(10)
+}
+write(makeAdder(5))
+
+function makeSum(a, b) {
+    let add = function(x) {
+        return x + a + b
+    }
+    return add(10)
+}
+write(makeSum(1, 2))

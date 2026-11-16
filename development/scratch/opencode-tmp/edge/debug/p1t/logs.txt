@@ -1,0 +1,18 @@
+[2026-11-15 08:59:28] [start] debug session started
+[info] source=/tmp/opencode/edge/p1t.ltng
+[info] debug_dir=/tmp/opencode/edge/debug/p1t
+[2026-11-15 08:59:28] [read] reading source
+[2026-11-15 08:59:28] [lex] tokenizing
+[2026-11-15 08:59:28] [parse] parsing
+[2026-11-15 08:59:28] [ir] writing intermediate representation
+[2026-11-15 08:59:28] [codegen] generating C code
+[2026-11-15 08:59:28] [codegen] C generation complete
+[2026-11-15 08:59:28] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/edge/p1t" "/tmp/ltng_17679.c" 2>&1
+C compiler output:
+/tmp/ltng_17679.c: In function ‘main’:
+/tmp/ltng_17679.c:168:19: error: incompatible types when initializing type ‘double’ using type ‘char *’
+  168 |     { double _e = (foo(_ltng_retbuf(), 2, 9, _ltng_ad((double)(1+2)))); snprintf(y, 256, "%g", _e); }
+      |                   ^
+
+[2026-11-15 08:59:28] [end] debug session finished

@@ -1,0 +1,5 @@
+let s="ab"
+switch (s) {
+  case ("a"+"b"): { write("hit") }
+  default: { write("miss") }
+}

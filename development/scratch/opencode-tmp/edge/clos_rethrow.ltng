@@ -1,0 +1,6 @@
+function maker(){
+    return function(){
+        try { throw error("X", "y") } catch (e) { throw }
+    }
+}
+try { maker()() } catch (e) { write(e.type) }

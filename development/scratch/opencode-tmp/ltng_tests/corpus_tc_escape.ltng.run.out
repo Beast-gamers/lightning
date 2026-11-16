@@ -1,0 +1,46 @@
+newline
+here
+tab	here
+back\slash
+double"quote
+single'quote
+mixed
+	\"'
+
+
+	
+\
+"
+'
+hi
+
+line1
+hi
+line2
+	hi	
+a
+b
+a	b
+a\b
+x
+y
+x	y
+a<b
+<raw>
+<x>
+a<b>c
+<<double>>
+<b>bold</b>
+<i>italic</i>
+<>
+
+
+	
+\
+"
+'
+a
+b	c\d"e'f
+new
+line
+tab	here

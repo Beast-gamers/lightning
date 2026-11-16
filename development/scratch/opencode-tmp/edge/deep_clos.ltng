@@ -1,0 +1,4 @@
+function a(x){ return function(y){ return function(z){ return x+y+z } } }
+let f = a(1)
+let g = f(2)
+write(g(3))

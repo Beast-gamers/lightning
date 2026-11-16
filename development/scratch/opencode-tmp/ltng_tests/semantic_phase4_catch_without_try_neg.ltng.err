@@ -1,0 +1,20 @@
+
+ --> /main/language/tests/semantic/phase4_catch_without_try_neg.ltng:1:1
+   |
+ 1 | catch (e) {
+   | ^
+   = error: Unexpected token
+
+ --> /main/language/tests/semantic/phase4_catch_without_try_neg.ltng:2:11
+   |
+ 2 |     write(e.message)
+   |           ^
+   = error: Variable not declared
+
+ --> /main/language/tests/semantic/phase4_catch_without_try_neg.ltng:3:1
+   |
+ 3 | }
+   | ^
+   = error: Unexpected '}'
+
+Check failed: 3 error(s)

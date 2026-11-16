@@ -1,0 +1,2 @@
+let a="he"
+if ((a+"llo") == ("hello")) { write("yes") } else { write("no") }

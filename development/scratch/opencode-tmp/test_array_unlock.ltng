@@ -1,0 +1,24 @@
+# Test unlock on array declared with let x = array
+let x = array
+x.unlock()
+set x = [1, 2, 3]
+write(x[1])
+write(x[2])
+write(x[3])
+
+# Test lock/unlock on literal array
+let y = [10, 20, 30]
+y.unlock()
+set y = [40, 50, 60]
+write(y[1])
+write(y[2])
+write(y[3])
+
+# Test lock after unlock
+let z = [100, 200]
+z.unlock()
+set z = [300, 400, 500]
+z.lock()
+write(z[1])
+write(z[2])
+write(z[3])

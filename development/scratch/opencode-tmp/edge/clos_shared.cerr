@@ -1,0 +1,14 @@
+
+ --> /tmp/opencode/edge/clos_shared.ltng:3:38
+   |
+ 3 |   let inc = function(){ set n = n + 1; return n }
+   |                                      ^
+   = error: Semicolons are not allowed in ltng
+
+ --> /tmp/opencode/edge/clos_shared.ltng:3:40
+   |
+ 3 |   let inc = function(){ set n = n + 1; return n }
+   |                                        ^
+   = error: Variable 'return' not declared
+
+Compilation failed: 2 error(s)

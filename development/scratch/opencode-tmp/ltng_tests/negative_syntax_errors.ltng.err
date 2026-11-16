@@ -1,0 +1,206 @@
+
+ --> /main/language/code/syntax_errors.ltng:5:15
+   |
+ 5 | write("hello");
+   |               ^
+   = error: Semicolons are not allowed in ltng
+
+ --> /main/language/code/syntax_errors.ltng:23:12
+   |
+ 23 | let a = 10 @ 5
+   |            ^
+   = error: Unexpected character '@'
+
+ --> /main/language/code/syntax_errors.ltng:38:9
+   |
+ 38 | let c = "hello
+   |         ^
+   = error: Unterminated string literal
+
+ --> /main/language/code/syntax_errors.ltng:41:11
+   |
+ 41 | let d = 'a
+   |           ^
+   = error: Unterminated char literal
+
+ --> /main/language/code/syntax_errors.ltng:44:10
+   |
+ 44 | let e = ''
+   |          ^
+   = error: Empty char literal
+
+ --> /main/language/code/syntax_errors.ltng:47:11
+   |
+ 47 | let f = 'ab'
+   |           ^
+   = error: Unterminated char literal
+
+ --> /main/language/code/syntax_errors.ltng:48:1
+   |
+ 48 | 
+   | ^
+   = error: Unterminated char literal
+
+ --> /main/language/code/syntax_errors.ltng:8:7
+   |
+ 8 | write("hello"
+   |       ^
+   = error: Expected ')' after write argument
+
+ --> /main/language/code/syntax_errors.ltng:11:1
+   |
+ 11 | write"hello")
+   | ^
+   = error: Expected '(' after 'write'
+
+ --> /main/language/code/syntax_errors.ltng:14:9
+   |
+ 14 | let x = int "hello"
+   |         ^
+   = error: Cannot assign a value with a type declaration
+
+ --> /main/language/code/syntax_errors.ltng:17:9
+   |
+ 17 | let y = int "hello"
+   |         ^
+   = error: Cannot assign a value with a type declaration
+
+ --> /main/language/code/syntax_errors.ltng:20:9
+   |
+ 20 | let z = char "hello"
+   |         ^
+   = error: Cannot assign a value with a type declaration
+
+ --> /main/language/code/syntax_errors.ltng:23:14
+   |
+ 23 | let a = 10 @ 5
+   |              ^
+   = error: Unexpected token
+
+ --> /main/language/code/syntax_errors.ltng:26:8
+   |
+ 26 | let b =
+   |        ^
+   = error: Expected value after '='
+
+ --> /main/language/code/syntax_errors.ltng:29:5
+   |
+ 29 | let = 10
+   |     ^
+   = error: Expected variable name after 'let'
+
+ --> /main/language/code/syntax_errors.ltng:32:6
+   |
+ 32 | read()
+   |      ^
+   = error: Expected variable name in read()
+
+ --> /main/language/code/syntax_errors.ltng:35:6
+   |
+ 35 | read("hello")
+   |      ^
+   = error: Expected variable name in read()
+
+ --> /main/language/code/syntax_errors.ltng:47:5
+   |
+ 47 | let f = 'ab'
+   |     ^
+   = error: Cannot use reserved word as variable name
+
+ --> /main/language/code/syntax_errors.ltng:50:1
+   |
+ 50 | foo bar
+   | ^
+   = error: Unexpected token
+
+ --> /main/language/code/syntax_errors.ltng:56:9
+   |
+ 56 | let h = string 42
+   |         ^
+   = error: Cannot assign a value with a type declaration
+
+ --> /main/language/code/syntax_errors.ltng:59:5
+   |
+ 59 | let 1name = 10
+   |     ^
+   = error: Expected variable name after 'let'
+
+ --> /main/language/code/syntax_errors.ltng:62:7
+   |
+ 62 | write(undefined_var)
+   |       ^
+   = error: Variable not declared
+
+ --> /main/language/code/syntax_errors.ltng:65:19
+   |
+ 65 | const bad_const = int
+   |                   ^
+   = error: const requires a value assignment, not a type declaration
+
+ --> /main/language/code/syntax_errors.ltng:68:20
+   |
+ 68 | const bad_string = string
+   |                    ^
+   = error: const requires a value assignment, not a type declaration
+
+ --> /main/language/code/syntax_errors.ltng:71:7
+   |
+ 71 | const = 10
+   |       ^
+   = error: Expected variable name after 'const'
+
+ --> /main/language/code/syntax_errors.ltng:74:7
+   |
+ 74 | const x 10
+   |       ^
+   = error: Expected '=' after variable name
+
+ --> /main/language/code/syntax_errors.ltng:77:5
+   |
+ 77 | set undefined = 10
+   |     ^
+   = error: Variable not declared
+
+ --> /main/language/code/syntax_errors.ltng:80:5
+   |
+ 80 | set = 10
+   |     ^
+   = error: Expected variable name after 'set'
+
+ --> /main/language/code/syntax_errors.ltng:84:5
+   |
+ 84 | set setvar 10
+   |     ^
+   = error: Expected '=' after variable name
+
+ --> /main/language/code/syntax_errors.ltng:87:5
+   |
+ 87 | let let = 10
+   |     ^
+   = error: Expected variable name after 'let'
+
+ --> /main/language/code/syntax_errors.ltng:90:5
+   |
+ 90 | let int = 5
+   |     ^
+   = error: Cannot use reserved word as variable name
+
+ --> /main/language/code/syntax_errors.ltng:93:5
+   |
+ 93 | let true = 10
+   |     ^
+   = error: Cannot use reserved word as variable name
+
+ --> /main/language/code/syntax_errors.ltng:96:5
+   |
+ 96 | let f = 10
+   |     ^
+   = error: Cannot use reserved word as variable name
+
+ --> /main/language/code/syntax_errors.ltng:102:5
+   |
+ 102 | let typeof = 10
+   |     ^
+   = error: Cannot use reserved word as variable name
+
+Check failed: 34 error(s)

@@ -1,0 +1,32 @@
+[2026-11-16 20:07:40] [start] debug session started
+[info] source=/tmp/opencode/strfix/paren_num.ltng
+[info] debug_dir=/tmp/opencode/strfix/debug/paren_num
+[2026-11-16 20:07:40] [read] reading source
+[2026-11-16 20:07:40] [lex] tokenizing
+[2026-11-16 20:07:40] [parse] parsing
+[2026-11-16 20:07:40] [ir] writing intermediate representation
+[2026-11-16 20:07:40] [codegen] generating C code
+[2026-11-16 20:07:40] [codegen] C generation complete
+[2026-11-16 20:07:40] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/strfix/paren_num" "/tmp/ltng_29757.c" 2>&1
+C compiler output:
+/tmp/ltng_29757.c: In function 'main':
+/tmp/ltng_29757.c:152:17: error: passing argument 1 of 'strcmp' makes pointer from integer without a cast [-Wint-conversion]
+  152 |     if ((strcmp((1+2), 3) == 0)) {
+      |                 ^~~~~
+      |                 |
+      |                 int
+In file included from /tmp/ltng_29757.c:2:
+/usr/include/string.h:171:32: note: expected 'const char *' but argument is of type 'int'
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |                    ~~~~~~~~~~~~^~~~
+/tmp/ltng_29757.c:152:24: error: passing argument 2 of 'strcmp' makes pointer from integer without a cast [-Wint-conversion]
+  152 |     if ((strcmp((1+2), 3) == 0)) {
+      |                        ^
+      |                        |
+      |                        int
+/usr/include/string.h:171:50: note: expected 'const char *' but argument is of type 'int'
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |                                      ~~~~~~~~~~~~^~~~
+
+[2026-11-16 20:07:40] [end] debug session finished

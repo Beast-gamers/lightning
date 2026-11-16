@@ -1,0 +1,48 @@
+# Functions: definitions, params, locals, return, calls, and control flow
+
+function add(a, b) {
+    return a + b
+}
+
+function fact(n) {
+    if (n <= 1) {
+        return 1
+    }
+    return n * fact(n - 1)
+}
+
+function sum_to(limit) {
+    let total = 0
+    let i = 1
+    while (i <= limit) {
+        set total += i
+        set i += 1
+    }
+    return total
+}
+
+function max2(a, b) {
+    if (a > b) {
+        return a
+    }
+    return b
+}
+
+function classify(x) {
+    if (x % 2 == 0) {
+        return "even"
+    }
+    return "odd"
+}
+
+write(add(3, 4))
+write(fact(5))
+write(sum_to(10))
+write(max2(9, 4))
+write(classify(7))
+write(classify(8))
+
+# function call in expressions/conditions
+if (add(1, 2) == 3) {
+    write("math ok")
+}

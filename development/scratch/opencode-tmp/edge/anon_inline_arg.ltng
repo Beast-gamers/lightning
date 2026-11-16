@@ -1,0 +1,2 @@
+function apply(fn,x){ return fn(x) }
+write(apply(function(v){ return v * 3 }, 4))

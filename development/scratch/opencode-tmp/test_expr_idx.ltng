@@ -1,0 +1,18 @@
+let a = [10, 20, 30, 40, 50]
+let i = 3
+write(a[i])
+write(a[i + 1])
+write(a[-i])
+let m = [[1, 2], [3, 4], [5, 6]]
+let r = 2
+let c = 1
+write(m[r][c])
+write(m[r][c + 1])
+write(m[-r][-c])
+let t4 = [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [[[9, 10], [11, 12]], [[13, 14], [15, 16]]]]
+let d0 = 2
+let d1 = 1
+let d2 = 2
+let d3 = 1
+write(t4[d0][d1][d2][d3])
+write(t4[-d0][-d1][-d2][-d3])

@@ -1,0 +1,1 @@
+if ((2 * 3) > (3 + 2)) { write("yes") } else { write("no") }

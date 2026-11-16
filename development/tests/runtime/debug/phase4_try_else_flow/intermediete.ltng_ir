@@ -1,0 +1,503 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "ret_else"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "ret_else"
+    body:
+      - node: TRY
+        name: "_v1_e"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 1
+        has_else: 1
+        has_finally: 1
+        for_var: "e"
+        body:
+          - node: WRITE
+            name: ""
+            value: "try2"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        orelse:
+          - node: RETURN
+            name: ""
+            value: "\"catch2\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        else_body:
+          - node: WRITE
+            name: ""
+            value: "else2"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+          - node: RETURN
+            name: ""
+            value: "\"from-else\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "finally-ret-else"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+  - node: FUNCTION
+    name: "ret_try"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "ret_try"
+    body:
+      - node: TRY
+        name: "_v0_e"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 1
+        has_else: 1
+        has_finally: 1
+        for_var: "e"
+        body:
+          - node: WRITE
+            name: ""
+            value: "try"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+          - node: RETURN
+            name: ""
+            value: "\"from-try\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        orelse:
+          - node: RETURN
+            name: ""
+            value: "\"catch\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        else_body:
+          - node: WRITE
+            name: ""
+            value: "else-should-not-run"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "finally-ret-try"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+statements:
+  - node: WRITE
+    name: ""
+    value: "ret_try(_ltng_retbuf(), 27, 7)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "ret_else(_ltng_retbuf(), 28, 7)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: FOR
+    name: "i"
+    value: ""
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "i"
+    for_start: "0"
+    for_end: "2"
+    for_step: "1"
+    for_step_op: '+'
+    body:
+      - node: TRY
+        name: "_v2_e"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 1
+        has_else: 1
+        has_finally: 1
+        for_var: "e"
+        body:
+          - node: IF
+            name: ""
+            value: "(atoi(i)) == (0)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+            body:
+              - node: CONTINUE
+                name: ""
+                value: ""
+                var_type: string
+                is_variable: 0
+                is_expr: 0
+                is_default: 0
+                is_base_assign: 0
+          - node: IF
+            name: ""
+            value: "(atoi(i)) == (2)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+            body:
+              - node: BREAK
+                name: ""
+                value: ""
+                var_type: string
+                is_variable: 0
+                is_expr: 0
+                is_default: 0
+                is_base_assign: 0
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"body \", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        orelse:
+          - node: WRITE
+            name: ""
+            value: "catch-loop"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        else_body:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"else \", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"finally \", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+  - node: FOR
+    name: "i"
+    value: ""
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "i"
+    for_start: "0"
+    for_end: "2"
+    for_step: "1"
+    for_step_op: '+'
+    body:
+      - node: TRY
+        name: "_v3_e"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 1
+        has_else: 1
+        has_finally: 1
+        for_var: "e"
+        body:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"t\", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        orelse:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"c\", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        else_body:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"e\", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+          - node: BREAK
+            name: ""
+            value: ""
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"f\", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+  - node: TRY
+    name: "_v5_e"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    has_catch: 1
+    has_else: 0
+    has_finally: 0
+    for_var: "e"
+    body:
+      - node: TRY
+        name: "_v4_e"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 1
+        has_else: 1
+        has_finally: 1
+        for_var: "e"
+        body:
+          - node: WRITE
+            name: ""
+            value: "inner-try"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        orelse:
+          - node: WRITE
+            name: ""
+            value: "inner-catch"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        else_body:
+          - node: WRITE
+            name: ""
+            value: "inner-else"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+          - node: THROW
+            name: "\"Error\""
+            value: "\"from-else\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "inner-finally"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+    orelse:
+      - node: WRITE
+        name: ""
+        value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"outer-catch \", _v5_e__message); _ltc; })"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: TRY
+    name: "_v6_e"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    has_catch: 1
+    has_else: 1
+    has_finally: 0
+    for_var: "e"
+    body:
+      - node: WRITE
+        name: ""
+        value: "solo-try"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    orelse:
+      - node: WRITE
+        name: ""
+        value: "solo-catch"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    else_body:
+      - node: WRITE
+        name: ""
+        value: "solo-else"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+  - node: TRY
+    name: "_v8_e"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    has_catch: 1
+    has_else: 0
+    has_finally: 0
+    for_var: "e"
+    body:
+      - node: TRY
+        name: "_v7_e"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 1
+        has_else: 1
+        has_finally: 0
+        for_var: "e"
+        body:
+          - node: WRITE
+            name: ""
+            value: "inner2-try"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        orelse:
+          - node: WRITE
+            name: ""
+            value: "inner2-catch"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+        else_body:
+          - node: WRITE
+            name: ""
+            value: "inner2-else"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+          - node: THROW
+            name: "\"Error\""
+            value: "\"from-else2\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+    orelse:
+      - node: WRITE
+        name: ""
+        value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"outer2-catch \", _v8_e__message); _ltc; })"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0

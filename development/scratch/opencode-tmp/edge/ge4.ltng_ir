@@ -1,0 +1,92 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "a"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "a"
+    body:
+      - node: RETURN
+        name: ""
+        value: "\"a____anon_0\""
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: FUNCTION
+    name: "a____anon_0"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: RETURN
+        name: ""
+        value: "_ltng_add_sn(_ltng_add_sn(\"a____anon_0____anon_1\",\"\\001\"),_ltng_ptr_to_str((void*)b))"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "b"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "b"
+  - node: FUNCTION
+    name: "a____anon_0____anon_1"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: RETURN
+        name: ""
+        value: "_ltng_add_sn(b, c)"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "c"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "c"
+statements:
+  - node: IF
+    name: ""
+    value: "atof(a(_ltng_retbuf(), 2, 5))(2)(3)==5"
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: WRITE
+        name: ""
+        value: "yes"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0

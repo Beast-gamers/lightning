@@ -1,0 +1,8 @@
+let a = [1,2,3]
+let sum = 0
+for (v in a) {
+    let fn = function(x){ return x + 1 }
+    let r = fn(10)
+    set sum = sum + r
+}
+write(sum)

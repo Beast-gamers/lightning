@@ -1,0 +1,7 @@
+let arr = [1, 2, 3]
+arr.push(42)
+write(arr[4])
+write(arr.length)
+arr.push(99)
+write(arr[5])
+write(arr.length)

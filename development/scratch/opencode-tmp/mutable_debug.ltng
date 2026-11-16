@@ -1,0 +1,8 @@
+function counter() {
+    let n = 0
+    let inc = function() {
+        return n
+    }
+    return inc()
+}
+write(counter())

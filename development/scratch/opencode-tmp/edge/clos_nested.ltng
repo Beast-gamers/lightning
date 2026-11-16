@@ -1,0 +1,10 @@
+function outer(a){
+    return function(b){
+        return function(c){
+            return a + b + c
+        }
+    }
+}
+let fn1 = outer(1)
+let fn2 = fn1(4)
+write(fn2(10))

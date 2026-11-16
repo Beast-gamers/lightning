@@ -1,0 +1,8 @@
+function make(){
+    return function(x){ return x + 1 }
+}
+let fn = make()
+let sum = 0
+set sum = sum + fn(10)
+set sum = sum + fn(20)
+write(sum)

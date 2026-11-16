@@ -1,0 +1,9 @@
+try {
+    try {
+        throw error("A", "m")
+    } catch (e) {
+        throw
+    }
+} catch (e) {
+    write(e.type)
+}

@@ -1,0 +1,4 @@
+function get(){ return 2 }
+const y = get()
+write(y)
+write(typeof(y))

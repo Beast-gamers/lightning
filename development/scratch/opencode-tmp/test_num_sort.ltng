@@ -1,0 +1,6 @@
+let a = [10, 2, 30, 1]
+a.sort()
+write(a[1])
+write(a[2])
+write(a[3])
+write(a[4])

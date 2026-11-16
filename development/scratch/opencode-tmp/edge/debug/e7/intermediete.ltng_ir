@@ -1,0 +1,27 @@
+LightningIR v1
+functions:
+statements:
+  - node: LET
+    name: "a"
+    value: "1"
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "b"
+    value: "2"
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "_ltng_add_sn(_ltng_add_sn(({ char __ltcn[64]; snprintf(__ltcn,64,\"%lld\",(long long)((a + b) * 2)); __ltcn; }), \",\"), ({ char __ltcn[64]; snprintf(__ltcn,64,\"%lld\",(long long)((b + a) * 2)); __ltcn; }))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0

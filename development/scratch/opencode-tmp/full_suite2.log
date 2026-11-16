@@ -1,0 +1,4 @@
+== Lightning test run ==
+Compiler: /tmp/opencode/ltng
+---
+PASS=147 FAIL=0 SKIP=0

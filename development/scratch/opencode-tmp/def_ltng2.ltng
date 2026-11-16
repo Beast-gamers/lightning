@@ -1,0 +1,12 @@
+function pick(a, b = "def") {
+    return b
+}
+
+function scale(x, mult = 2) {
+    return x * mult
+}
+
+write(pick("x"))
+write(pick("x", "custom"))
+write(scale(5))
+write(scale(5, 10))

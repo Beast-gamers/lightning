@@ -1,0 +1,6 @@
+let ins = [10, 20, 30]
+ins.insert(2, 15)
+write(ins[1])
+write(ins[2])
+write(ins[3])
+write(ins[4])

@@ -1,0 +1,2 @@
+function a(){ return function(b){ return function(c){ return b + c } } }
+if (a()(2)(3) == 5) { write("yes") }

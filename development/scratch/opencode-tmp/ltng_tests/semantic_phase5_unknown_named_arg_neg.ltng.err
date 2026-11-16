@@ -1,0 +1,14 @@
+
+ --> /main/language/tests/semantic/phase5_unknown_named_arg_neg.ltng:4:7
+   |
+ 4 | write(add2(a = 1, c = 2))
+   |       ^
+   = error: Unknown argument 'c' in call to 'add2'
+
+ --> /main/language/tests/semantic/phase5_unknown_named_arg_neg.ltng:4:7
+   |
+ 4 | write(add2(a = 1, c = 2))
+   |       ^
+   = error: Missing required argument 'b' in call to 'add2'
+
+Check failed: 2 error(s)

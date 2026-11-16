@@ -1,0 +1,2 @@
+fun id(x) -> int { return x }
+write(id((2 + 3) * 4))

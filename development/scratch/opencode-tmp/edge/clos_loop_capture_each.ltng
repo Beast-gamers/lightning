@@ -1,0 +1,14 @@
+function mk(){
+    let f1
+    let f2
+    let f3
+    for (i from 1 to 3) {
+        if (i == 1) { set f1 = function(){ return i } }
+        if (i == 2) { set f2 = function(){ return i } }
+        if (i == 3) { set f3 = function(){ return i } }
+    }
+    write(f1())
+    write(f2())
+    write(f3())
+}
+mk()

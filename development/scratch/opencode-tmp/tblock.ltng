@@ -1,0 +1,4 @@
+if (true) {
+    let x = 5
+    write(x)
+}

@@ -1,0 +1,2 @@
+let s="hi"
+if ((s + "!") == "hi!") { write("ok") } else { write("bad") }

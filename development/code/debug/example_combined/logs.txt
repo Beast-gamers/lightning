@@ -1,0 +1,16 @@
+[2026-11-16 20:49:41] [start] debug session started
+[info] source=code/example_combined.ltng
+[info] debug_dir=code/debug/example_combined
+[2026-11-16 20:49:41] [read] reading source
+[2026-11-16 20:49:41] [lex] tokenizing
+[2026-11-16 20:49:41] [parse] parsing
+[2026-11-16 20:49:41] [ir] writing intermediate representation
+[2026-11-16 20:49:41] [codegen] generating C code
+[2026-11-16 20:49:41] [codegen] C generation complete
+[2026-11-16 20:49:41] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/fail" "/tmp/ltng_18000.c" 2>&1
+Compiled 'code/example_combined.ltng' -> '/tmp/opencode/fail'
+[C compiler (object)] ok
+[C compiler (assembly)] ok
+[C compiler (debug-symbol binary)] ok
+[2026-11-16 20:49:43] [end] debug session finished

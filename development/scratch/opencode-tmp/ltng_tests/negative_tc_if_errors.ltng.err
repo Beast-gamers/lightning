@@ -1,0 +1,44 @@
+
+ --> /main/language/code/tc_if_errors.ltng:4:1
+   |
+ 4 | if () {
+   | ^
+   = error: Expected condition inside if()
+
+ --> /main/language/code/tc_if_errors.ltng:10:4
+   |
+ 10 | if x > 0 {
+   |    ^
+   = error: Expected '(' after if
+
+ --> /main/language/code/tc_if_errors.ltng:12:1
+   |
+ 12 | }
+   | ^
+   = error: Unexpected '}'
+
+ --> /main/language/code/tc_if_errors.ltng:15:11
+   |
+ 15 | if (x > 0)
+   |           ^
+   = error: Expected '{' after if condition
+
+ --> /main/language/code/tc_if_errors.ltng:17:1
+   |
+ 17 | }
+   | ^
+   = error: Unexpected '}'
+
+ --> /main/language/code/tc_if_errors.ltng:20:5
+   |
+ 20 | if (nope > 1) {
+   |     ^
+   = error: Variable 'nope' not declared
+
+ --> /main/language/code/tc_if_errors.ltng:25:1
+   |
+ 25 | }
+   | ^
+   = error: Unexpected '}'
+
+Check failed: 7 error(s)

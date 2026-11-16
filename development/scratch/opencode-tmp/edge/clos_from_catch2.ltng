@@ -1,0 +1,10 @@
+function mk(){
+    try {
+        throw "x"
+    } catch (e) {
+        let v = 7
+        return function(){ return v }
+    }
+}
+let fn = mk()
+write(fn())

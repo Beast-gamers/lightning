@@ -1,0 +1,7 @@
+try {
+    write("ok")
+} catch (e) {
+    write("bad")
+} else {
+    write("else")
+}

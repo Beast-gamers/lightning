@@ -1,0 +1,2 @@
+let null = 42
+write(null)

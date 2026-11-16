@@ -1,0 +1,9 @@
+function testfn(){
+    let fn
+    if (true) {
+        let x = 7
+        set fn = function(){ return x }
+    }
+    write(fn())
+}
+testfn()

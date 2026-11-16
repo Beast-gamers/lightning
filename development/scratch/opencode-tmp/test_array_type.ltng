@@ -1,0 +1,6 @@
+let x = array
+let y = array
+write(typeof(x))
+write(typeof(y))
+write("type=" + typeof(x))
+write("type2=" + typeof(y))

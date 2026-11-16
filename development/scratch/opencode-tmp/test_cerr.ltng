@@ -1,0 +1,3 @@
+# This should compile fine normally
+let x = 42
+write(x)

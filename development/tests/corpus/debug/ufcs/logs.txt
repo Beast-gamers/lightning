@@ -1,0 +1,5 @@
+[2026-11-16 20:33:35] [start] debug session started
+[info] source=tests/corpus/ufcs.ltng
+[info] debug_dir=tests/corpus/debug/ufcs
+[2026-11-16 20:33:35] [read] reading source
+Error: Cannot open file 'tests/corpus/ufcs.ltng'

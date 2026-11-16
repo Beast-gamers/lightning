@@ -1,0 +1,78 @@
+=== Lightning Language Demo ===
+Name: 
+lightning
+Age: 
+25
+Score: 
+99.5
+Grade: 
+A
+Explicit int: 
+42
+Explicit float: 
+3.14
+Explicit string: 
+hello
+Explicit char: 
+Z
+Default int: 
+0
+Default float: 
+0
+Default string (empty): 
+
+Enter your name:
+Enter your age:
+Enter your score:
+Enter a letter:
+Hello, 
+
+You are 
+0
+ years old
+Your score: 
+0
+Your letter: 
+
+Line one
+Line two
+Tab	here
+Numbers: 
+10
+20
+30
+Pi: 
+3.14159
+Max score: 
+100
+Greeting: 
+hello
+Letter: 
+X
+Before: 
+10
+After set 20: 
+20
+After set int: 
+100
+typeof(10): 
+int
+typeof(3.14): 
+int
+typeof("hello"): 
+string
+typeof('A'): 
+string
+typeof(true): 
+bool
+typeof(int 42): 
+int
+typeof(const pi): 
+int
+int
+Hello, bolt!
+Name: bolt, Age: 10
+2 + 2 is 10
+x is typeof int
+cost is $5
+$[t1]

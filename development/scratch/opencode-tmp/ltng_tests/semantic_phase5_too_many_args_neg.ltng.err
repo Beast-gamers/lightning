@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase5_too_many_args_neg.ltng:4:7
+   |
+ 4 | write(id1(1, 2))
+   |       ^
+   = error: Too many arguments in call to 'id1'
+
+Check failed: 1 error(s)

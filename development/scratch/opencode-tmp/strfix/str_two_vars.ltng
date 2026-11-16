@@ -1,0 +1,3 @@
+let a="hi"
+let b="hi"
+if (a==b) { write("yes") } else { write("no") }

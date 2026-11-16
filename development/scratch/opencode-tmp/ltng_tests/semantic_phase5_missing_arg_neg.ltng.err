@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase5_missing_arg_neg.ltng:4:7
+   |
+ 4 | write(add2(1))
+   |       ^
+   = error: Missing required argument 'b' in call to 'add2'
+
+Check failed: 1 error(s)

@@ -1,0 +1,3 @@
+let fn = function(a, b = 10){ return a + b }
+write(fn(1))
+write(fn(1,2))

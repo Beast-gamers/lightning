@@ -1,0 +1,14 @@
+
+ --> /tmp/opencode/paren2/ret6.ltng:1:1
+   |
+ 1 | fun s() -> string { return "ab" }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/ret6.ltng:2:8
+   |
+ 2 | write((s() + "c") * 2)
+   |        ^
+   = error: Variable 's' not declared
+
+Compilation failed: 2 error(s)

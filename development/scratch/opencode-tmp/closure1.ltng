@@ -1,0 +1,7 @@
+function makeAdder(n) {
+    let adder = function(x) {
+        return x + n
+    }
+    return adder(10)
+}
+write(makeAdder(5))

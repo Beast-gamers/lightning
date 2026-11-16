@@ -1,0 +1,144 @@
+LTNG code/ufcs.ltng:13:5 | RETURN
+  [expr:expr] ltng code/ufcs.ltng:13:12-13:17
+    C: atof(p)+1
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%g", (double)(atof(p)+1));
+    return _ret;
+-----------
+
+LTNG code/ufcs.ltng:22:5 | RETURN
+  [expr:expr] ltng code/ufcs.ltng:22:12-22:20
+    C: _ltng_add_sn(recv, n)
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", _ltng_add_sn(recv, n));
+    return _ret;
+-----------
+
+LTNG code/ufcs.ltng:39:5 | RETURN
+  [expr:expr] ltng code/ufcs.ltng:39:12-39:20
+    C: _ltng_add_sn(base, n)
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", _ltng_add_sn(base, n));
+    return _ret;
+-----------
+
+LTNG code/ufcs.ltng:16:1 | LET (x)
+  [expr:rhs] ltng-span: unknown
+    C: 5
+---- C ----
+    snprintf(x, 256, "5");
+-----------
+
+LTNG code/ufcs.ltng:17:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: a(_ltng_retbuf(), 17, 9, x)
+---- C ----
+    printf("%s\n", a(_ltng_retbuf(), 17, 9, x));
+-----------
+
+LTNG code/ufcs.ltng:18:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: a(_ltng_retbuf(), 18, 7, _ltng_ad((double)(atoi(x))))
+---- C ----
+    printf("%s\n", a(_ltng_retbuf(), 18, 7, _ltng_ad((double)(atoi(x)))));
+-----------
+
+LTNG code/ufcs.ltng:19:1 | WRITE (x)
+---- C ----
+    printf("%s\n", x);
+-----------
+
+LTNG code/ufcs.ltng:25:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: add(_ltng_retbuf(), 25, 9, x, _ltng_ad((double)(10)))
+---- C ----
+    printf("%s\n", add(_ltng_retbuf(), 25, 9, x, _ltng_ad((double)(10))));
+-----------
+
+LTNG code/ufcs.ltng:26:1 | LET (y)
+  [expr:rhs] ltng-span: unknown
+    C: add(_ltng_retbuf(), 26, 11, x, _ltng_ad((double)(3)))
+---- C ----
+    snprintf(y, 256, "%s", add(_ltng_retbuf(), 26, 11, x, _ltng_ad((double)(3))));
+-----------
+
+LTNG code/ufcs.ltng:27:1 | WRITE (y)
+---- C ----
+    printf("%s\n", y);
+-----------
+
+LTNG code/ufcs.ltng:28:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: add(_ltng_retbuf(), 28, 9, x, _ltng_ad((double)(1)))
+---- C ----
+    printf("%s\n", add(_ltng_retbuf(), 28, 9, x, _ltng_ad((double)(1))));
+-----------
+
+LTNG code/ufcs.ltng:29:1 | WRITE (x)
+---- C ----
+    printf("%s\n", x);
+-----------
+
+LTNG code/ufcs.ltng:32:5 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: ok
+---- C ----
+        printf("%s\n", "ok");
+-----------
+
+LTNG code/ufcs.ltng:34:5 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: bad
+---- C ----
+        printf("%s\n", "bad");
+-----------
+
+LTNG code/ufcs.ltng:31:1 | IF
+  [expr:condition] ltng code/ufcs.ltng:31:5-31:18
+    C: (strcmp(add(_ltng_retbuf(), 31, 7, x, _ltng_ad((double)(4))), 9) == 0)
+---- C ----
+    if ((strcmp(add(_ltng_retbuf(), 31, 7, x, _ltng_ad((double)(4))), 9) == 0)) {
+        printf("%s\n", "ok");
+    } else {
+        printf("%s\n", "bad");
+    }
+-----------
+
+LTNG code/ufcs.ltng:42:1 | LET (b)
+  [expr:rhs] ltng-span: unknown
+    C: 5
+---- C ----
+    snprintf(b, 256, "5");
+-----------
+
+LTNG code/ufcs.ltng:43:3 | CALL (inc)
+  [expr:arg[0]] ltng-span: unknown
+    C: b (var)
+  [expr:arg[1]] ltng-span: unknown
+    C: 10
+---- C ----
+    snprintf(b, 256, "%s", inc(_ltng_retbuf(), 43, 3, b, _ltng_ad((double)(10))));
+-----------
+
+LTNG code/ufcs.ltng:44:1 | WRITE (b)
+---- C ----
+    printf("%s\n", b);
+-----------
+
+LTNG code/ufcs.ltng:45:3 | CALL (inc)
+  [expr:arg[0]] ltng-span: unknown
+    C: b (var)
+  [expr:arg[1]] ltng-span: unknown
+    C: 3
+---- C ----
+    snprintf(b, 256, "%s", inc(_ltng_retbuf(), 45, 3, b, _ltng_ad((double)(3))));
+-----------
+
+LTNG code/ufcs.ltng:46:1 | WRITE (b)
+---- C ----
+    printf("%s\n", b);
+-----------
+

@@ -1,0 +1,9 @@
+function counter() {
+    let n = 0
+    let inc = function() {
+        return n
+    }
+    return inc
+}
+let gfn = counter()
+write(gfn())

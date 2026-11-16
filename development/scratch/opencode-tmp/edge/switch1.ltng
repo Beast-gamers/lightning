@@ -1,0 +1,12 @@
+let x = 2
+switch (x) {
+    case 1 {
+        write("one")
+    }
+    case 2 {
+        write("two")
+    }
+    default {
+        write("other")
+    }
+}

@@ -1,0 +1,7 @@
+function f(){
+  let x = 10
+  let g = function(){ return x }
+  set x = 20
+  return g()
+}
+write(f())

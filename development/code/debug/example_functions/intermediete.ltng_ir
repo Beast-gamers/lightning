@@ -1,0 +1,318 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "classify"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "classify"
+    body:
+      - node: IF
+        name: ""
+        value: "(((long long)atof(x))%2) == (0)"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: RETURN
+            name: ""
+            value: "\"even\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "\"odd\""
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "x"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "x"
+  - node: FUNCTION
+    name: "max2"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "max2"
+    body:
+      - node: IF
+        name: ""
+        value: "(atof(a)) > (atof(b))"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: RETURN
+            name: ""
+            value: "a"
+            var_type: string
+            is_variable: 1
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "b"
+        var_type: string
+        is_variable: 1
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "a"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "a"
+      - node: PARAM
+        name: "b"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "b"
+  - node: FUNCTION
+    name: "sum_to"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "sum_to"
+    body:
+      - node: LET
+        name: "total"
+        value: "0"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: LET
+        name: "i"
+        value: "1"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: WHILE
+        name: ""
+        value: "(atoi(i)) <= (atof(limit))"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: SET
+            name: "total"
+            value: "atoi(total)+atoi(i)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+          - node: SET
+            name: "i"
+            value: "atoi(i)+1"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "total"
+        var_type: string
+        is_variable: 1
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "limit"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "limit"
+  - node: FUNCTION
+    name: "fact"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "fact"
+    body:
+      - node: IF
+        name: ""
+        value: "(atof(n)) <= (1)"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: RETURN
+            name: ""
+            value: "1"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "atof(n)*atof(fact(_ltng_retbuf(), 11, 16, _ltng_ad((double)(atof(n)-1))))"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "n"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "n"
+  - node: FUNCTION
+    name: "add"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "add"
+    body:
+      - node: RETURN
+        name: ""
+        value: "_ltng_add_sn(a, b)"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "a"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "a"
+      - node: PARAM
+        name: "b"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "b"
+statements:
+  - node: WRITE
+    name: ""
+    value: "add(_ltng_retbuf(), 38, 7, _ltng_ad((double)(3)), _ltng_ad((double)(4)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "fact(_ltng_retbuf(), 39, 7, _ltng_ad((double)(5)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "sum_to(_ltng_retbuf(), 40, 7, _ltng_ad((double)(10)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "max2(_ltng_retbuf(), 41, 7, _ltng_ad((double)(9)), _ltng_ad((double)(4)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "classify(_ltng_retbuf(), 42, 7, _ltng_ad((double)(7)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "classify(_ltng_retbuf(), 43, 7, _ltng_ad((double)(8)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: IF
+    name: ""
+    value: "(strcmp(add(_ltng_retbuf(), 46, 5, _ltng_ad((double)(1)), _ltng_ad((double)(2))), 3) == 0)"
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: WRITE
+        name: ""
+        value: "math ok"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0

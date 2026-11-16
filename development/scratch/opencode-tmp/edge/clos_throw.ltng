@@ -1,0 +1,12 @@
+function maker(){
+    return function(){
+        throw error("E", "boom")
+    }
+}
+let fn = maker()
+try {
+    fn()
+} catch (e) {
+    write(e.type)
+    write(e.message)
+}

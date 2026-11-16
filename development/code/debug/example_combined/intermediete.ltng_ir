@@ -1,0 +1,385 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "countdown"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "countdown"
+    body:
+      - node: LET
+        name: "i"
+        value: "atof(start)"
+        var_type: float
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+      - node: WHILE
+        name: ""
+        value: "(atof(i)) > (0)"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: WRITE
+            name: "i"
+            value: ""
+            var_type: float
+            is_variable: 1
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+          - node: SET
+            name: "i"
+            value: "atof(i)-1"
+            var_type: float
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: WRITE
+        name: ""
+        value: "go"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "start"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "start"
+  - node: FUNCTION
+    name: "fizzbuzz"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "fizzbuzz"
+    body:
+      - node: LET
+        name: "i"
+        value: "1"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: LET
+        name: "m3"
+        value: "0"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: LET
+        name: "m5"
+        value: "0"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: WHILE
+        name: ""
+        value: "(atoi(i)) <= (atof(n))"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: SET
+            name: "m3"
+            value: "atoi(i)%3"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+          - node: SET
+            name: "m5"
+            value: "atoi(i)%5"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+          - node: IF
+            name: ""
+            value: "(atoi(m3)) == (0)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+            body:
+              - node: IF
+                name: ""
+                value: "(atoi(m5)) == (0)"
+                var_type: int
+                is_variable: 0
+                is_expr: 1
+                is_default: 0
+                is_base_assign: 0
+                body:
+                  - node: WRITE
+                    name: ""
+                    value: "FizzBuzz"
+                    var_type: string
+                    is_variable: 0
+                    is_expr: 0
+                    is_default: 0
+                    is_base_assign: 0
+                orelse:
+                  - node: ELSE
+                    name: ""
+                    value: ""
+                    var_type: string
+                    is_variable: 0
+                    is_expr: 0
+                    is_default: 0
+                    is_base_assign: 0
+                    body:
+                      - node: WRITE
+                        name: ""
+                        value: "Fizz"
+                        var_type: string
+                        is_variable: 0
+                        is_expr: 0
+                        is_default: 0
+                        is_base_assign: 0
+            orelse:
+              - node: IF
+                name: ""
+                value: "(atoi(m5)) == (0)"
+                var_type: int
+                is_variable: 0
+                is_expr: 1
+                is_default: 0
+                is_base_assign: 0
+                body:
+                  - node: WRITE
+                    name: ""
+                    value: "Buzz"
+                    var_type: string
+                    is_variable: 0
+                    is_expr: 0
+                    is_default: 0
+                    is_base_assign: 0
+                orelse:
+                  - node: ELSE
+                    name: ""
+                    value: ""
+                    var_type: string
+                    is_variable: 0
+                    is_expr: 0
+                    is_default: 0
+                    is_base_assign: 0
+                    body:
+                      - node: WRITE
+                        name: "i"
+                        value: ""
+                        var_type: int
+                        is_variable: 1
+                        is_expr: 0
+                        is_default: 0
+                        is_base_assign: 0
+          - node: SET
+            name: "i"
+            value: "atoi(i)+1"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "n"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "n"
+  - node: FUNCTION
+    name: "sum_squares"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "sum_squares"
+    body:
+      - node: LET
+        name: "total"
+        value: "0"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: LET
+        name: "i"
+        value: "1"
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: WHILE
+        name: ""
+        value: "(atoi(i)) <= (atof(n))"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: SET
+            name: "total"
+            value: "atoi(total)+atoi(i)*atoi(i)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+          - node: SET
+            name: "i"
+            value: "atoi(i)+1"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "total"
+        var_type: string
+        is_variable: 1
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "n"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "n"
+  - node: FUNCTION
+    name: "absval"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "absval"
+    body:
+      - node: IF
+        name: ""
+        value: "(atof(x)) < (0)"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: RETURN
+            name: ""
+            value: "0-atof(x)"
+            var_type: float
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "x"
+        var_type: string
+        is_variable: 1
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "x"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "x"
+statements:
+  - node: WRITE
+    name: ""
+    value: "absval(_ltng_retbuf(), 51, 7, _ltng_ad((double)(0-7)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "sum_squares(_ltng_retbuf(), 52, 7, _ltng_ad((double)(4)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: CALL
+    name: "fizzbuzz"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    args:
+      - node: PARAM
+        name: ""
+        value: "16"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: CALL
+    name: "countdown"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    args:
+      - node: PARAM
+        name: ""
+        value: "3"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0

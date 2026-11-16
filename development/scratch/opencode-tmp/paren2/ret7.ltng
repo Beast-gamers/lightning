@@ -1,0 +1,2 @@
+fun f() -> int { return 10 }
+if ((f() + 5) == 15) { write("yes") } else { write("no") }

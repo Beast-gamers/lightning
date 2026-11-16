@@ -1,0 +1,335 @@
+LTNG tests/runtime/phase4_finally_control.ltng:3:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: try-return
+---- C ----
+            printf("%s\n", "try-return");
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:6:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-return
+---- C ----
+                printf("%s\n", "finally-return");
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:4:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "value"
+---- C ----
+            {
+                char _ltng_rv[256] = "";
+                snprintf(_ltng_rv, 256, "%s", "value");
+                _ltng_try_top = _ltng_tf0.prev;
+                printf("%s\n", "finally-return");
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+            }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:6:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-return
+---- C ----
+            printf("%s\n", "finally-return");
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:6:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-return
+---- C ----
+            printf("%s\n", "finally-return");
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:2:5 | TRY
+---- C ----
+    {
+        LtngTryFrame _ltng_tf0;
+        _ltng_tf0.prev = _ltng_try_top;
+        _ltng_tf0.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf0;
+        int _ltng_tr0 = setjmp(_ltng_tf0.env);
+        if (_ltng_tr0 == 0) {
+            printf("%s\n", "try-return");
+            {
+                char _ltng_rv[256] = "";
+                snprintf(_ltng_rv, 256, "%s", "value");
+                _ltng_try_top = _ltng_tf0.prev;
+                printf("%s\n", "finally-return");
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+            }
+            _ltng_try_top = _ltng_tf0.prev;
+            printf("%s\n", "finally-return");
+        } else {
+            _ltng_try_top = _ltng_tf0.prev;
+            _ltng_stack_depth = _ltng_tf0.stack_depth;
+            LtngExcSaved _ltng_es0;
+            _ltng_exc_save_to(&_ltng_es0);
+            printf("%s\n", "finally-return");
+            _ltng_exc_restore_from(&_ltng_es0);
+            _ltng_rethrow();
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:29:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "finally"
+---- C ----
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", "finally");
+                return _ret;
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:27:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "try"
+---- C ----
+            {
+                char _ltng_rv[256] = "";
+                snprintf(_ltng_rv, 256, "%s", "try");
+                _ltng_try_top = _ltng_tf1.prev;
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", "finally");
+                return _ret;
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+            }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:29:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "finally"
+---- C ----
+            _ltng_fn_pop();
+            snprintf(_ret, 256, "%s", "finally");
+            return _ret;
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:29:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "finally"
+---- C ----
+            _ltng_fn_pop();
+            snprintf(_ret, 256, "%s", "finally");
+            return _ret;
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:26:5 | TRY
+---- C ----
+    {
+        LtngTryFrame _ltng_tf1;
+        _ltng_tf1.prev = _ltng_try_top;
+        _ltng_tf1.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf1;
+        int _ltng_tr1 = setjmp(_ltng_tf1.env);
+        if (_ltng_tr1 == 0) {
+            {
+                char _ltng_rv[256] = "";
+                snprintf(_ltng_rv, 256, "%s", "try");
+                _ltng_try_top = _ltng_tf1.prev;
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", "finally");
+                return _ret;
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+            }
+            _ltng_try_top = _ltng_tf1.prev;
+            _ltng_fn_pop();
+            snprintf(_ret, 256, "%s", "finally");
+            return _ret;
+        } else {
+            _ltng_try_top = _ltng_tf1.prev;
+            _ltng_stack_depth = _ltng_tf1.stack_depth;
+            LtngExcSaved _ltng_es1;
+            _ltng_exc_save_to(&_ltng_es1);
+            _ltng_fn_pop();
+            snprintf(_ret, 256, "%s", "finally");
+            return _ret;
+            _ltng_exc_restore_from(&_ltng_es1);
+            _ltng_rethrow();
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:9:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: retval(_ltng_retbuf(), 9, 7)
+---- C ----
+    printf("%s\n", retval(_ltng_retbuf(), 9, 7));
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:21:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_finally_control.ltng:21:15-21:32
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:14:13 | CONTINUE
+---- C ----
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            continue;
+                        }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:13:9 | IF
+  [expr:condition] ltng tests/runtime/phase4_finally_control.ltng:13:13-13:19
+    C: (atoi(i)) == (1)
+---- C ----
+                    if ((atoi(i)) == (1)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            continue;
+                        }
+                    }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:16:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_finally_control.ltng:16:15-16:33
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "loop ", i); _ltc; })
+---- C ----
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "loop ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:21:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_finally_control.ltng:21:15-21:32
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:18:13 | BREAK
+---- C ----
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            break;
+                        }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:17:9 | IF
+  [expr:condition] ltng tests/runtime/phase4_finally_control.ltng:17:13-17:19
+    C: (atoi(i)) == (2)
+---- C ----
+                    if ((atoi(i)) == (2)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            break;
+                        }
+                    }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:21:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_finally_control.ltng:21:15-21:32
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; })
+---- C ----
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:21:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_finally_control.ltng:21:15-21:32
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; })
+---- C ----
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:12:5 | TRY
+---- C ----
+            {
+                LtngTryFrame _ltng_tf2;
+                _ltng_tf2.prev = _ltng_try_top;
+                _ltng_tf2.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf2;
+                int _ltng_tr2 = setjmp(_ltng_tf2.env);
+                if (_ltng_tr2 == 0) {
+                    if ((atoi(i)) == (1)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            continue;
+                        }
+                    }
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "loop ", i); _ltc; }));
+                    if ((atoi(i)) == (2)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            break;
+                        }
+                    }
+                    _ltng_try_top = _ltng_tf2.prev;
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                } else {
+                    _ltng_try_top = _ltng_tf2.prev;
+                    _ltng_stack_depth = _ltng_tf2.stack_depth;
+                    LtngExcSaved _ltng_es2;
+                    _ltng_exc_save_to(&_ltng_es2);
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                    _ltng_exc_restore_from(&_ltng_es2);
+                    _ltng_rethrow();
+                }
+            }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:11:1 | FOR (i)
+  [expr:for_start] ltng tests/runtime/phase4_finally_control.ltng:11:13-11:14
+    C: 0
+  [expr:for_end] ltng tests/runtime/phase4_finally_control.ltng:11:18-11:19
+    C: 3
+  [expr:for_step] ltng-span: unknown
+    C: 1
+---- C ----
+    {
+        char i[256] = "0";
+        snprintf(i, 256, "%lld", (long long)(0));
+        for (; (long long)atoll(i) <= (long long)(3); snprintf(i, 256, "%lld", (long long)atoll(i) + (long long)(1))) {
+            {
+                LtngTryFrame _ltng_tf2;
+                _ltng_tf2.prev = _ltng_try_top;
+                _ltng_tf2.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf2;
+                int _ltng_tr2 = setjmp(_ltng_tf2.env);
+                if (_ltng_tr2 == 0) {
+                    if ((atoi(i)) == (1)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            continue;
+                        }
+                    }
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "loop ", i); _ltc; }));
+                    if ((atoi(i)) == (2)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                            break;
+                        }
+                    }
+                    _ltng_try_top = _ltng_tf2.prev;
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                } else {
+                    _ltng_try_top = _ltng_tf2.prev;
+                    _ltng_stack_depth = _ltng_tf2.stack_depth;
+                    LtngExcSaved _ltng_es2;
+                    _ltng_exc_save_to(&_ltng_es2);
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "fin ", i); _ltc; }));
+                    _ltng_exc_restore_from(&_ltng_es2);
+                    _ltng_rethrow();
+                }
+            }
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_finally_control.ltng:32:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: override(_ltng_retbuf(), 32, 7)
+---- C ----
+    printf("%s\n", override(_ltng_retbuf(), 32, 7));
+-----------
+

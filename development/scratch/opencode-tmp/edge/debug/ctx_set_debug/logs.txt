@@ -1,0 +1,16 @@
+[2026-11-15 10:04:42] [start] debug session started
+[info] source=/tmp/opencode/edge/ctx_set_debug.ltng
+[info] debug_dir=/tmp/opencode/edge/debug/ctx_set_debug
+[2026-11-15 10:04:42] [read] reading source
+[2026-11-15 10:04:42] [lex] tokenizing
+[2026-11-15 10:04:42] [parse] parsing
+[2026-11-15 10:04:42] [ir] writing intermediate representation
+[2026-11-15 10:04:42] [codegen] generating C code
+[2026-11-15 10:04:42] [codegen] C generation complete
+[2026-11-15 10:04:42] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/edge/ctx_set_debug" "/tmp/ltng_861.c" 2>&1
+Compiled '/tmp/opencode/edge/ctx_set_debug.ltng' -> '/tmp/opencode/edge/ctx_set_debug'
+[C compiler (object)] ok
+[C compiler (assembly)] ok
+[C compiler (debug-symbol binary)] ok
+[2026-11-15 10:04:46] [end] debug session finished

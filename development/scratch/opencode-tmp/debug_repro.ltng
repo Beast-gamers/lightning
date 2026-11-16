@@ -1,0 +1,5 @@
+let x = char
+let y = float
+x.unlock()
+set x = toint("3")
+write(typeof(x))

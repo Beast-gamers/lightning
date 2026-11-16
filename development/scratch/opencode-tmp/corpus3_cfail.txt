@@ -1,0 +1,15 @@
+code/syntax_errors.ltng | rc=1 | 
+code/t_lock_null.ltng | rc=1 | 
+code/t_lock_type_change.ltng | rc=1 | warning: variable 'x' is already locked
+code/t_vars_type_errors.ltng | rc=1 | warning: variable 'v' is already locked
+code/tc_errors.ltng | rc=1 | 
+code/tc_if_errors.ltng | rc=1 | 
+code/test_err_const_init.ltng | rc=1 | 
+code/test_err_multi.ltng | rc=1 | 
+code/test_err_read_undeclared.ltng | rc=1 | 
+code/test_err_reserved.ltng | rc=1 | 
+code/test_err_semicolon.ltng | rc=1 | 
+code/test_err_set_undeclared.ltng | rc=1 | 
+code/test_err_undeclared_interp.ltng | rc=1 | 
+code/test_err_undeclared_write.ltng | rc=1 | 
+code/test_errors.ltng | rc=1 | 

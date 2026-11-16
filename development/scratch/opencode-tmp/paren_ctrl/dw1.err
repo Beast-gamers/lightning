@@ -1,0 +1,8 @@
+
+ --> /tmp/opencode/paren_ctrl/dw1.ltng:4:3
+   |
+ 4 |   i = i + 1
+   |   ^
+   = error: Unexpected token
+
+Compilation failed: 1 error(s)

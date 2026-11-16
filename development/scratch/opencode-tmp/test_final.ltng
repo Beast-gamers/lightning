@@ -1,0 +1,13 @@
+# Test < and > escape sequences
+write("\<")
+write("\>")
+write("\<hello\>")
+write("a \< b")
+write("c \> d")
+write("5 \< 10")
+write("10 \> 3")
+
+# Test interpolation with <> around it
+let x = 42
+write("$[x]")
+write("hello $[x] world")

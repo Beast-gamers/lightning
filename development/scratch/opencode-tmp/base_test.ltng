@@ -1,0 +1,6 @@
+function x(base, a) {
+    return a
+}
+let b = 5
+b.x(10)
+write(b)

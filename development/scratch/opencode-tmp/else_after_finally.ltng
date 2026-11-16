@@ -1,0 +1,9 @@
+try {
+    write("x")
+} catch (e) {
+    write("c")
+} finally {
+    write("f")
+} else {
+    write("e")
+}

@@ -1,0 +1,3 @@
+let s="a"
+do { set s = s + "b" } while ((s) != ("abb"))
+write(s)

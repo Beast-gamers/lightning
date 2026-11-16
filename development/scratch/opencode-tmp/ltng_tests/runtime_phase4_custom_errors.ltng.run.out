@@ -1,0 +1,6 @@
+CustomError
+custom message
+RangeError: out of range
+Error: plain
+Error: 42 (42)
+Error: true

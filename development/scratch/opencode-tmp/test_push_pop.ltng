@@ -1,0 +1,44 @@
+# Test push
+let arr = [1, 2, 3]
+arr.push(4)
+write(arr[1])
+write(arr[2])
+write(arr[3])
+write(arr[4])
+
+# Test pop
+write(arr.pop())
+write(arr[4])
+
+# Test push string
+let names = ["alice", "bob"]
+names.push("charlie")
+write(names[1])
+write(names[2])
+write(names[3])
+
+# Test pop returns value
+write(names.pop())
+write(names[3])
+
+# Test push with expression
+let x = 10
+let arr2 = [1, 2]
+arr2.push(x + 5)
+write(arr2[3])
+
+# Test pop with index
+let arr3 = [10, 20, 30, 40, 50]
+write(arr3.pop(2))
+write(arr3[2])
+write(arr3[4])
+
+# Test pop with negative index
+write(arr3.pop(-1))
+write(arr3[4])
+
+# Test push/pop on multi-dim array
+let m = [[1, 2], [3, 4]]
+m.push([5, 6])
+write(m[3][1])
+write(m[3][2])

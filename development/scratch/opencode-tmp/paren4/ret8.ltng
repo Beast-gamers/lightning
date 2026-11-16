@@ -1,0 +1,2 @@
+function getx() -> string { return "x" }
+write((getx() + "y") * 3)

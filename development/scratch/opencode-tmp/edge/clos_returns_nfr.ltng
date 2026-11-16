@@ -1,0 +1,7 @@
+function inc(x){ return x+1 }
+function maker(){
+    return function(){ return inc }
+}
+let g = maker()
+let h = g()
+write(h(9))

@@ -1,0 +1,2 @@
+let x=5
+if ((x) == 1) { write("a") } else if ((x) == 5) { write("b") } else { write("c") }

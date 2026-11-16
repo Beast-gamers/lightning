@@ -1,0 +1,56 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "maker"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "maker"
+    body:
+      - node: RETURN
+        name: ""
+        value: "\"maker____anon_0\""
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: FUNCTION
+    name: "maker____anon_0"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: RETURN
+        name: ""
+        value: "atof(x)+1"
+        var_type: float
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "x"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "x"
+statements:
+  - node: WRITE
+    name: ""
+    value: "1+atof(maker(_ltng_retbuf(), 2, 11))(5)"
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0

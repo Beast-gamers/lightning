@@ -1,0 +1,5 @@
+let sq = function(x) {
+    return x * x
+}
+let y = sq(6)
+write(y)

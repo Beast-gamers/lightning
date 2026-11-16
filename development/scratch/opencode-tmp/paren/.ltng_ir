@@ -1,0 +1,27 @@
+LightningIR v1
+functions:
+statements:
+  - node: LET
+    name: "a"
+    value: "2"
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "b"
+    value: "3"
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "(atoi(a)+atoi(b))*(atoi(b)-atoi(a))"
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0

@@ -1,0 +1,7 @@
+let x = 10
+x.lock()
+set x = 20
+write(x)
+x.unlock()
+set x = "hello"
+write(x)

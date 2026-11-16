@@ -1,0 +1,4 @@
+function maker(){
+    return function(x){ return x + 1 }
+}
+write(maker()(5))

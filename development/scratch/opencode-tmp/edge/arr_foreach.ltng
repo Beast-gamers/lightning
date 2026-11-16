@@ -1,0 +1,6 @@
+let a = [1,2,3]
+let s = 0
+for (v in a) {
+    set s = s + v
+}
+write(s)

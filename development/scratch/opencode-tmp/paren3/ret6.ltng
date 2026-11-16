@@ -1,0 +1,2 @@
+function s() -> string { return "ab" }
+write((s() + "c") * 2)

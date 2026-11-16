@@ -1,0 +1,5 @@
+let sl = [10, 20, 30, 40, 50]
+let sl1 = sl.slice(2, 4)
+write(sl1.length)
+write(sl1[1])
+write(sl1[2])

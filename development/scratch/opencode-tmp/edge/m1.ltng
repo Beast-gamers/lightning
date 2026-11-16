@@ -1,0 +1,2 @@
+function a(){ return function(b){ return function(c){ return b * c } } }
+write(a()(3)(4) + 1)

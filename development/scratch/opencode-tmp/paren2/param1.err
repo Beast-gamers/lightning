@@ -1,0 +1,14 @@
+
+ --> /tmp/opencode/paren2/param1.ltng:1:1
+   |
+ 1 | fun add(a, b) -> int { return a + b }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/param1.ltng:2:7
+   |
+ 2 | write(add(1 + 2, 3 * 4))
+   |       ^
+   = error: Variable not declared
+
+Compilation failed: 2 error(s)

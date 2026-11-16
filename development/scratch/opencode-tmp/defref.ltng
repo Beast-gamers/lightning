@@ -1,0 +1,3 @@
+function fnx(a = x) { return a }
+let x = 5
+write(fnx())

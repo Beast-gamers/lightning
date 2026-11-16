@@ -1,0 +1,5 @@
+function compute(x) {
+    let doubled = x + x
+    return doubled
+}
+write(compute(4))

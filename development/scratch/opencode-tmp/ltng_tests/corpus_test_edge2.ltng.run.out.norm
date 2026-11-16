@@ -1,0 +1,27 @@
+
+string
+line1
+line2	tab\slash"quote'apos
+3
+-5
+5
+-5
+2
+1
+10
+0
+A0
+A1
+A25
+1 2 3 1 2 3
+53
+world
+string
+this is a fairly long string that should still work fine in the output
+0
+0.0
+-3.14
+34
+21
+50
+10

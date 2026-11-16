@@ -1,0 +1,46 @@
+LightningIR v1
+functions:
+statements:
+  - node: LET
+    name: "s"
+    value: "hi"
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: IF
+    name: ""
+    value: "(s + \"!\")==\"hi!\""
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: WRITE
+        name: ""
+        value: "ok"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    orelse:
+      - node: ELSE
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: WRITE
+            name: ""
+            value: "bad"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0

@@ -1,0 +1,2 @@
+fun f() -> int { return 5 }
+write((f() + 3) * 2)

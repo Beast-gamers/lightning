@@ -1,0 +1,6 @@
+function add(p, n) {
+    return p + n
+}
+let b = 5
+b.add(10)
+write(b)

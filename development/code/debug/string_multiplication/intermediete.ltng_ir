@@ -1,0 +1,99 @@
+LightningIR v1
+functions:
+statements:
+  - node: LET
+    name: "stars"
+    value: "({ char _ltm[512]; _ltng_repeat(_ltm,512,\"*\",(long long)(5)); _ltm; })"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "stars"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "line"
+    value: "({ char _ltm[512]; _ltng_repeat(_ltm,512,\"-\",(long long)(10)); _ltm; })"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "line"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "repeated"
+    value: "({ char _ltm[512]; _ltng_repeat(_ltm,512,\"ab\",(long long)(3)); _ltm; })"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "repeated"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "pattern"
+    value: "({ char _ltm[512]; _ltng_repeat(_ltm,512,\"xy\",(long long)(4)); _ltm; })"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "pattern"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "msg"
+    value: "({ char _ltm[512]; _ltng_repeat(_ltm,512,3,(long long)(atoi(\"ha\"))); _ltm; })"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "msg"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "combined"
+    value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"ab\", ({ char _ltm[512]; _ltng_repeat(_ltm,512,\"cd\",(long long)(2)); _ltm; })); _ltc; })"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "combined"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0

@@ -1,0 +1,286 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "inc"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "inc"
+    body:
+      - node: RETURN
+        name: ""
+        value: "_ltng_add_sn(base, n)"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "base"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "base"
+      - node: PARAM
+        name: "n"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "n"
+  - node: FUNCTION
+    name: "add"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "add"
+    body:
+      - node: RETURN
+        name: ""
+        value: "_ltng_add_sn(recv, n)"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "recv"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "recv"
+      - node: PARAM
+        name: "n"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "n"
+  - node: FUNCTION
+    name: "a"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "a"
+    body:
+      - node: RETURN
+        name: ""
+        value: "atof(p)+1"
+        var_type: float
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "p"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "p"
+statements:
+  - node: LET
+    name: "x"
+    value: "5"
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "a(_ltng_retbuf(), 17, 9, x)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "a(_ltng_retbuf(), 18, 7, _ltng_ad((double)(atoi(x))))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "x"
+    value: ""
+    var_type: int
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "add(_ltng_retbuf(), 25, 9, x, _ltng_ad((double)(10)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "y"
+    value: "add(_ltng_retbuf(), 26, 11, x, _ltng_ad((double)(3)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "y"
+    value: ""
+    var_type: string
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "add(_ltng_retbuf(), 28, 9, x, _ltng_ad((double)(1)))"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: "x"
+    value: ""
+    var_type: int
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: IF
+    name: ""
+    value: "(strcmp(add(_ltng_retbuf(), 31, 7, x, _ltng_ad((double)(4))), 9) == 0)"
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: WRITE
+        name: ""
+        value: "ok"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    orelse:
+      - node: ELSE
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: WRITE
+            name: ""
+            value: "bad"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+  - node: LET
+    name: "b"
+    value: "5"
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: CALL
+    name: "inc"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 1
+    args:
+      - node: PARAM
+        name: ""
+        value: "b"
+        var_type: int
+        is_variable: 1
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: PARAM
+        name: ""
+        value: "10"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: WRITE
+    name: "b"
+    value: ""
+    var_type: int
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: CALL
+    name: "inc"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 1
+    args:
+      - node: PARAM
+        name: ""
+        value: "b"
+        var_type: int
+        is_variable: 1
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+      - node: PARAM
+        name: ""
+        value: "3"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: WRITE
+    name: "b"
+    value: ""
+    var_type: int
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0

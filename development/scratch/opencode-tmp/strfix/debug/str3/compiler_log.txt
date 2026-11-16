@@ -1,0 +1,32 @@
+LTNG /tmp/opencode/strfix/str3.ltng:1:1 | LET (a)
+  [expr:rhs] ltng-span: unknown
+    C: ab
+---- C ----
+    snprintf(a, 256, "ab");
+-----------
+
+LTNG /tmp/opencode/strfix/str3.ltng:2:23 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: yes
+---- C ----
+        printf("%s\n", "yes");
+-----------
+
+LTNG /tmp/opencode/strfix/str3.ltng:2:45 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: no
+---- C ----
+        printf("%s\n", "no");
+-----------
+
+LTNG /tmp/opencode/strfix/str3.ltng:2:1 | IF
+  [expr:condition] ltng /tmp/opencode/strfix/str3.ltng:2:5-2:19
+    C: (strcmp((a + "c"), "abc") == 0)
+---- C ----
+    if ((strcmp((a + "c"), "abc") == 0)) {
+        printf("%s\n", "yes");
+    } else {
+        printf("%s\n", "no");
+    }
+-----------
+

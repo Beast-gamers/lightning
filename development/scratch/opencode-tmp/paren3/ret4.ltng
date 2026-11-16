@@ -1,0 +1,3 @@
+function f() -> int { return 2 }
+function g() -> int { return 3 }
+write((f() * g()) + (g() - f()))

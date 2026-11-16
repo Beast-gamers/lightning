@@ -1,0 +1,4 @@
+# Test error output
+let arr = [1, 2, 3]
+# Accessing array with too many dimensions
+write(arr[1][1][1][1])

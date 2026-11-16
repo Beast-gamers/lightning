@@ -1,0 +1,32 @@
+
+ --> /main/language/code/test_err_multi.ltng:2:9
+   |
+ 2 | let x = int "hello"
+   |         ^
+   = error: Cannot assign a value with a type declaration
+
+ --> /main/language/code/test_err_multi.ltng:3:5
+   |
+ 3 | let write = 5
+   |     ^
+   = error: Expected variable name after 'let'
+
+ --> /main/language/code/test_err_multi.ltng:4:5
+   |
+ 4 | set z = 10
+   |     ^
+   = error: Variable not declared
+
+ --> /main/language/code/test_err_multi.ltng:5:6
+   |
+ 5 | read(w)
+   |      ^
+   = error: Variable not declared
+
+ --> /main/language/code/test_err_multi.ltng:6:7
+   |
+ 6 | write("$[q]")
+   |       ^
+   = error: Variable 'q' not declared (used in string interpolation)
+
+Check failed: 5 error(s)

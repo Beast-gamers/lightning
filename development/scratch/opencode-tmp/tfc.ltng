@@ -1,0 +1,5 @@
+let x = float
+let y = char
+write(typeof(x))
+write(typeof(y))
+write(x)

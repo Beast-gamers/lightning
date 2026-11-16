@@ -1,0 +1,8 @@
+
+ --> /main/language/code/test_err_read_undeclared.ltng:3:6
+   |
+ 3 | read(y)
+   |      ^
+   = error: Variable not declared
+
+Check failed: 1 error(s)

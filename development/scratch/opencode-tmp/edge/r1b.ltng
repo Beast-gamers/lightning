@@ -1,0 +1,3 @@
+function maker(){ return function(x){ return x + 1 } }
+function testfn(){ return maker()(5) }
+write(testfn())

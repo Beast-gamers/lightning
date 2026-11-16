@@ -1,0 +1,72 @@
+LTNG ./code/string_multiplication.ltng:2:1 | LET (stars)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char _ltm[512]; _ltng_repeat(_ltm,512,"*",(long long)(5)); _ltm; })
+---- C ----
+    snprintf(stars, 256, "%s", ({ char _ltm[512]; _ltng_repeat(_ltm,512,"*",(long long)(5)); _ltm; }));
+-----------
+
+LTNG ./code/string_multiplication.ltng:3:1 | WRITE (stars)
+---- C ----
+    printf("%s\n", stars);
+-----------
+
+LTNG ./code/string_multiplication.ltng:5:1 | LET (line)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char _ltm[512]; _ltng_repeat(_ltm,512,"-",(long long)(10)); _ltm; })
+---- C ----
+    snprintf(line, 256, "%s", ({ char _ltm[512]; _ltng_repeat(_ltm,512,"-",(long long)(10)); _ltm; }));
+-----------
+
+LTNG ./code/string_multiplication.ltng:6:1 | WRITE (line)
+---- C ----
+    printf("%s\n", line);
+-----------
+
+LTNG ./code/string_multiplication.ltng:8:1 | LET (repeated)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char _ltm[512]; _ltng_repeat(_ltm,512,"ab",(long long)(3)); _ltm; })
+---- C ----
+    snprintf(repeated, 256, "%s", ({ char _ltm[512]; _ltng_repeat(_ltm,512,"ab",(long long)(3)); _ltm; }));
+-----------
+
+LTNG ./code/string_multiplication.ltng:9:1 | WRITE (repeated)
+---- C ----
+    printf("%s\n", repeated);
+-----------
+
+LTNG ./code/string_multiplication.ltng:12:1 | LET (pattern)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char _ltm[512]; _ltng_repeat(_ltm,512,"xy",(long long)(4)); _ltm; })
+---- C ----
+    snprintf(pattern, 256, "%s", ({ char _ltm[512]; _ltng_repeat(_ltm,512,"xy",(long long)(4)); _ltm; }));
+-----------
+
+LTNG ./code/string_multiplication.ltng:13:1 | WRITE (pattern)
+---- C ----
+    printf("%s\n", pattern);
+-----------
+
+LTNG ./code/string_multiplication.ltng:16:1 | LET (msg)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char _ltm[512]; _ltng_repeat(_ltm,512,3,(long long)(atoi("ha"))); _ltm; })
+---- C ----
+    snprintf(msg, 256, "%s", ({ char _ltm[512]; _ltng_repeat(_ltm,512,3,(long long)(atoi("ha"))); _ltm; }));
+-----------
+
+LTNG ./code/string_multiplication.ltng:17:1 | WRITE (msg)
+---- C ----
+    printf("%s\n", msg);
+-----------
+
+LTNG ./code/string_multiplication.ltng:20:1 | LET (combined)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "ab", ({ char _ltm[512]; _ltng_repeat(_ltm,512,"cd",(long long)(2)); _ltm; })); _ltc; })
+---- C ----
+    snprintf(combined, 256, "%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "ab", ({ char _ltm[512]; _ltng_repeat(_ltm,512,"cd",(long long)(2)); _ltm; })); _ltc; }));
+-----------
+
+LTNG ./code/string_multiplication.ltng:21:1 | WRITE (combined)
+---- C ----
+    printf("%s\n", combined);
+-----------
+

@@ -1,0 +1,16 @@
+[2026-11-16 20:49:31] [start] debug session started
+[info] source=tests/runtime/phase4_finally_control.ltng
+[info] debug_dir=tests/runtime/debug/phase4_finally_control
+[2026-11-16 20:49:31] [read] reading source
+[2026-11-16 20:49:31] [lex] tokenizing
+[2026-11-16 20:49:31] [parse] parsing
+[2026-11-16 20:49:31] [ir] writing intermediate representation
+[2026-11-16 20:49:31] [codegen] generating C code
+[2026-11-16 20:49:31] [codegen] C generation complete
+[2026-11-16 20:49:31] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/fail" "/tmp/ltng_17766.c" 2>&1
+Compiled 'tests/runtime/phase4_finally_control.ltng' -> '/tmp/opencode/fail'
+[C compiler (object)] ok
+[C compiler (assembly)] ok
+[C compiler (debug-symbol binary)] ok
+[2026-11-16 20:49:35] [end] debug session finished

@@ -1,0 +1,3 @@
+function g(a, b = 5){ return a + b }
+write(g(1))
+write(g(1,2))

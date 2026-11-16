@@ -1,0 +1,4 @@
+let x = "hahaha2"
+if (x == (("ha" * 3) + "2")) {
+    write("true")
+}

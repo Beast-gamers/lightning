@@ -1,0 +1,37 @@
+function counted(n) {
+    let total = 0
+    for (i from 0 to n) {
+        try {
+            throw error("E", "x")
+        } catch (e) {
+            set total = total + 1
+        } finally {
+            set total = total + 1
+        }
+    }
+    return total
+}
+
+function looped(n) {
+    let total = 0
+    for (i from 0 to n) {
+        try {
+            throw "loop"
+        } finally {
+            set total = total + 1
+            if (i < n - 1) {
+                continue
+            }
+            break
+        }
+    }
+    return total
+}
+
+write(counted(1000))
+write(looped(1000))
+try {
+    throw error("Done", "ok")
+} catch (e) {
+    write(e.type + ": " + e.message)
+}

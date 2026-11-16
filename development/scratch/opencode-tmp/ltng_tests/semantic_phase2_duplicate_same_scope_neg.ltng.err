@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase2_duplicate_same_scope_neg.ltng:3:5
+   |
+ 3 | let x = 2
+   |     ^
+   = error: Variable already declared in this scope
+
+Check failed: 1 error(s)

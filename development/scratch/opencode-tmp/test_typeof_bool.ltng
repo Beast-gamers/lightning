@@ -1,0 +1,6 @@
+write(typeof(bool("t")))
+write(typeof(bool("f")))
+write(typeof(bool(true)))
+write(typeof(bool(false)))
+write(typeof(bool(0)))
+write(typeof(bool(42)))

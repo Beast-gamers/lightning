@@ -1,0 +1,4 @@
+function inc(x){ return x + 1 }
+function dbl(x){ return x * 2 }
+function apply(cb, v){ return cb(v) }
+write(apply(inc, apply(dbl, 3)))

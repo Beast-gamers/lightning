@@ -1,0 +1,7 @@
+write("<")
+write(">")
+write("<hello>")
+write("a < b")
+write("c > d")
+write("5 < 10")
+write("10 > 3")

@@ -1,0 +1,12 @@
+let a = 1
+let b = 2
+if (a < b) {
+  write(a)
+  set a = a + 1
+} else {
+  write(b)
+}
+for (i from 1 to 3) {
+  write(i)
+}
+write(a)

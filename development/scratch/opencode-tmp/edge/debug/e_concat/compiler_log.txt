@@ -1,0 +1,51 @@
+LTNG /tmp/opencode/edge/e_concat.ltng:2:5 | THROW ("E")
+  [expr:value] ltng-span: unknown
+    C: "m"
+---- C ----
+            _ltng_throw_value("E", "m", 2, 5);
+-----------
+
+LTNG /tmp/opencode/edge/e_concat.ltng:4:5 | WRITE
+  [expr:write_value] ltng /tmp/opencode/edge/e_concat.ltng:4:11-4:18
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "x",({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)(_v0_e__typeatoi(_v0_e__type))); __ltcn; })); _ltc; })
+---- C ----
+            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "x",({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)(_v0_e__typeatoi(_v0_e__type))); __ltcn; })); _ltc; }));
+-----------
+
+LTNG /tmp/opencode/edge/e_concat.ltng:1:1 | TRY (_v0_e)
+---- C ----
+    {
+        LtngTryFrame _ltng_tf0;
+        _ltng_tf0.prev = _ltng_try_top;
+        _ltng_tf0.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf0;
+        int _ltng_tr0 = setjmp(_ltng_tf0.env);
+        if (_ltng_tr0 == 0) {
+            _ltng_throw_value("E", "m", 2, 5);
+            _ltng_try_top = _ltng_tf0.prev;
+        } else {
+            _ltng_try_top = _ltng_tf0.prev;
+            _ltng_stack_depth = _ltng_tf0.stack_depth;
+            char _v0_e[256] = "";
+            snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+            char _v0_e__type[256] = "";
+            snprintf(_v0_e__type, 256, "%s", _ltng_exc_type);
+            char _v0_e__message[256] = "";
+            snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+            char _v0_e__trace[4096] = "";
+            snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+            char _v0_e__line[256] = "";
+            snprintf(_v0_e__line, 256, "%d", _ltng_exc_line);
+            char _v0_e__column[256] = "";
+            snprintf(_v0_e__column, 256, "%d", _ltng_exc_col);
+            char _v0_e__function[256] = "";
+            snprintf(_v0_e__function, 256, "%s", _ltng_exc_func);
+            char _v0_e__value[256] = "";
+            snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+            char _v0_e__obj[512] = "";
+            snprintf(_v0_e__obj, 512, "%s", _v0_e);
+            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "x",({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)(_v0_e__typeatoi(_v0_e__type))); __ltcn; })); _ltc; }));
+        }
+    }
+-----------
+

@@ -1,0 +1,26 @@
+
+ --> /tmp/opencode/paren2/ret4.ltng:1:1
+   |
+ 1 | fun f() -> int { return 2 }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/ret4.ltng:2:1
+   |
+ 2 | fun g() -> int { return 3 }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/ret4.ltng:3:14
+   |
+ 3 | write((f() * g()) + (g() - f()))
+   |              ^
+   = error: Variable 'g' not declared
+
+ --> /tmp/opencode/paren2/ret4.ltng:3:22
+   |
+ 3 | write((f() * g()) + (g() - f()))
+   |                      ^
+   = error: Variable 'g' not declared
+
+Compilation failed: 4 error(s)

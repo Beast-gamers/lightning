@@ -1,0 +1,10 @@
+function add1(x) {
+    return x + 1
+}
+let f = add1
+write(f(5))
+
+function apply(fn, v) {
+    return fn(v)
+}
+write(apply(add1, 10))

@@ -1,0 +1,21 @@
+LTNG /tmp/opencode/edge/e7.ltng:1:1 | LET (a)
+  [expr:rhs] ltng-span: unknown
+    C: 1
+---- C ----
+    snprintf(a, 256, "1");
+-----------
+
+LTNG /tmp/opencode/edge/e7.ltng:2:1 | LET (b)
+  [expr:rhs] ltng-span: unknown
+    C: 2
+---- C ----
+    snprintf(b, 256, "2");
+-----------
+
+LTNG /tmp/opencode/edge/e7.ltng:3:1 | WRITE
+  [expr:write_value] ltng /tmp/opencode/edge/e7.ltng:3:7-3:30
+    C: _ltng_add_sn(_ltng_add_sn(({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)((a + b) * 2)); __ltcn; }), ","), ({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)((b + a) * 2)); __ltcn; }))
+---- C ----
+    printf("%s\n", _ltng_add_sn(_ltng_add_sn(({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)((a + b) * 2)); __ltcn; }), ","), ({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)((b + a) * 2)); __ltcn; })));
+-----------
+

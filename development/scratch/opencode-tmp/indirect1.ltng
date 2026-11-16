@@ -1,0 +1,8 @@
+function apply_twice(fn, x) {
+    let a = fn(x)
+    return fn(a)
+}
+let inc = function(n) {
+    return n + 1
+}
+write(apply_twice(inc, 5))

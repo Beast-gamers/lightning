@@ -1,0 +1,8 @@
+
+ --> /main/language/code/test_err_const_init.ltng:2:11
+   |
+ 2 | const x = int
+   |           ^
+   = error: const requires a value assignment, not a type declaration
+
+Check failed: 1 error(s)

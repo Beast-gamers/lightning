@@ -1,0 +1,5 @@
+let x
+set x = 5
+write(x)
+set x = "hello"
+write(x)

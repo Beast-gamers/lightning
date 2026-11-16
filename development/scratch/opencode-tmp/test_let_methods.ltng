@@ -1,0 +1,25 @@
+# Test let x = y.push(z)
+let arr = [1, 2, 3]
+let x = arr.push(10)
+write("x = ")
+write(x)
+write("arr[4] = ")
+write(arr[4])
+
+# Test let x = y.pop()
+let y = [10, 20, 30]
+let p = y.pop()
+write("p = ")
+write(p)
+write("y[3] = ")
+write(y[3])
+
+# Test let x = y.pop(1)
+let z = [100, 200, 300, 400]
+let q = z.pop(2)
+write("q = ")
+write(q)
+write("z[2] = ")
+write(z[2])
+write("z[4] = ")
+write(z[4])

@@ -1,0 +1,18 @@
+[2026-11-15 08:40:52] [start] debug session started
+[info] source=/tmp/opencode/edge/t1.ltng
+[info] debug_dir=/tmp/opencode/edge/debug/t1
+[2026-11-15 08:40:52] [read] reading source
+[2026-11-15 08:40:52] [lex] tokenizing
+[2026-11-15 08:40:52] [parse] parsing
+[2026-11-15 08:40:52] [ir] writing intermediate representation
+[2026-11-15 08:40:52] [codegen] generating C code
+[2026-11-15 08:40:52] [codegen] C generation complete
+[2026-11-15 08:40:52] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/edge/t1" "/tmp/ltng_11874.c" 2>&1
+C compiler output:
+/tmp/ltng_11874.c: In function 'main':
+/tmp/ltng_11874.c:167:22: error: initialization of 'long long int' from 'char *' makes integer from pointer without a cast [-Wint-conversion]
+  167 |     { long long _e = (get(_ltng_retbuf(), 2, 9)); snprintf(y, 256, "%lld", _e); }
+      |                      ^
+
+[2026-11-15 08:40:53] [end] debug session finished

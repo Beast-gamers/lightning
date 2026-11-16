@@ -1,0 +1,22 @@
+# Test string array
+let names = ["alice", "bob", "charlie"]
+write(names[1])
+write(names[2])
+write(names[3])
+write(names[-1])
+
+# Test 2D array
+let matrix = [[1, 2, 3], [4, 5, 6]]
+write(matrix[1][1])
+write(matrix[1][2])
+write(matrix[2][1])
+write(matrix[2][3])
+write(matrix[-1][-1])
+
+# Test 3D array
+let cube = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+write(cube[1][1][1])
+write(cube[1][1][2])
+write(cube[2][1][1])
+write(cube[2][2][2])
+write(cube[-1][-1][-1])

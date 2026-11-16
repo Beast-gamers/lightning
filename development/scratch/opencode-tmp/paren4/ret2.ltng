@@ -1,0 +1,2 @@
+function foo() -> int { return 5 }
+write((foo() + 3) * 2)

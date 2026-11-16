@@ -1,0 +1,2 @@
+function add(a, b) -> int { return a + b }
+write(add(1 + 2, 3 * 4))

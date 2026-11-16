@@ -1,0 +1,11 @@
+function greet(name, greeting = "Hello") {
+    return greeting + ", " + name
+}
+
+function add(a, b = 100) {
+    return a + b
+}
+
+write(greet("World"))
+write(greet("World", "Hi"))
+write(add(5))

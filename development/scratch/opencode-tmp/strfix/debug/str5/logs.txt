@@ -1,0 +1,21 @@
+[2026-11-16 20:09:21] [start] debug session started
+[info] source=/tmp/opencode/strfix/str5.ltng
+[info] debug_dir=/tmp/opencode/strfix/debug/str5
+[2026-11-16 20:09:21] [read] reading source
+[2026-11-16 20:09:21] [lex] tokenizing
+[2026-11-16 20:09:21] [parse] parsing
+[2026-11-16 20:09:21] [ir] writing intermediate representation
+[2026-11-16 20:09:21] [codegen] generating C code
+[2026-11-16 20:09:21] [codegen] C generation complete
+[2026-11-16 20:09:21] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/strfix/str5" "/tmp/ltng_30047.c" 2>&1
+C compiler output:
+/tmp/ltng_30047.c: In function 'main':
+/tmp/ltng_30047.c:152:22: error: invalid operands to binary + (have 'char *' and 'char *')
+  152 |     if ((strcmp(("x" + "y"), "xy") == 0)) {
+      |                  ~~~ ^
+      |                  |   |
+      |                  |   char *
+      |                  char *
+
+[2026-11-16 20:09:22] [end] debug session finished

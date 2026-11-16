@@ -1,0 +1,3 @@
+let s = "a"
+set s = s + 1
+write(s)

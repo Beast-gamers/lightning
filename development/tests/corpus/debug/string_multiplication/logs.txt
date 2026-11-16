@@ -1,0 +1,5 @@
+[2026-11-16 15:16:23] [start] debug session started
+[info] source=/main/language/tests/corpus/string_multiplication.ltng
+[info] debug_dir=/main/language/tests/corpus/debug/string_multiplication
+[2026-11-16 15:16:23] [read] reading source
+Error: Cannot open file '/main/language/tests/corpus/string_multiplication.ltng'

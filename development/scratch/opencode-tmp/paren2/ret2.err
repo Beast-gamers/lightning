@@ -1,0 +1,8 @@
+
+ --> /tmp/opencode/paren2/ret2.ltng:1:1
+   |
+ 1 | fun f() -> int { return 5 }
+   | ^
+   = error: Unexpected token
+
+Compilation failed: 1 error(s)

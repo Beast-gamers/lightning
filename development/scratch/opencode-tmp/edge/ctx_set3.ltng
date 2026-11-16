@@ -1,0 +1,4 @@
+function a(){ return function(x){ return x } }
+let r = 0
+set r = a()(8) + 0
+write(r)

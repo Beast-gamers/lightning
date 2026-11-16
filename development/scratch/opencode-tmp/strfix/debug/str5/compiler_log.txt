@@ -1,0 +1,25 @@
+LTNG /tmp/opencode/strfix/str5.ltng:1:26 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: yes
+---- C ----
+        printf("%s\n", "yes");
+-----------
+
+LTNG /tmp/opencode/strfix/str5.ltng:1:48 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: no
+---- C ----
+        printf("%s\n", "no");
+-----------
+
+LTNG /tmp/opencode/strfix/str5.ltng:1:1 | IF
+  [expr:condition] ltng /tmp/opencode/strfix/str5.ltng:1:5-1:22
+    C: (strcmp(("x" + "y"), "xy") == 0)
+---- C ----
+    if ((strcmp(("x" + "y"), "xy") == 0)) {
+        printf("%s\n", "yes");
+    } else {
+        printf("%s\n", "no");
+    }
+-----------
+

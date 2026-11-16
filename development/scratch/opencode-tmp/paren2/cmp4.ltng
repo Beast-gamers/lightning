@@ -1,0 +1,1 @@
+if ((10 / 2) != (2 + 2)) { write("yes") } else { write("no") }

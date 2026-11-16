@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase5_duplicate_function_neg.ltng:4:10
+   |
+ 4 | function foo(a) {
+   |          ^
+   = error: Function 'foo' with the same parameter list is already defined
+
+Check failed: 1 error(s)

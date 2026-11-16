@@ -1,0 +1,10 @@
+# --- let b = a.slice(start, end) ---
+let s1 = [1, 2, 3, 4, 5]
+let s2 = s1.slice(2, 4)   # elements at positions 2,3 = [2, 3]
+write(s2[1])
+write(s2[2])
+write(s2.length)
+let s3 = s1.slice(-3, -1) # elements at positions 3,4 (from end)
+write(s3[1])
+write(s3[2])
+write(s3.length)

@@ -1,0 +1,5 @@
+function add1(x) {
+    return x + 1
+}
+let fn = add1
+write(fn(5))

@@ -1,0 +1,4 @@
+function get(){ return 1 }
+let y = get()
+write(typeof(y))
+write(y)

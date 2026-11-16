@@ -1,0 +1,9 @@
+let arr = [10, 20, 30]
+for (x in arr) {
+    write(x)
+}
+let empty = array
+for (y in empty) {
+    write("no")
+}
+write("done")

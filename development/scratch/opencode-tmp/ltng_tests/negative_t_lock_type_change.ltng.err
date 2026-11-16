@@ -1,0 +1,9 @@
+warning: variable 'x' is already locked
+
+ --> /main/language/code/t_lock_type_change.ltng:4:1
+   |
+ 4 | set x = "hello"
+   | ^
+   = error: Cannot change type of locked variable 'x' from int to string
+
+Check failed: 1 error(s)

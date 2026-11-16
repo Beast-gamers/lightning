@@ -1,0 +1,8 @@
+
+ --> /main/language/code/tc_errors.ltng:6:9
+   |
+ 6 | let x = undeclared_var
+   |         ^
+   = error: Variable 'undeclared_var' not declared
+
+Check failed: 1 error(s)

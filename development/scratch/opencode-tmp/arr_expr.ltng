@@ -1,0 +1,12 @@
+let a = [10, 20, 30]
+let s = a[1] + a[2]
+write(s)
+let m = [[1, 2], [3, 4]]
+write(m[1][1] + m[2][2])
+write(m[1][1] + 100)
+let z = 5
+write(a[z])
+write(a[z - 2])
+let y = 2
+write(m[y][y])
+write(m[y - 1][y])

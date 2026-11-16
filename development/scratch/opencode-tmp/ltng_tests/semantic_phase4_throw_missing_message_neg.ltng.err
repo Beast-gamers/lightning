@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase4_throw_missing_message_neg.ltng:1:23
+   |
+ 1 | throw error("OnlyType")
+   |                       ^
+   = error: Expected ',' after error type in error(type, message)
+
+Check failed: 1 error(s)

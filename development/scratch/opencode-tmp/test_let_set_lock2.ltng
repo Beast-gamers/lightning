@@ -1,0 +1,5 @@
+let x
+set x = 5
+x.lock()
+set x = 10
+write(x)

@@ -1,0 +1,32 @@
+LTNG /tmp/opencode/strfix/switch_str_case_expr.ltng:1:1 | LET (s)
+  [expr:rhs] ltng-span: unknown
+    C: ab
+---- C ----
+    snprintf(s, 256, "ab");
+-----------
+
+LTNG /tmp/opencode/strfix/switch_str_case_expr.ltng:3:21 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: hit
+---- C ----
+        printf("%s\n", "hit");
+-----------
+
+LTNG /tmp/opencode/strfix/switch_str_case_expr.ltng:4:14 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: miss
+---- C ----
+        printf("%s\n", "miss");
+-----------
+
+LTNG /tmp/opencode/strfix/switch_str_case_expr.ltng:2:1 | SWITCH
+  [expr:condition] ltng /tmp/opencode/strfix/switch_str_case_expr.ltng:2:9-2:10
+    C: s
+---- C ----
+    if (strcmp(s, ("a"+"b")) == 0) {
+        printf("%s\n", "hit");
+    } else {
+        printf("%s\n", "miss");
+    }
+-----------
+

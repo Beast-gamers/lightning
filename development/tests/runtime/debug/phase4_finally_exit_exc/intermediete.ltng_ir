@@ -1,0 +1,192 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "deep"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "deep"
+    body:
+      - node: THROW
+        name: "\"After\""
+        value: "\"still works\""
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: FUNCTION
+    name: "early_control"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "early_control"
+    body:
+      - node: FOR
+        name: "i"
+        value: ""
+        var_type: int
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "i"
+        for_start: "0"
+        for_end: "3"
+        for_step: "1"
+        for_step_op: '+'
+        body:
+          - node: TRY
+            name: ""
+            value: ""
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+            has_catch: 0
+            has_else: 0
+            has_finally: 1
+            body:
+              - node: THROW
+                name: "\"Error\""
+                value: "\"loop\""
+                var_type: string
+                is_variable: 0
+                is_expr: 1
+                is_default: 0
+                is_base_assign: 0
+            cases:
+              - node: IF
+                name: ""
+                value: "(atoi(i)) == (0)"
+                var_type: int
+                is_variable: 0
+                is_expr: 1
+                is_default: 0
+                is_base_assign: 0
+                body:
+                  - node: CONTINUE
+                    name: ""
+                    value: ""
+                    var_type: string
+                    is_variable: 0
+                    is_expr: 0
+                    is_default: 0
+                    is_base_assign: 0
+              - node: BREAK
+                name: ""
+                value: ""
+                var_type: string
+                is_variable: 0
+                is_expr: 0
+                is_default: 0
+                is_base_assign: 0
+      - node: RETURN
+        name: ""
+        value: "\"done\""
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: FUNCTION
+    name: "early_return"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "early_return"
+    body:
+      - node: TRY
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 0
+        has_else: 0
+        has_finally: 1
+        body:
+          - node: THROW
+            name: "\"Error\""
+            value: "\"inner\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: RETURN
+            name: ""
+            value: "\"early\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+statements:
+  - node: WRITE
+    name: ""
+    value: "early_return(_ltng_retbuf(), 23, 7)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "early_control(_ltng_retbuf(), 24, 7)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: TRY
+    name: "_v0_e"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    has_catch: 1
+    has_else: 0
+    has_finally: 0
+    for_var: "e"
+    body:
+      - node: CALL
+        name: "deep"
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    orelse:
+      - node: WRITE
+        name: ""
+        value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", ({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", _v0_e__type, \": \"); _ltc; }), _v0_e__message); _ltc; })"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+      - node: WRITE
+        name: "_v0_e__function"
+        value: ""
+        var_type: string
+        is_variable: 1
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0

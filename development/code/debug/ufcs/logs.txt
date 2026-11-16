@@ -1,0 +1,24 @@
+[2026-11-16 20:36:29] [start] debug session started
+[info] source=code/ufcs.ltng
+[info] debug_dir=code/debug/ufcs
+[2026-11-16 20:36:29] [read] reading source
+[2026-11-16 20:36:29] [lex] tokenizing
+[2026-11-16 20:36:29] [parse] parsing
+[2026-11-16 20:36:29] [ir] writing intermediate representation
+[2026-11-16 20:36:29] [codegen] generating C code
+[2026-11-16 20:36:29] [codegen] C generation complete
+[2026-11-16 20:36:29] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/ufcs" "/tmp/ltng_9995.c" 2>&1
+C compiler output:
+/tmp/ltng_9995.c: In function 'main':
+/tmp/ltng_9995.c:208:71: error: passing argument 2 of 'strcmp' makes pointer from integer without a cast [-Wint-conversion]
+  208 |     if ((strcmp(add(_ltng_retbuf(), 31, 7, x, _ltng_ad((double)(4))), 9) == 0)) {
+      |                                                                       ^
+      |                                                                       |
+      |                                                                       int
+In file included from /tmp/ltng_9995.c:2:
+/usr/include/string.h:171:50: note: expected 'const char *' but argument is of type 'int'
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |                                      ~~~~~~~~~~~~^~~~
+
+[2026-11-16 20:36:32] [end] debug session finished

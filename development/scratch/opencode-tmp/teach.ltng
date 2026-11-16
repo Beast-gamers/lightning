@@ -1,0 +1,25 @@
+function validate_age(text) {
+    let n = toint(text)
+    if (n < 0) {
+        throw error("ValidationError", "age must be >= 0")
+    }
+    if (n > 150) {
+        throw ValidationError("age is unrealistic")
+    }
+    return n
+}
+
+function safe_age(text) {
+    try {
+        return validate_age(text)
+    } catch (e) {
+        write("failed: " + e.type + " - " + e.message)
+        return -1
+    } finally {
+        write("checked " + text)
+    }
+}
+
+write(safe_age("30"))
+write(safe_age("-5"))
+write(safe_age("200"))

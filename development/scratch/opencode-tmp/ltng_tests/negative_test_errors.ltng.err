@@ -1,0 +1,32 @@
+
+ --> /main/language/code/test_errors.ltng:5:9
+   |
+ 5 | let x = undeclared_var
+   |         ^
+   = error: Variable 'undeclared_var' not declared
+
+ --> /main/language/code/test_errors.ltng:8:9
+   |
+ 8 | let y = undeclared_var + 5
+   |         ^
+   = error: Variable 'undeclared_var' not declared
+
+ --> /main/language/code/test_errors.ltng:11:7
+   |
+ 11 | write(undeclared_var)
+   |       ^
+   = error: Variable not declared
+
+ --> /main/language/code/test_errors.ltng:14:7
+   |
+ 14 | write("$[undeclared_var]")
+   |       ^
+   = error: Variable 'undeclared_var' not declared (used in string interpolation)
+
+ --> /main/language/code/test_errors.ltng:17:5
+   |
+ 17 | set undeclared_var = 10
+   |     ^
+   = error: Variable not declared
+
+Check failed: 5 error(s)

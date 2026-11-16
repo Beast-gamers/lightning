@@ -1,0 +1,1 @@
+if (("hi") == ("hi")) { write("yes") } else { write("no") }

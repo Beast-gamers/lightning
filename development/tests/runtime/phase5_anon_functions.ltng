@@ -1,0 +1,30 @@
+let dbl = function(x) {
+    return x * 2
+}
+write(dbl(5))
+
+const inc = function(n) {
+    return n + 1
+}
+write(inc(9))
+
+let add = function(a, b) {
+    return a + b
+}
+write(add(3, 4))
+write(add(dbl(2), inc(1)))
+
+let sq = function(x) {
+    return x * x
+}
+let v = sq(6)
+write(v)
+write(sq(3) + 1)
+
+let op = function(x) {
+    return x + 10
+}
+set op = function(x) {
+    return x + 20
+}
+write(op(5))

@@ -1,0 +1,6 @@
+let arr = [1, 2, 3]
+let x = arr.push(10)
+write("x = ")
+write(x)
+write("arr[4] = ")
+write(arr[4])

@@ -1,0 +1,16 @@
+int
+float
+string
+string
+bool
+int
+float
+string
+string
+bool
+int
+string
+Type of i: int
+Type of fl: float
+Type of s: string
+i=int fl=float s=string c=string b=bool

@@ -1,0 +1,68 @@
+LTNG foreach_clos.ltng:6:27 | RETURN
+  [expr:expr] ltng foreach_clos.ltng:6:34-6:39
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)(atof(x))); __ltcn; }),v); _ltc; })
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)(atof(x))); __ltcn; }),v); _ltc; }));
+    return _ret;
+-----------
+
+LTNG foreach_clos.ltng:1:1 | LET (a)
+  [expr:rhs] ltng-span: unknown
+    C: 1|2|3
+---- C ----
+    int a_len = 0;
+    int a_cap = 0;
+    char **a_data = _ltng_arr_new(3);
+    _ltng_arr_push(&a_data, &a_len, &a_cap, "1");
+    _ltng_arr_push(&a_data, &a_len, &a_cap, "2");
+    _ltng_arr_push(&a_data, &a_len, &a_cap, "3");
+-----------
+
+LTNG foreach_clos.ltng:2:1 | LET (fns)
+---- C ----
+    snprintf(fns, 256, "");
+-----------
+
+LTNG foreach_clos.ltng:4:1 | LET (sum)
+  [expr:rhs] ltng-span: unknown
+    C: 0
+---- C ----
+    snprintf(sum, 256, "0");
+-----------
+
+LTNG foreach_clos.ltng:6:27 | LET (fn)
+  [expr:rhs] ltng-span: unknown
+    C: _ltng_add_sn(_ltng_add_sn("__anon_0","\001"),_ltng_ptr_to_str((void*)v))
+---- C ----
+            char fn[256] = "";
+            snprintf(fn, 256, "%s", _ltng_add_sn(_ltng_add_sn("__anon_0","\001"),_ltng_ptr_to_str((void*)v)));
+-----------
+
+LTNG foreach_clos.ltng:7:5 | SET (sum)
+  [expr:rhs] ltng-span: unknown
+    C: atoi(sum)+atof(__ltng_indirect(_ltng_retbuf(), 7, 21, _ltng_ad((double)(10))))
+---- C ----
+            { long long _e = (atoi(sum)+atof(__ltng_indirect(_ltng_retbuf(), 7, 21, _ltng_ad((double)(10))))); snprintf(sum, 256, "%lld", _e); }
+-----------
+
+LTNG foreach_clos.ltng:5:1 | FOR (v)
+  [expr:for_start] ltng-span: unknown
+    C: a
+---- C ----
+    {
+        char v[256] = "";
+        for (int __fe_i0 = 0; __fe_i0 < a_len; __fe_i0++) {
+            snprintf(v, 256, "%s", a_data[__fe_i0] ? a_data[__fe_i0] : "");
+            char fn[256] = "";
+            snprintf(fn, 256, "%s", _ltng_add_sn(_ltng_add_sn("__anon_0","\001"),_ltng_ptr_to_str((void*)v)));
+            { long long _e = (atoi(sum)+atof(__ltng_indirect(_ltng_retbuf(), 7, 21, _ltng_ad((double)(10))))); snprintf(sum, 256, "%lld", _e); }
+        }
+    }
+-----------
+
+LTNG foreach_clos.ltng:9:1 | WRITE (sum)
+---- C ----
+    printf("%s\n", sum);
+-----------
+

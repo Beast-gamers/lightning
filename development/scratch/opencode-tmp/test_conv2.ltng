@@ -1,0 +1,8 @@
+let a = tofloat("3.5")
+write(a)
+write(typeof(a))
+let b = toint("3.9")
+write(b)
+write(typeof(b))
+let c = tochar(65)
+write(c)

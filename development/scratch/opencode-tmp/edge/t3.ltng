@@ -1,0 +1,4 @@
+function get(){ return "hi" }
+let x = ""
+set x = get()
+write(x)

@@ -1,0 +1,8 @@
+function add(base, n) {
+    return base + n
+}
+let b = 5
+b.add(10)
+write(b)
+b.add(3)
+write(b)

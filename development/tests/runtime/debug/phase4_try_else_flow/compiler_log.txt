@@ -1,0 +1,1339 @@
+LTNG tests/runtime/phase4_try_else_flow.ltng:3:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: try
+---- C ----
+            printf("%s\n", "try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:10:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-try
+---- C ----
+                printf("%s\n", "finally-ret-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:4:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "from-try"
+---- C ----
+            {
+                char _ltng_rv[256] = "";
+                snprintf(_ltng_rv, 256, "%s", "from-try");
+                _ltng_try_top = _ltng_tf0.prev;
+                printf("%s\n", "finally-ret-try");
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+            }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:8:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: else-should-not-run
+---- C ----
+                    printf("%s\n", "else-should-not-run");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:10:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-try
+---- C ----
+                    printf("%s\n", "finally-ret-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:10:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-try
+---- C ----
+                    printf("%s\n", "finally-ret-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:10:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-try
+---- C ----
+                    printf("%s\n", "finally-ret-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:6:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "catch"
+---- C ----
+                {
+                    char _ltng_rv[256] = "";
+                    snprintf(_ltng_rv, 256, "%s", "catch");
+                    _ltng_try_top = _ltng_cf0.prev;
+                    printf("%s\n", "finally-ret-try");
+                    _ltng_fn_pop();
+                    snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+                }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:10:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-try
+---- C ----
+                printf("%s\n", "finally-ret-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:10:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-try
+---- C ----
+                printf("%s\n", "finally-ret-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:2:5 | TRY (_v0_e)
+---- C ----
+    {
+        LtngTryFrame _ltng_tf0;
+        _ltng_tf0.prev = _ltng_try_top;
+        _ltng_tf0.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf0;
+        int _ltng_tr0 = setjmp(_ltng_tf0.env);
+        if (_ltng_tr0 == 0) {
+            printf("%s\n", "try");
+            {
+                char _ltng_rv[256] = "";
+                snprintf(_ltng_rv, 256, "%s", "from-try");
+                _ltng_try_top = _ltng_tf0.prev;
+                printf("%s\n", "finally-ret-try");
+                _ltng_fn_pop();
+                snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+            }
+            _ltng_try_top = _ltng_tf0.prev;
+            {
+                LtngTryFrame _ltng_ef0;
+                _ltng_ef0.prev = _ltng_try_top;
+                _ltng_ef0.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_ef0;
+                int _ltng_er0 = setjmp(_ltng_ef0.env);
+                if (_ltng_er0 == 0) {
+                    printf("%s\n", "else-should-not-run");
+                    _ltng_try_top = _ltng_ef0.prev;
+                    printf("%s\n", "finally-ret-try");
+                } else {
+                    _ltng_try_top = _ltng_ef0.prev;
+                    _ltng_stack_depth = _ltng_ef0.stack_depth;
+                    LtngExcSaved _ltng_ee0;
+                    _ltng_exc_save_to(&_ltng_ee0);
+                    printf("%s\n", "finally-ret-try");
+                    _ltng_exc_restore_from(&_ltng_ee0);
+                    _ltng_rethrow();
+                }
+            }
+        } else {
+            _ltng_try_top = _ltng_tf0.prev;
+            _ltng_stack_depth = _ltng_tf0.stack_depth;
+            char _v0_e[256] = "";
+            snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+            char _v0_e__type[256] = "";
+            snprintf(_v0_e__type, 256, "%s", _ltng_exc_type);
+            char _v0_e__message[256] = "";
+            snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+            char _v0_e__trace[4096] = "";
+            snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+            char _v0_e__line[256] = "";
+            snprintf(_v0_e__line, 256, "%d", _ltng_exc_line);
+            char _v0_e__column[256] = "";
+            snprintf(_v0_e__column, 256, "%d", _ltng_exc_col);
+            char _v0_e__function[256] = "";
+            snprintf(_v0_e__function, 256, "%s", _ltng_exc_func);
+            char _v0_e__value[256] = "";
+            snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+            char _v0_e__obj[512] = "";
+            snprintf(_v0_e__obj, 512, "%s", _v0_e);
+            LtngTryFrame _ltng_cf0;
+            _ltng_cf0.prev = _ltng_try_top;
+            _ltng_cf0.stack_depth = _ltng_stack_depth;
+            _ltng_try_top = &_ltng_cf0;
+            int _ltng_cr0 = setjmp(_ltng_cf0.env);
+            if (_ltng_cr0 == 0) {
+                {
+                    char _ltng_rv[256] = "";
+                    snprintf(_ltng_rv, 256, "%s", "catch");
+                    _ltng_try_top = _ltng_cf0.prev;
+                    printf("%s\n", "finally-ret-try");
+                    _ltng_fn_pop();
+                    snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+                }
+                _ltng_try_top = _ltng_cf0.prev;
+                printf("%s\n", "finally-ret-try");
+            } else {
+                _ltng_try_top = _ltng_cf0.prev;
+                _ltng_stack_depth = _ltng_cf0.stack_depth;
+                LtngExcSaved _ltng_ec0;
+                _ltng_exc_save_to(&_ltng_ec0);
+                printf("%s\n", "finally-ret-try");
+                _ltng_exc_restore_from(&_ltng_ec0);
+                _ltng_rethrow();
+            }
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:16:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: try2
+---- C ----
+            printf("%s\n", "try2");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:20:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: else2
+---- C ----
+                    printf("%s\n", "else2");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:23:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-else
+---- C ----
+                        printf("%s\n", "finally-ret-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:21:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "from-else"
+---- C ----
+                    {
+                        char _ltng_rv[256] = "";
+                        snprintf(_ltng_rv, 256, "%s", "from-else");
+                        _ltng_try_top = _ltng_tf1.prev;
+                        printf("%s\n", "finally-ret-else");
+                        _ltng_fn_pop();
+                        snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+                    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:23:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-else
+---- C ----
+                    printf("%s\n", "finally-ret-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:23:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-else
+---- C ----
+                    printf("%s\n", "finally-ret-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:23:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-else
+---- C ----
+                    printf("%s\n", "finally-ret-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:18:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "catch2"
+---- C ----
+                {
+                    char _ltng_rv[256] = "";
+                    snprintf(_ltng_rv, 256, "%s", "catch2");
+                    _ltng_try_top = _ltng_cf1.prev;
+                    printf("%s\n", "finally-ret-else");
+                    _ltng_fn_pop();
+                    snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+                }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:23:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-else
+---- C ----
+                printf("%s\n", "finally-ret-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:23:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: finally-ret-else
+---- C ----
+                printf("%s\n", "finally-ret-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:15:5 | TRY (_v1_e)
+---- C ----
+    {
+        LtngTryFrame _ltng_tf1;
+        _ltng_tf1.prev = _ltng_try_top;
+        _ltng_tf1.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf1;
+        int _ltng_tr1 = setjmp(_ltng_tf1.env);
+        if (_ltng_tr1 == 0) {
+            printf("%s\n", "try2");
+            _ltng_try_top = _ltng_tf1.prev;
+            {
+                LtngTryFrame _ltng_ef1;
+                _ltng_ef1.prev = _ltng_try_top;
+                _ltng_ef1.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_ef1;
+                int _ltng_er1 = setjmp(_ltng_ef1.env);
+                if (_ltng_er1 == 0) {
+                    printf("%s\n", "else2");
+                    {
+                        char _ltng_rv[256] = "";
+                        snprintf(_ltng_rv, 256, "%s", "from-else");
+                        _ltng_try_top = _ltng_tf1.prev;
+                        printf("%s\n", "finally-ret-else");
+                        _ltng_fn_pop();
+                        snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+                    }
+                    _ltng_try_top = _ltng_ef1.prev;
+                    printf("%s\n", "finally-ret-else");
+                } else {
+                    _ltng_try_top = _ltng_ef1.prev;
+                    _ltng_stack_depth = _ltng_ef1.stack_depth;
+                    LtngExcSaved _ltng_ee1;
+                    _ltng_exc_save_to(&_ltng_ee1);
+                    printf("%s\n", "finally-ret-else");
+                    _ltng_exc_restore_from(&_ltng_ee1);
+                    _ltng_rethrow();
+                }
+            }
+        } else {
+            _ltng_try_top = _ltng_tf1.prev;
+            _ltng_stack_depth = _ltng_tf1.stack_depth;
+            char _v1_e[256] = "";
+            snprintf(_v1_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+            char _v1_e__type[256] = "";
+            snprintf(_v1_e__type, 256, "%s", _ltng_exc_type);
+            char _v1_e__message[256] = "";
+            snprintf(_v1_e__message, 256, "%s", _ltng_exc_msg);
+            char _v1_e__trace[4096] = "";
+            snprintf(_v1_e__trace, 4096, "%s", _ltng_exc_trace);
+            char _v1_e__line[256] = "";
+            snprintf(_v1_e__line, 256, "%d", _ltng_exc_line);
+            char _v1_e__column[256] = "";
+            snprintf(_v1_e__column, 256, "%d", _ltng_exc_col);
+            char _v1_e__function[256] = "";
+            snprintf(_v1_e__function, 256, "%s", _ltng_exc_func);
+            char _v1_e__value[256] = "";
+            snprintf(_v1_e__value, 256, "%s", _ltng_exc_value);
+            char _v1_e__obj[512] = "";
+            snprintf(_v1_e__obj, 512, "%s", _v1_e);
+            LtngTryFrame _ltng_cf1;
+            _ltng_cf1.prev = _ltng_try_top;
+            _ltng_cf1.stack_depth = _ltng_stack_depth;
+            _ltng_try_top = &_ltng_cf1;
+            int _ltng_cr1 = setjmp(_ltng_cf1.env);
+            if (_ltng_cr1 == 0) {
+                {
+                    char _ltng_rv[256] = "";
+                    snprintf(_ltng_rv, 256, "%s", "catch2");
+                    _ltng_try_top = _ltng_cf1.prev;
+                    printf("%s\n", "finally-ret-else");
+                    _ltng_fn_pop();
+                    snprintf(_ret, 256, "%s", _ltng_rv); return _ret;
+                }
+                _ltng_try_top = _ltng_cf1.prev;
+                printf("%s\n", "finally-ret-else");
+            } else {
+                _ltng_try_top = _ltng_cf1.prev;
+                _ltng_stack_depth = _ltng_cf1.stack_depth;
+                LtngExcSaved _ltng_ec1;
+                _ltng_exc_save_to(&_ltng_ec1);
+                printf("%s\n", "finally-ret-else");
+                _ltng_exc_restore_from(&_ltng_ec1);
+                _ltng_rethrow();
+            }
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:27:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: ret_try(_ltng_retbuf(), 27, 7)
+---- C ----
+    printf("%s\n", ret_try(_ltng_retbuf(), 27, 7));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:28:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: ret_else(_ltng_retbuf(), 28, 7)
+---- C ----
+    printf("%s\n", ret_else(_ltng_retbuf(), 28, 7));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:44:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:44:15-44:36
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:33:13 | CONTINUE
+---- C ----
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            continue;
+                        }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:32:9 | IF
+  [expr:condition] ltng tests/runtime/phase4_try_else_flow.ltng:32:13-32:19
+    C: (atoi(i)) == (0)
+---- C ----
+                    if ((atoi(i)) == (0)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            continue;
+                        }
+                    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:44:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:44:15-44:36
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:36:13 | BREAK
+---- C ----
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            break;
+                        }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:35:9 | IF
+  [expr:condition] ltng tests/runtime/phase4_try_else_flow.ltng:35:13-35:19
+    C: (atoi(i)) == (2)
+---- C ----
+                    if ((atoi(i)) == (2)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            break;
+                        }
+                    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:38:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:38:15-38:33
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "body ", i); _ltc; })
+---- C ----
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "body ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:42:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:42:15-42:33
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "else ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "else ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:44:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:44:15-44:36
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:44:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:44:15-44:36
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:40:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: catch-loop
+---- C ----
+                        printf("%s\n", "catch-loop");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:44:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:44:15-44:36
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; })
+---- C ----
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:44:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:44:15-44:36
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; })
+---- C ----
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:31:5 | TRY (_v2_e)
+---- C ----
+            {
+                LtngTryFrame _ltng_tf2;
+                _ltng_tf2.prev = _ltng_try_top;
+                _ltng_tf2.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf2;
+                int _ltng_tr2 = setjmp(_ltng_tf2.env);
+                if (_ltng_tr2 == 0) {
+                    if ((atoi(i)) == (0)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            continue;
+                        }
+                    }
+                    if ((atoi(i)) == (2)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            break;
+                        }
+                    }
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "body ", i); _ltc; }));
+                    _ltng_try_top = _ltng_tf2.prev;
+                    {
+                        LtngTryFrame _ltng_ef2;
+                        _ltng_ef2.prev = _ltng_try_top;
+                        _ltng_ef2.stack_depth = _ltng_stack_depth;
+                        _ltng_try_top = &_ltng_ef2;
+                        int _ltng_er2 = setjmp(_ltng_ef2.env);
+                        if (_ltng_er2 == 0) {
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "else ", i); _ltc; }));
+                            _ltng_try_top = _ltng_ef2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                        } else {
+                            _ltng_try_top = _ltng_ef2.prev;
+                            _ltng_stack_depth = _ltng_ef2.stack_depth;
+                            LtngExcSaved _ltng_ee2;
+                            _ltng_exc_save_to(&_ltng_ee2);
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            _ltng_exc_restore_from(&_ltng_ee2);
+                            _ltng_rethrow();
+                        }
+                    }
+                } else {
+                    _ltng_try_top = _ltng_tf2.prev;
+                    _ltng_stack_depth = _ltng_tf2.stack_depth;
+                    char _v2_e[256] = "";
+                    snprintf(_v2_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v2_e__type[256] = "";
+                    snprintf(_v2_e__type, 256, "%s", _ltng_exc_type);
+                    char _v2_e__message[256] = "";
+                    snprintf(_v2_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v2_e__trace[4096] = "";
+                    snprintf(_v2_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v2_e__line[256] = "";
+                    snprintf(_v2_e__line, 256, "%d", _ltng_exc_line);
+                    char _v2_e__column[256] = "";
+                    snprintf(_v2_e__column, 256, "%d", _ltng_exc_col);
+                    char _v2_e__function[256] = "";
+                    snprintf(_v2_e__function, 256, "%s", _ltng_exc_func);
+                    char _v2_e__value[256] = "";
+                    snprintf(_v2_e__value, 256, "%s", _ltng_exc_value);
+                    char _v2_e__obj[512] = "";
+                    snprintf(_v2_e__obj, 512, "%s", _v2_e);
+                    LtngTryFrame _ltng_cf2;
+                    _ltng_cf2.prev = _ltng_try_top;
+                    _ltng_cf2.stack_depth = _ltng_stack_depth;
+                    _ltng_try_top = &_ltng_cf2;
+                    int _ltng_cr2 = setjmp(_ltng_cf2.env);
+                    if (_ltng_cr2 == 0) {
+                        printf("%s\n", "catch-loop");
+                        _ltng_try_top = _ltng_cf2.prev;
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                    } else {
+                        _ltng_try_top = _ltng_cf2.prev;
+                        _ltng_stack_depth = _ltng_cf2.stack_depth;
+                        LtngExcSaved _ltng_ec2;
+                        _ltng_exc_save_to(&_ltng_ec2);
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                        _ltng_exc_restore_from(&_ltng_ec2);
+                        _ltng_rethrow();
+                    }
+                }
+            }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:30:1 | FOR (i)
+  [expr:for_start] ltng tests/runtime/phase4_try_else_flow.ltng:30:13-30:14
+    C: 0
+  [expr:for_end] ltng tests/runtime/phase4_try_else_flow.ltng:30:18-30:19
+    C: 2
+  [expr:for_step] ltng-span: unknown
+    C: 1
+---- C ----
+    {
+        char i[256] = "0";
+        snprintf(i, 256, "%lld", (long long)(0));
+        for (; (long long)atoll(i) <= (long long)(2); snprintf(i, 256, "%lld", (long long)atoll(i) + (long long)(1))) {
+            {
+                LtngTryFrame _ltng_tf2;
+                _ltng_tf2.prev = _ltng_try_top;
+                _ltng_tf2.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf2;
+                int _ltng_tr2 = setjmp(_ltng_tf2.env);
+                if (_ltng_tr2 == 0) {
+                    if ((atoi(i)) == (0)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            continue;
+                        }
+                    }
+                    if ((atoi(i)) == (2)) {
+                        {
+                            _ltng_try_top = _ltng_tf2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            break;
+                        }
+                    }
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "body ", i); _ltc; }));
+                    _ltng_try_top = _ltng_tf2.prev;
+                    {
+                        LtngTryFrame _ltng_ef2;
+                        _ltng_ef2.prev = _ltng_try_top;
+                        _ltng_ef2.stack_depth = _ltng_stack_depth;
+                        _ltng_try_top = &_ltng_ef2;
+                        int _ltng_er2 = setjmp(_ltng_ef2.env);
+                        if (_ltng_er2 == 0) {
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "else ", i); _ltc; }));
+                            _ltng_try_top = _ltng_ef2.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                        } else {
+                            _ltng_try_top = _ltng_ef2.prev;
+                            _ltng_stack_depth = _ltng_ef2.stack_depth;
+                            LtngExcSaved _ltng_ee2;
+                            _ltng_exc_save_to(&_ltng_ee2);
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                            _ltng_exc_restore_from(&_ltng_ee2);
+                            _ltng_rethrow();
+                        }
+                    }
+                } else {
+                    _ltng_try_top = _ltng_tf2.prev;
+                    _ltng_stack_depth = _ltng_tf2.stack_depth;
+                    char _v2_e[256] = "";
+                    snprintf(_v2_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v2_e__type[256] = "";
+                    snprintf(_v2_e__type, 256, "%s", _ltng_exc_type);
+                    char _v2_e__message[256] = "";
+                    snprintf(_v2_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v2_e__trace[4096] = "";
+                    snprintf(_v2_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v2_e__line[256] = "";
+                    snprintf(_v2_e__line, 256, "%d", _ltng_exc_line);
+                    char _v2_e__column[256] = "";
+                    snprintf(_v2_e__column, 256, "%d", _ltng_exc_col);
+                    char _v2_e__function[256] = "";
+                    snprintf(_v2_e__function, 256, "%s", _ltng_exc_func);
+                    char _v2_e__value[256] = "";
+                    snprintf(_v2_e__value, 256, "%s", _ltng_exc_value);
+                    char _v2_e__obj[512] = "";
+                    snprintf(_v2_e__obj, 512, "%s", _v2_e);
+                    LtngTryFrame _ltng_cf2;
+                    _ltng_cf2.prev = _ltng_try_top;
+                    _ltng_cf2.stack_depth = _ltng_stack_depth;
+                    _ltng_try_top = &_ltng_cf2;
+                    int _ltng_cr2 = setjmp(_ltng_cf2.env);
+                    if (_ltng_cr2 == 0) {
+                        printf("%s\n", "catch-loop");
+                        _ltng_try_top = _ltng_cf2.prev;
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                    } else {
+                        _ltng_try_top = _ltng_cf2.prev;
+                        _ltng_stack_depth = _ltng_cf2.stack_depth;
+                        LtngExcSaved _ltng_ec2;
+                        _ltng_exc_save_to(&_ltng_ec2);
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "finally ", i); _ltc; }));
+                        _ltng_exc_restore_from(&_ltng_ec2);
+                        _ltng_rethrow();
+                    }
+                }
+            }
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:50:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:50:15-50:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "t", i); _ltc; })
+---- C ----
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "t", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:54:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:54:15-54:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "e", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "e", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:57:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:57:15-57:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; })
+---- C ----
+                                printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:55:9 | BREAK
+---- C ----
+                            {
+                                _ltng_try_top = _ltng_tf3.prev;
+                                printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                                break;
+                            }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:57:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:57:15-57:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:57:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:57:15-57:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; })
+---- C ----
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:52:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:52:15-52:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "c", i); _ltc; })
+---- C ----
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "c", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:57:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:57:15-57:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; })
+---- C ----
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:57:9 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:57:15-57:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; })
+---- C ----
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:49:5 | TRY (_v3_e)
+---- C ----
+            {
+                LtngTryFrame _ltng_tf3;
+                _ltng_tf3.prev = _ltng_try_top;
+                _ltng_tf3.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf3;
+                int _ltng_tr3 = setjmp(_ltng_tf3.env);
+                if (_ltng_tr3 == 0) {
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "t", i); _ltc; }));
+                    _ltng_try_top = _ltng_tf3.prev;
+                    {
+                        LtngTryFrame _ltng_ef3;
+                        _ltng_ef3.prev = _ltng_try_top;
+                        _ltng_ef3.stack_depth = _ltng_stack_depth;
+                        _ltng_try_top = &_ltng_ef3;
+                        int _ltng_er3 = setjmp(_ltng_ef3.env);
+                        if (_ltng_er3 == 0) {
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "e", i); _ltc; }));
+                            {
+                                _ltng_try_top = _ltng_tf3.prev;
+                                printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                                break;
+                            }
+                            _ltng_try_top = _ltng_ef3.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                        } else {
+                            _ltng_try_top = _ltng_ef3.prev;
+                            _ltng_stack_depth = _ltng_ef3.stack_depth;
+                            LtngExcSaved _ltng_ee3;
+                            _ltng_exc_save_to(&_ltng_ee3);
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                            _ltng_exc_restore_from(&_ltng_ee3);
+                            _ltng_rethrow();
+                        }
+                    }
+                } else {
+                    _ltng_try_top = _ltng_tf3.prev;
+                    _ltng_stack_depth = _ltng_tf3.stack_depth;
+                    char _v3_e[256] = "";
+                    snprintf(_v3_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v3_e__type[256] = "";
+                    snprintf(_v3_e__type, 256, "%s", _ltng_exc_type);
+                    char _v3_e__message[256] = "";
+                    snprintf(_v3_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v3_e__trace[4096] = "";
+                    snprintf(_v3_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v3_e__line[256] = "";
+                    snprintf(_v3_e__line, 256, "%d", _ltng_exc_line);
+                    char _v3_e__column[256] = "";
+                    snprintf(_v3_e__column, 256, "%d", _ltng_exc_col);
+                    char _v3_e__function[256] = "";
+                    snprintf(_v3_e__function, 256, "%s", _ltng_exc_func);
+                    char _v3_e__value[256] = "";
+                    snprintf(_v3_e__value, 256, "%s", _ltng_exc_value);
+                    char _v3_e__obj[512] = "";
+                    snprintf(_v3_e__obj, 512, "%s", _v3_e);
+                    LtngTryFrame _ltng_cf3;
+                    _ltng_cf3.prev = _ltng_try_top;
+                    _ltng_cf3.stack_depth = _ltng_stack_depth;
+                    _ltng_try_top = &_ltng_cf3;
+                    int _ltng_cr3 = setjmp(_ltng_cf3.env);
+                    if (_ltng_cr3 == 0) {
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "c", i); _ltc; }));
+                        _ltng_try_top = _ltng_cf3.prev;
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                    } else {
+                        _ltng_try_top = _ltng_cf3.prev;
+                        _ltng_stack_depth = _ltng_cf3.stack_depth;
+                        LtngExcSaved _ltng_ec3;
+                        _ltng_exc_save_to(&_ltng_ec3);
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                        _ltng_exc_restore_from(&_ltng_ec3);
+                        _ltng_rethrow();
+                    }
+                }
+            }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:48:1 | FOR (i)
+  [expr:for_start] ltng tests/runtime/phase4_try_else_flow.ltng:48:13-48:14
+    C: 0
+  [expr:for_end] ltng tests/runtime/phase4_try_else_flow.ltng:48:18-48:19
+    C: 2
+  [expr:for_step] ltng-span: unknown
+    C: 1
+---- C ----
+    {
+        char i[256] = "0";
+        snprintf(i, 256, "%lld", (long long)(0));
+        for (; (long long)atoll(i) <= (long long)(2); snprintf(i, 256, "%lld", (long long)atoll(i) + (long long)(1))) {
+            {
+                LtngTryFrame _ltng_tf3;
+                _ltng_tf3.prev = _ltng_try_top;
+                _ltng_tf3.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf3;
+                int _ltng_tr3 = setjmp(_ltng_tf3.env);
+                if (_ltng_tr3 == 0) {
+                    printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "t", i); _ltc; }));
+                    _ltng_try_top = _ltng_tf3.prev;
+                    {
+                        LtngTryFrame _ltng_ef3;
+                        _ltng_ef3.prev = _ltng_try_top;
+                        _ltng_ef3.stack_depth = _ltng_stack_depth;
+                        _ltng_try_top = &_ltng_ef3;
+                        int _ltng_er3 = setjmp(_ltng_ef3.env);
+                        if (_ltng_er3 == 0) {
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "e", i); _ltc; }));
+                            {
+                                _ltng_try_top = _ltng_tf3.prev;
+                                printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                                break;
+                            }
+                            _ltng_try_top = _ltng_ef3.prev;
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                        } else {
+                            _ltng_try_top = _ltng_ef3.prev;
+                            _ltng_stack_depth = _ltng_ef3.stack_depth;
+                            LtngExcSaved _ltng_ee3;
+                            _ltng_exc_save_to(&_ltng_ee3);
+                            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                            _ltng_exc_restore_from(&_ltng_ee3);
+                            _ltng_rethrow();
+                        }
+                    }
+                } else {
+                    _ltng_try_top = _ltng_tf3.prev;
+                    _ltng_stack_depth = _ltng_tf3.stack_depth;
+                    char _v3_e[256] = "";
+                    snprintf(_v3_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v3_e__type[256] = "";
+                    snprintf(_v3_e__type, 256, "%s", _ltng_exc_type);
+                    char _v3_e__message[256] = "";
+                    snprintf(_v3_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v3_e__trace[4096] = "";
+                    snprintf(_v3_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v3_e__line[256] = "";
+                    snprintf(_v3_e__line, 256, "%d", _ltng_exc_line);
+                    char _v3_e__column[256] = "";
+                    snprintf(_v3_e__column, 256, "%d", _ltng_exc_col);
+                    char _v3_e__function[256] = "";
+                    snprintf(_v3_e__function, 256, "%s", _ltng_exc_func);
+                    char _v3_e__value[256] = "";
+                    snprintf(_v3_e__value, 256, "%s", _ltng_exc_value);
+                    char _v3_e__obj[512] = "";
+                    snprintf(_v3_e__obj, 512, "%s", _v3_e);
+                    LtngTryFrame _ltng_cf3;
+                    _ltng_cf3.prev = _ltng_try_top;
+                    _ltng_cf3.stack_depth = _ltng_stack_depth;
+                    _ltng_try_top = &_ltng_cf3;
+                    int _ltng_cr3 = setjmp(_ltng_cf3.env);
+                    if (_ltng_cr3 == 0) {
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "c", i); _ltc; }));
+                        _ltng_try_top = _ltng_cf3.prev;
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                    } else {
+                        _ltng_try_top = _ltng_cf3.prev;
+                        _ltng_stack_depth = _ltng_cf3.stack_depth;
+                        LtngExcSaved _ltng_ec3;
+                        _ltng_exc_save_to(&_ltng_ec3);
+                        printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "f", i); _ltc; }));
+                        _ltng_exc_restore_from(&_ltng_ec3);
+                        _ltng_rethrow();
+                    }
+                }
+            }
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:63:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-try
+---- C ----
+                    printf("%s\n", "inner-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:67:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-else
+---- C ----
+                            printf("%s\n", "inner-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:68:9 | THROW ("Error")
+  [expr:value] ltng-span: unknown
+    C: "from-else"
+---- C ----
+                            _ltng_throw_value("Error", "from-else", 68, 9);
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:70:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-finally
+---- C ----
+                            printf("%s\n", "inner-finally");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:70:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-finally
+---- C ----
+                            printf("%s\n", "inner-finally");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:65:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-catch
+---- C ----
+                        printf("%s\n", "inner-catch");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:70:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-finally
+---- C ----
+                        printf("%s\n", "inner-finally");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:70:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner-finally
+---- C ----
+                        printf("%s\n", "inner-finally");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:62:5 | TRY (_v4_e)
+---- C ----
+            {
+                LtngTryFrame _ltng_tf5;
+                _ltng_tf5.prev = _ltng_try_top;
+                _ltng_tf5.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf5;
+                int _ltng_tr5 = setjmp(_ltng_tf5.env);
+                if (_ltng_tr5 == 0) {
+                    printf("%s\n", "inner-try");
+                    _ltng_try_top = _ltng_tf5.prev;
+                    {
+                        LtngTryFrame _ltng_ef5;
+                        _ltng_ef5.prev = _ltng_try_top;
+                        _ltng_ef5.stack_depth = _ltng_stack_depth;
+                        _ltng_try_top = &_ltng_ef5;
+                        int _ltng_er5 = setjmp(_ltng_ef5.env);
+                        if (_ltng_er5 == 0) {
+                            printf("%s\n", "inner-else");
+                            _ltng_throw_value("Error", "from-else", 68, 9);
+                            _ltng_try_top = _ltng_ef5.prev;
+                            printf("%s\n", "inner-finally");
+                        } else {
+                            _ltng_try_top = _ltng_ef5.prev;
+                            _ltng_stack_depth = _ltng_ef5.stack_depth;
+                            LtngExcSaved _ltng_ee5;
+                            _ltng_exc_save_to(&_ltng_ee5);
+                            printf("%s\n", "inner-finally");
+                            _ltng_exc_restore_from(&_ltng_ee5);
+                            _ltng_rethrow();
+                        }
+                    }
+                } else {
+                    _ltng_try_top = _ltng_tf5.prev;
+                    _ltng_stack_depth = _ltng_tf5.stack_depth;
+                    char _v4_e[256] = "";
+                    snprintf(_v4_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v4_e__type[256] = "";
+                    snprintf(_v4_e__type, 256, "%s", _ltng_exc_type);
+                    char _v4_e__message[256] = "";
+                    snprintf(_v4_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v4_e__trace[4096] = "";
+                    snprintf(_v4_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v4_e__line[256] = "";
+                    snprintf(_v4_e__line, 256, "%d", _ltng_exc_line);
+                    char _v4_e__column[256] = "";
+                    snprintf(_v4_e__column, 256, "%d", _ltng_exc_col);
+                    char _v4_e__function[256] = "";
+                    snprintf(_v4_e__function, 256, "%s", _ltng_exc_func);
+                    char _v4_e__value[256] = "";
+                    snprintf(_v4_e__value, 256, "%s", _ltng_exc_value);
+                    char _v4_e__obj[512] = "";
+                    snprintf(_v4_e__obj, 512, "%s", _v4_e);
+                    LtngTryFrame _ltng_cf5;
+                    _ltng_cf5.prev = _ltng_try_top;
+                    _ltng_cf5.stack_depth = _ltng_stack_depth;
+                    _ltng_try_top = &_ltng_cf5;
+                    int _ltng_cr5 = setjmp(_ltng_cf5.env);
+                    if (_ltng_cr5 == 0) {
+                        printf("%s\n", "inner-catch");
+                        _ltng_try_top = _ltng_cf5.prev;
+                        printf("%s\n", "inner-finally");
+                    } else {
+                        _ltng_try_top = _ltng_cf5.prev;
+                        _ltng_stack_depth = _ltng_cf5.stack_depth;
+                        LtngExcSaved _ltng_ec5;
+                        _ltng_exc_save_to(&_ltng_ec5);
+                        printf("%s\n", "inner-finally");
+                        _ltng_exc_restore_from(&_ltng_ec5);
+                        _ltng_rethrow();
+                    }
+                }
+            }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:73:5 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:73:11-73:29
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "outer-catch ", _v5_e__message); _ltc; })
+---- C ----
+            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "outer-catch ", _v5_e__message); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:61:1 | TRY (_v5_e)
+---- C ----
+    {
+        LtngTryFrame _ltng_tf4;
+        _ltng_tf4.prev = _ltng_try_top;
+        _ltng_tf4.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf4;
+        int _ltng_tr4 = setjmp(_ltng_tf4.env);
+        if (_ltng_tr4 == 0) {
+            {
+                LtngTryFrame _ltng_tf5;
+                _ltng_tf5.prev = _ltng_try_top;
+                _ltng_tf5.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf5;
+                int _ltng_tr5 = setjmp(_ltng_tf5.env);
+                if (_ltng_tr5 == 0) {
+                    printf("%s\n", "inner-try");
+                    _ltng_try_top = _ltng_tf5.prev;
+                    {
+                        LtngTryFrame _ltng_ef5;
+                        _ltng_ef5.prev = _ltng_try_top;
+                        _ltng_ef5.stack_depth = _ltng_stack_depth;
+                        _ltng_try_top = &_ltng_ef5;
+                        int _ltng_er5 = setjmp(_ltng_ef5.env);
+                        if (_ltng_er5 == 0) {
+                            printf("%s\n", "inner-else");
+                            _ltng_throw_value("Error", "from-else", 68, 9);
+                            _ltng_try_top = _ltng_ef5.prev;
+                            printf("%s\n", "inner-finally");
+                        } else {
+                            _ltng_try_top = _ltng_ef5.prev;
+                            _ltng_stack_depth = _ltng_ef5.stack_depth;
+                            LtngExcSaved _ltng_ee5;
+                            _ltng_exc_save_to(&_ltng_ee5);
+                            printf("%s\n", "inner-finally");
+                            _ltng_exc_restore_from(&_ltng_ee5);
+                            _ltng_rethrow();
+                        }
+                    }
+                } else {
+                    _ltng_try_top = _ltng_tf5.prev;
+                    _ltng_stack_depth = _ltng_tf5.stack_depth;
+                    char _v4_e[256] = "";
+                    snprintf(_v4_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v4_e__type[256] = "";
+                    snprintf(_v4_e__type, 256, "%s", _ltng_exc_type);
+                    char _v4_e__message[256] = "";
+                    snprintf(_v4_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v4_e__trace[4096] = "";
+                    snprintf(_v4_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v4_e__line[256] = "";
+                    snprintf(_v4_e__line, 256, "%d", _ltng_exc_line);
+                    char _v4_e__column[256] = "";
+                    snprintf(_v4_e__column, 256, "%d", _ltng_exc_col);
+                    char _v4_e__function[256] = "";
+                    snprintf(_v4_e__function, 256, "%s", _ltng_exc_func);
+                    char _v4_e__value[256] = "";
+                    snprintf(_v4_e__value, 256, "%s", _ltng_exc_value);
+                    char _v4_e__obj[512] = "";
+                    snprintf(_v4_e__obj, 512, "%s", _v4_e);
+                    LtngTryFrame _ltng_cf5;
+                    _ltng_cf5.prev = _ltng_try_top;
+                    _ltng_cf5.stack_depth = _ltng_stack_depth;
+                    _ltng_try_top = &_ltng_cf5;
+                    int _ltng_cr5 = setjmp(_ltng_cf5.env);
+                    if (_ltng_cr5 == 0) {
+                        printf("%s\n", "inner-catch");
+                        _ltng_try_top = _ltng_cf5.prev;
+                        printf("%s\n", "inner-finally");
+                    } else {
+                        _ltng_try_top = _ltng_cf5.prev;
+                        _ltng_stack_depth = _ltng_cf5.stack_depth;
+                        LtngExcSaved _ltng_ec5;
+                        _ltng_exc_save_to(&_ltng_ec5);
+                        printf("%s\n", "inner-finally");
+                        _ltng_exc_restore_from(&_ltng_ec5);
+                        _ltng_rethrow();
+                    }
+                }
+            }
+            _ltng_try_top = _ltng_tf4.prev;
+        } else {
+            _ltng_try_top = _ltng_tf4.prev;
+            _ltng_stack_depth = _ltng_tf4.stack_depth;
+            char _v5_e[256] = "";
+            snprintf(_v5_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+            char _v5_e__type[256] = "";
+            snprintf(_v5_e__type, 256, "%s", _ltng_exc_type);
+            char _v5_e__message[256] = "";
+            snprintf(_v5_e__message, 256, "%s", _ltng_exc_msg);
+            char _v5_e__trace[4096] = "";
+            snprintf(_v5_e__trace, 4096, "%s", _ltng_exc_trace);
+            char _v5_e__line[256] = "";
+            snprintf(_v5_e__line, 256, "%d", _ltng_exc_line);
+            char _v5_e__column[256] = "";
+            snprintf(_v5_e__column, 256, "%d", _ltng_exc_col);
+            char _v5_e__function[256] = "";
+            snprintf(_v5_e__function, 256, "%s", _ltng_exc_func);
+            char _v5_e__value[256] = "";
+            snprintf(_v5_e__value, 256, "%s", _ltng_exc_value);
+            char _v5_e__obj[512] = "";
+            snprintf(_v5_e__obj, 512, "%s", _v5_e);
+            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "outer-catch ", _v5_e__message); _ltc; }));
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:77:5 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: solo-try
+---- C ----
+            printf("%s\n", "solo-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:81:5 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: solo-else
+---- C ----
+            printf("%s\n", "solo-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:79:5 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: solo-catch
+---- C ----
+            printf("%s\n", "solo-catch");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:76:1 | TRY (_v6_e)
+---- C ----
+    {
+        LtngTryFrame _ltng_tf6;
+        _ltng_tf6.prev = _ltng_try_top;
+        _ltng_tf6.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf6;
+        int _ltng_tr6 = setjmp(_ltng_tf6.env);
+        if (_ltng_tr6 == 0) {
+            printf("%s\n", "solo-try");
+            _ltng_try_top = _ltng_tf6.prev;
+            printf("%s\n", "solo-else");
+        } else {
+            _ltng_try_top = _ltng_tf6.prev;
+            _ltng_stack_depth = _ltng_tf6.stack_depth;
+            char _v6_e[256] = "";
+            snprintf(_v6_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+            char _v6_e__type[256] = "";
+            snprintf(_v6_e__type, 256, "%s", _ltng_exc_type);
+            char _v6_e__message[256] = "";
+            snprintf(_v6_e__message, 256, "%s", _ltng_exc_msg);
+            char _v6_e__trace[4096] = "";
+            snprintf(_v6_e__trace, 4096, "%s", _ltng_exc_trace);
+            char _v6_e__line[256] = "";
+            snprintf(_v6_e__line, 256, "%d", _ltng_exc_line);
+            char _v6_e__column[256] = "";
+            snprintf(_v6_e__column, 256, "%d", _ltng_exc_col);
+            char _v6_e__function[256] = "";
+            snprintf(_v6_e__function, 256, "%s", _ltng_exc_func);
+            char _v6_e__value[256] = "";
+            snprintf(_v6_e__value, 256, "%s", _ltng_exc_value);
+            char _v6_e__obj[512] = "";
+            snprintf(_v6_e__obj, 512, "%s", _v6_e);
+            printf("%s\n", "solo-catch");
+        }
+    }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:86:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner2-try
+---- C ----
+                    printf("%s\n", "inner2-try");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:90:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner2-else
+---- C ----
+                    printf("%s\n", "inner2-else");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:91:9 | THROW ("Error")
+  [expr:value] ltng-span: unknown
+    C: "from-else2"
+---- C ----
+                    _ltng_throw_value("Error", "from-else2", 91, 9);
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:88:9 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: inner2-catch
+---- C ----
+                    printf("%s\n", "inner2-catch");
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:85:5 | TRY (_v7_e)
+---- C ----
+            {
+                LtngTryFrame _ltng_tf8;
+                _ltng_tf8.prev = _ltng_try_top;
+                _ltng_tf8.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf8;
+                int _ltng_tr8 = setjmp(_ltng_tf8.env);
+                if (_ltng_tr8 == 0) {
+                    printf("%s\n", "inner2-try");
+                    _ltng_try_top = _ltng_tf8.prev;
+                    printf("%s\n", "inner2-else");
+                    _ltng_throw_value("Error", "from-else2", 91, 9);
+                } else {
+                    _ltng_try_top = _ltng_tf8.prev;
+                    _ltng_stack_depth = _ltng_tf8.stack_depth;
+                    char _v7_e[256] = "";
+                    snprintf(_v7_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v7_e__type[256] = "";
+                    snprintf(_v7_e__type, 256, "%s", _ltng_exc_type);
+                    char _v7_e__message[256] = "";
+                    snprintf(_v7_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v7_e__trace[4096] = "";
+                    snprintf(_v7_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v7_e__line[256] = "";
+                    snprintf(_v7_e__line, 256, "%d", _ltng_exc_line);
+                    char _v7_e__column[256] = "";
+                    snprintf(_v7_e__column, 256, "%d", _ltng_exc_col);
+                    char _v7_e__function[256] = "";
+                    snprintf(_v7_e__function, 256, "%s", _ltng_exc_func);
+                    char _v7_e__value[256] = "";
+                    snprintf(_v7_e__value, 256, "%s", _ltng_exc_value);
+                    char _v7_e__obj[512] = "";
+                    snprintf(_v7_e__obj, 512, "%s", _v7_e);
+                    printf("%s\n", "inner2-catch");
+                }
+            }
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:94:5 | WRITE
+  [expr:write_value] ltng tests/runtime/phase4_try_else_flow.ltng:94:11-94:30
+    C: ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "outer2-catch ", _v8_e__message); _ltc; })
+---- C ----
+            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "outer2-catch ", _v8_e__message); _ltc; }));
+-----------
+
+LTNG tests/runtime/phase4_try_else_flow.ltng:84:1 | TRY (_v8_e)
+---- C ----
+    {
+        LtngTryFrame _ltng_tf7;
+        _ltng_tf7.prev = _ltng_try_top;
+        _ltng_tf7.stack_depth = _ltng_stack_depth;
+        _ltng_try_top = &_ltng_tf7;
+        int _ltng_tr7 = setjmp(_ltng_tf7.env);
+        if (_ltng_tr7 == 0) {
+            {
+                LtngTryFrame _ltng_tf8;
+                _ltng_tf8.prev = _ltng_try_top;
+                _ltng_tf8.stack_depth = _ltng_stack_depth;
+                _ltng_try_top = &_ltng_tf8;
+                int _ltng_tr8 = setjmp(_ltng_tf8.env);
+                if (_ltng_tr8 == 0) {
+                    printf("%s\n", "inner2-try");
+                    _ltng_try_top = _ltng_tf8.prev;
+                    printf("%s\n", "inner2-else");
+                    _ltng_throw_value("Error", "from-else2", 91, 9);
+                } else {
+                    _ltng_try_top = _ltng_tf8.prev;
+                    _ltng_stack_depth = _ltng_tf8.stack_depth;
+                    char _v7_e[256] = "";
+                    snprintf(_v7_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+                    char _v7_e__type[256] = "";
+                    snprintf(_v7_e__type, 256, "%s", _ltng_exc_type);
+                    char _v7_e__message[256] = "";
+                    snprintf(_v7_e__message, 256, "%s", _ltng_exc_msg);
+                    char _v7_e__trace[4096] = "";
+                    snprintf(_v7_e__trace, 4096, "%s", _ltng_exc_trace);
+                    char _v7_e__line[256] = "";
+                    snprintf(_v7_e__line, 256, "%d", _ltng_exc_line);
+                    char _v7_e__column[256] = "";
+                    snprintf(_v7_e__column, 256, "%d", _ltng_exc_col);
+                    char _v7_e__function[256] = "";
+                    snprintf(_v7_e__function, 256, "%s", _ltng_exc_func);
+                    char _v7_e__value[256] = "";
+                    snprintf(_v7_e__value, 256, "%s", _ltng_exc_value);
+                    char _v7_e__obj[512] = "";
+                    snprintf(_v7_e__obj, 512, "%s", _v7_e);
+                    printf("%s\n", "inner2-catch");
+                }
+            }
+            _ltng_try_top = _ltng_tf7.prev;
+        } else {
+            _ltng_try_top = _ltng_tf7.prev;
+            _ltng_stack_depth = _ltng_tf7.stack_depth;
+            char _v8_e[256] = "";
+            snprintf(_v8_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+            char _v8_e__type[256] = "";
+            snprintf(_v8_e__type, 256, "%s", _ltng_exc_type);
+            char _v8_e__message[256] = "";
+            snprintf(_v8_e__message, 256, "%s", _ltng_exc_msg);
+            char _v8_e__trace[4096] = "";
+            snprintf(_v8_e__trace, 4096, "%s", _ltng_exc_trace);
+            char _v8_e__line[256] = "";
+            snprintf(_v8_e__line, 256, "%d", _ltng_exc_line);
+            char _v8_e__column[256] = "";
+            snprintf(_v8_e__column, 256, "%d", _ltng_exc_col);
+            char _v8_e__function[256] = "";
+            snprintf(_v8_e__function, 256, "%s", _ltng_exc_func);
+            char _v8_e__value[256] = "";
+            snprintf(_v8_e__value, 256, "%s", _ltng_exc_value);
+            char _v8_e__obj[512] = "";
+            snprintf(_v8_e__obj, 512, "%s", _v8_e);
+            printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "outer2-catch ", _v8_e__message); _ltc; }));
+        }
+    }
+-----------
+

@@ -1,0 +1,9 @@
+function mk(a,b){
+    return function(){
+        set a = a + b
+        return a
+    }
+}
+let fn = mk(1,2)
+write(fn())
+write(fn())

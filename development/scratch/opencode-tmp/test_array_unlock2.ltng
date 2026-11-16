@@ -1,0 +1,19 @@
+# Test unlock on array declared with let x = array (just unlock, no set)
+let x = array
+write(typeof(x))
+x.unlock()
+write(typeof(x))
+
+# Test lock/unlock on literal array
+let y = [10, 20, 30]
+write(typeof(y))
+y.unlock()
+write(typeof(y))
+y.lock()
+write(typeof(y))
+
+# Test unlock on empty array then set non-array (should work since unlocked)
+let z = array
+z.unlock()
+set z = 42
+write(z)

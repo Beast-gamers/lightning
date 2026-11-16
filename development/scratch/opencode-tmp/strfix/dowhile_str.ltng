@@ -1,0 +1,7 @@
+let s=""
+let i=0
+do {
+  set s = s + "a"
+  set i = i + 1
+} while (s != "aaa")
+write(i)

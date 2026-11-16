@@ -1,0 +1,21 @@
+LTNG /tmp/opencode/edge/t1.ltng:1:17 | RETURN
+  [expr:expr] ltng /tmp/opencode/edge/t1.ltng:1:24-1:25
+    C: 1
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%lld", (long long)(1));
+    return _ret;
+-----------
+
+LTNG /tmp/opencode/edge/t1.ltng:2:1 | LET (y)
+  [expr:rhs] ltng-span: unknown
+    C: get(_ltng_retbuf(), 2, 9)
+---- C ----
+    { long long _e = (get(_ltng_retbuf(), 2, 9)); snprintf(y, 256, "%lld", _e); }
+-----------
+
+LTNG /tmp/opencode/edge/t1.ltng:3:1 | WRITE (y)
+---- C ----
+    printf("%s\n", y);
+-----------
+

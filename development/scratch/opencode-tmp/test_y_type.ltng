@@ -1,0 +1,5 @@
+let y = float
+write(typeof(y))
+y.unlock()
+set y = "hello"
+write(typeof(y))

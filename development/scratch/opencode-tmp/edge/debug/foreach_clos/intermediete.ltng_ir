@@ -1,0 +1,93 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "__anon_0"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: RETURN
+        name: ""
+        value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", ({ char __ltcn[64]; snprintf(__ltcn,64,\"%lld\",(long long)(atof(x))); __ltcn; }),v); _ltc; })"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "x"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "x"
+statements:
+  - node: LET
+    name: "a"
+    value: "1|2|3"
+    var_type: array
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    array_dim_count: 1
+    array_dims: [3]
+    array_elem_count: 3
+  - node: LET
+    name: "fns"
+    value: ""
+    var_type: null
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: LET
+    name: "sum"
+    value: "0"
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: FOR
+    name: "v"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "v"
+    for_start: "a"
+    for_step_op: 'E'
+    body:
+      - node: LET
+        name: "fn"
+        value: "_ltng_add_sn(_ltng_add_sn(\"__anon_0\",\"\\001\"),_ltng_ptr_to_str((void*)v))"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+      - node: SET
+        name: "sum"
+        value: "atoi(sum)+atof(__ltng_indirect(_ltng_retbuf(), 7, 21, _ltng_ad((double)(10))))"
+        var_type: int
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+  - node: WRITE
+    name: "sum"
+    value: ""
+    var_type: int
+    is_variable: 1
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0

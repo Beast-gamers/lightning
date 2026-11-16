@@ -1,0 +1,8 @@
+
+ --> /main/language/code/test_err_set_undeclared.ltng:2:5
+   |
+ 2 | set y = 10
+   |     ^
+   = error: Variable not declared
+
+Check failed: 1 error(s)

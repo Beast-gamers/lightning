@@ -1,0 +1,2 @@
+let x=10
+if ((x - 3) <= (4 + 3)) { write("yes") } else { write("no") }

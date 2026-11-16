@@ -1,0 +1,6 @@
+function mk(){
+    const c = 3
+    let fn = function(x){ return x * c }
+    return fn
+}
+write(mk()(4))

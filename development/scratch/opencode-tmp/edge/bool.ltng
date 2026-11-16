@@ -1,0 +1,3 @@
+write(true and false)
+write(true or false)
+write(not false)

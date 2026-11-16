@@ -1,0 +1,203 @@
+LTNG code/example_functions.ltng:4:5 | RETURN
+  [expr:expr] ltng code/example_functions.ltng:4:12-4:17
+    C: _ltng_add_sn(a, b)
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", _ltng_add_sn(a, b));
+    return _ret;
+-----------
+
+LTNG code/example_functions.ltng:9:9 | RETURN
+  [expr:expr] ltng code/example_functions.ltng:9:16-9:17
+    C: 1
+---- C ----
+        _ltng_fn_pop();
+        snprintf(_ret, 256, "%lld", (long long)(1));
+        return _ret;
+-----------
+
+LTNG code/example_functions.ltng:8:5 | IF
+  [expr:condition] ltng code/example_functions.ltng:8:9-8:15
+    C: (atof(n)) <= (1)
+---- C ----
+    if ((atof(n)) <= (1)) {
+        _ltng_fn_pop();
+        snprintf(_ret, 256, "%lld", (long long)(1));
+        return _ret;
+    }
+-----------
+
+LTNG code/example_functions.ltng:11:5 | RETURN
+  [expr:expr] ltng code/example_functions.ltng:11:12-11:20
+    C: atof(n)*atof(fact(_ltng_retbuf(), 11, 16, _ltng_ad((double)(atof(n)-1))))
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%lld", (long long)(atof(n)*atof(fact(_ltng_retbuf(), 11, 16, _ltng_ad((double)(atof(n)-1))))));
+    return _ret;
+-----------
+
+LTNG code/example_functions.ltng:15:5 | LET (total)
+  [expr:rhs] ltng-span: unknown
+    C: 0
+---- C ----
+    char total[256] = "";
+    snprintf(total, 256, "0");
+-----------
+
+LTNG code/example_functions.ltng:16:5 | LET (i)
+  [expr:rhs] ltng-span: unknown
+    C: 1
+---- C ----
+    char i[256] = "";
+    snprintf(i, 256, "1");
+-----------
+
+LTNG code/example_functions.ltng:18:9 | SET (total)
+  [expr:rhs] ltng-span: unknown
+    C: atoi(total)+atoi(i)
+---- C ----
+        { long long _e = (atoi(total)+atoi(i)); snprintf(total, 256, "%lld", _e); }
+-----------
+
+LTNG code/example_functions.ltng:19:9 | SET (i)
+  [expr:rhs] ltng-span: unknown
+    C: atoi(i)+1
+---- C ----
+        { long long _e = (atoi(i)+1); snprintf(i, 256, "%lld", _e); }
+-----------
+
+LTNG code/example_functions.ltng:17:5 | WHILE
+  [expr:condition] ltng code/example_functions.ltng:17:12-17:22
+    C: (atoi(i)) <= (atof(limit))
+---- C ----
+    while ((atoi(i)) <= (atof(limit))) {
+        { long long _e = (atoi(total)+atoi(i)); snprintf(total, 256, "%lld", _e); }
+        { long long _e = (atoi(i)+1); snprintf(i, 256, "%lld", _e); }
+    }
+-----------
+
+LTNG code/example_functions.ltng:21:5 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: total
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", total);
+    return _ret;
+-----------
+
+LTNG code/example_functions.ltng:26:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: a
+---- C ----
+        _ltng_fn_pop();
+        snprintf(_ret, 256, "%s", a);
+        return _ret;
+-----------
+
+LTNG code/example_functions.ltng:25:5 | IF
+  [expr:condition] ltng code/example_functions.ltng:25:9-25:14
+    C: (atof(a)) > (atof(b))
+---- C ----
+    if ((atof(a)) > (atof(b))) {
+        _ltng_fn_pop();
+        snprintf(_ret, 256, "%s", a);
+        return _ret;
+    }
+-----------
+
+LTNG code/example_functions.ltng:28:5 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: b
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", b);
+    return _ret;
+-----------
+
+LTNG code/example_functions.ltng:33:9 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "even"
+---- C ----
+        _ltng_fn_pop();
+        snprintf(_ret, 256, "%s", "even");
+        return _ret;
+-----------
+
+LTNG code/example_functions.ltng:32:5 | IF
+  [expr:condition] ltng code/example_functions.ltng:32:9-32:19
+    C: (((long long)atof(x))%2) == (0)
+---- C ----
+    if ((((long long)atof(x))%2) == (0)) {
+        _ltng_fn_pop();
+        snprintf(_ret, 256, "%s", "even");
+        return _ret;
+    }
+-----------
+
+LTNG code/example_functions.ltng:35:5 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "odd"
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", "odd");
+    return _ret;
+-----------
+
+LTNG code/example_functions.ltng:38:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: add(_ltng_retbuf(), 38, 7, _ltng_ad((double)(3)), _ltng_ad((double)(4)))
+---- C ----
+    printf("%s\n", add(_ltng_retbuf(), 38, 7, _ltng_ad((double)(3)), _ltng_ad((double)(4))));
+-----------
+
+LTNG code/example_functions.ltng:39:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: fact(_ltng_retbuf(), 39, 7, _ltng_ad((double)(5)))
+---- C ----
+    printf("%s\n", fact(_ltng_retbuf(), 39, 7, _ltng_ad((double)(5))));
+-----------
+
+LTNG code/example_functions.ltng:40:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: sum_to(_ltng_retbuf(), 40, 7, _ltng_ad((double)(10)))
+---- C ----
+    printf("%s\n", sum_to(_ltng_retbuf(), 40, 7, _ltng_ad((double)(10))));
+-----------
+
+LTNG code/example_functions.ltng:41:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: max2(_ltng_retbuf(), 41, 7, _ltng_ad((double)(9)), _ltng_ad((double)(4)))
+---- C ----
+    printf("%s\n", max2(_ltng_retbuf(), 41, 7, _ltng_ad((double)(9)), _ltng_ad((double)(4))));
+-----------
+
+LTNG code/example_functions.ltng:42:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: classify(_ltng_retbuf(), 42, 7, _ltng_ad((double)(7)))
+---- C ----
+    printf("%s\n", classify(_ltng_retbuf(), 42, 7, _ltng_ad((double)(7))));
+-----------
+
+LTNG code/example_functions.ltng:43:1 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: classify(_ltng_retbuf(), 43, 7, _ltng_ad((double)(8)))
+---- C ----
+    printf("%s\n", classify(_ltng_retbuf(), 43, 7, _ltng_ad((double)(8))));
+-----------
+
+LTNG code/example_functions.ltng:47:5 | WRITE
+  [expr:write_value] ltng-span: unknown
+    C: math ok
+---- C ----
+        printf("%s\n", "math ok");
+-----------
+
+LTNG code/example_functions.ltng:46:1 | IF
+  [expr:condition] ltng code/example_functions.ltng:46:5-46:19
+    C: (strcmp(add(_ltng_retbuf(), 46, 5, _ltng_ad((double)(1)), _ltng_ad((double)(2))), 3) == 0)
+---- C ----
+    if ((strcmp(add(_ltng_retbuf(), 46, 5, _ltng_ad((double)(1)), _ltng_ad((double)(2))), 3) == 0)) {
+        printf("%s\n", "math ok");
+    }
+-----------
+

@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase2_const_enforcement_neg.ltng:3:5
+   |
+ 3 | set x = 6
+   |     ^
+   = error: Cannot assign to constant
+
+Check failed: 1 error(s)

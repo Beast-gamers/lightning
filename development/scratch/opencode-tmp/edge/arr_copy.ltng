@@ -1,0 +1,5 @@
+let a = [1,2]
+let b = a.copy()
+b.push(3)
+write(a.length)
+write(b.length)

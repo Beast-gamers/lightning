@@ -1,0 +1,8 @@
+function outer() {
+    let y = 7
+    let fn = function(x) {
+        return x + y
+    }
+    return fn(3)
+}
+write(outer())

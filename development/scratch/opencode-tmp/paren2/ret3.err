@@ -1,0 +1,20 @@
+
+ --> /tmp/opencode/paren2/ret3.ltng:1:1
+   |
+ 1 | fun f() -> int { return 2 }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/ret3.ltng:2:1
+   |
+ 2 | fun g() -> int { return 3 }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/ret3.ltng:3:13
+   |
+ 3 | write(f() + g())
+   |             ^
+   = error: Variable 'g' not declared
+
+Compilation failed: 3 error(s)

@@ -1,0 +1,31 @@
+[2026-11-14 23:58:35] [start] debug session started
+[info] source=foreach_clos.ltng
+[info] debug_dir=./debug/foreach_clos
+[2026-11-14 23:58:35] [read] reading source
+[2026-11-14 23:58:35] [lex] tokenizing
+[2026-11-14 23:58:35] [parse] parsing
+[2026-11-14 23:58:35] [ir] writing intermediate representation
+[2026-11-14 23:58:35] [codegen] generating C code
+[2026-11-14 23:58:35] [codegen] C generation complete
+[2026-11-14 23:58:35] [cc] invoking C compiler
+C compiler command: cc -static -o "foreach_clos_dbg" "/tmp/ltng_5287.c" 2>&1
+C compiler output:
+/tmp/ltng_5287.c: In function 'main':
+/tmp/ltng_5287.c:177:24: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+  177 |     snprintf(fns, 256, "");
+      |                        ^~
+/tmp/ltng_5287.c:185:46: error: implicit declaration of function '__ltng_indirect'; did you mean '__ltng_call_indirect'? [-Wimplicit-function-declaration]
+  185 |             { long long _e = (atoi(sum)+atof(__ltng_indirect(_ltng_retbuf(), 7, 21, _ltng_ad((double)(10))))); snprintf(sum, 256, "%lld", _e); }
+      |                                              ^~~~~~~~~~~~~~~
+      |                                              __ltng_call_indirect
+/tmp/ltng_5287.c:185:46: error: passing argument 1 of 'atof' makes pointer from integer without a cast [-Wint-conversion]
+  185 |             { long long _e = (atoi(sum)+atof(__ltng_indirect(_ltng_retbuf(), 7, 21, _ltng_ad((double)(10))))); snprintf(sum, 256, "%lld", _e); }
+      |                                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                              |
+      |                                              int
+In file included from /tmp/ltng_5287.c:3:
+/usr/include/stdlib.h:106:33: note: expected 'const char *' but argument is of type 'int'
+  106 | extern double atof (const char *__nptr)
+      |                     ~~~~~~~~~~~~^~~~~~
+
+[2026-11-14 23:58:36] [end] debug session finished

@@ -1,0 +1,14 @@
+
+ --> /tmp/opencode/paren2/param2.ltng:1:1
+   |
+ 1 | fun id(x) -> int { return x }
+   | ^
+   = error: Unexpected token
+
+ --> /tmp/opencode/paren2/param2.ltng:2:7
+   |
+ 2 | write(id((2 + 3) * 4))
+   |       ^
+   = error: Variable not declared
+
+Compilation failed: 2 error(s)

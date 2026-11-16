@@ -1,0 +1,7 @@
+let s = 0
+for (i from 1 to 10) {
+    if (i == 3) { continue }
+    if (i == 6) { break }
+    set s = s + i
+}
+write(s)

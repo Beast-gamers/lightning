@@ -1,0 +1,4 @@
+const inc = function(x) {
+    return x + 1
+}
+write(inc(9))

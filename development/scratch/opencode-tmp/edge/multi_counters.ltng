@@ -1,0 +1,13 @@
+function counter(start){
+    let n = start
+    return function(){
+        set n = n + 1
+        return n
+    }
+}
+let a = counter(0)
+let b = counter(100)
+write(a())
+write(b())
+write(a())
+write(b())

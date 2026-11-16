@@ -1,0 +1,6 @@
+let orig = [1, 2, 3]
+let copy_arr = orig
+let s1 = [1, 2, 3, 4, 5]
+let s2 = s1.slice(2, 4)
+write(s2[1])
+write(s2[2])

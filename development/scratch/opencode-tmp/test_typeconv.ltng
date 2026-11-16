@@ -1,0 +1,32 @@
+# Type conversion functions: int(), string(), bool()
+# int() - convert numeric string to number (stored as string)
+# string() - convert value to string
+# bool() - convert to true/false (true unless null/empty/0/false)
+
+# int() conversion
+write(int("3.14"))
+write(int("10"))
+write(int(-5))
+let s = "42"
+write(int(s))
+
+# string() conversion
+write(string(true))
+write(string(false))
+write(string(42))
+write(string("hello"))
+
+# bool() conversion
+write(bool("true"))
+write(bool("false"))
+write(bool(0))
+write(bool(42))
+write(bool(""))
+
+# Combined
+let x = int("100") + int("25")
+write(x)
+let y = string(x)
+write(y)
+let b = bool("1")
+write(b)

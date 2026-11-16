@@ -1,0 +1,8 @@
+let x = array
+write(typeof(x))
+let y = [1, 2, 3]
+write(typeof(y))
+set y = [4, 5, 6]
+write(y[1])
+write(y[2])
+write(y[3])

@@ -1,0 +1,30 @@
+LTNG /tmp/opencode/edge/c2c.ltng:2:25 | RETURN
+  [expr:expr] ltng /tmp/opencode/edge/c2c.ltng:2:32-2:37
+    C: atof(x)+1
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%g", (double)(atof(x)+1));
+    return _ret;
+-----------
+
+LTNG /tmp/opencode/edge/c2c.ltng:2:5 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "maker____anon_0"
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", "maker____anon_0");
+    return _ret;
+-----------
+
+LTNG /tmp/opencode/edge/c2c.ltng:4:1 | LET (r)
+  [expr:rhs] ltng-span: unknown
+    C: atof(maker(_ltng_retbuf(), 4, 9))(5)
+---- C ----
+    { long long _e = (long long)atoll(atof(maker(_ltng_retbuf(), 4, 9))(5)); snprintf(r, 256, "%lld", _e); }
+-----------
+
+LTNG /tmp/opencode/edge/c2c.ltng:5:1 | WRITE (r)
+---- C ----
+    printf("%s\n", r);
+-----------
+

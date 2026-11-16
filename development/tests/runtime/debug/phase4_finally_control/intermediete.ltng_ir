@@ -1,0 +1,182 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "override"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "override"
+    body:
+      - node: TRY
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 0
+        has_else: 0
+        has_finally: 1
+        body:
+          - node: RETURN
+            name: ""
+            value: "\"try\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: RETURN
+            name: ""
+            value: "\"finally\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+  - node: FUNCTION
+    name: "retval"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "retval"
+    body:
+      - node: TRY
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 0
+        has_else: 0
+        has_finally: 1
+        body:
+          - node: WRITE
+            name: ""
+            value: "try-return"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+          - node: RETURN
+            name: ""
+            value: "\"value\""
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "finally-return"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+statements:
+  - node: WRITE
+    name: ""
+    value: "retval(_ltng_retbuf(), 9, 7)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: FOR
+    name: "i"
+    value: ""
+    var_type: int
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "i"
+    for_start: "0"
+    for_end: "3"
+    for_step: "1"
+    for_step_op: '+'
+    body:
+      - node: TRY
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        has_catch: 0
+        has_else: 0
+        has_finally: 1
+        body:
+          - node: IF
+            name: ""
+            value: "(atoi(i)) == (1)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+            body:
+              - node: CONTINUE
+                name: ""
+                value: ""
+                var_type: string
+                is_variable: 0
+                is_expr: 0
+                is_default: 0
+                is_base_assign: 0
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"loop \", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+          - node: IF
+            name: ""
+            value: "(atoi(i)) == (2)"
+            var_type: int
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+            body:
+              - node: BREAK
+                name: ""
+                value: ""
+                var_type: string
+                is_variable: 0
+                is_expr: 0
+                is_default: 0
+                is_base_assign: 0
+        cases:
+          - node: WRITE
+            name: ""
+            value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"fin \", i); _ltc; })"
+            var_type: string
+            is_variable: 0
+            is_expr: 1
+            is_default: 0
+            is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "override(_ltng_retbuf(), 32, 7)"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0

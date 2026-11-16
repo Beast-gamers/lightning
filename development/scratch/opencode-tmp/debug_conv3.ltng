@@ -1,0 +1,3 @@
+let a = toint("3")
+write(typeof(a))
+write(a)

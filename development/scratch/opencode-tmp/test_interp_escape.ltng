@@ -1,0 +1,4 @@
+let x = 42
+write("<$[x]>")
+write("<$[x]> end")
+write("start <$[x]>")

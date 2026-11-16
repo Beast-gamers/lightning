@@ -1,0 +1,2 @@
+fun s() -> string { return "ab" }
+write(s() * 2)

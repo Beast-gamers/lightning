@@ -1,0 +1,2 @@
+let a="b"
+if (a=="a") { write("a") } else if ((a)=="b") { write("b") } else { write("c") }

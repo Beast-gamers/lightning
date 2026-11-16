@@ -1,0 +1,3 @@
+function foo() -> int { return 2 }
+function add(a,b) -> int { return a+b }
+write(add(foo() + 1, (foo() * 3)))

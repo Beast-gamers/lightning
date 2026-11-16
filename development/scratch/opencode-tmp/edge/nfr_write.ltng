@@ -1,0 +1,3 @@
+function inc(x){ return x+1 }
+let fn = inc
+write(fn)

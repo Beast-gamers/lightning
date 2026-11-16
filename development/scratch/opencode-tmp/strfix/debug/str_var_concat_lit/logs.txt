@@ -1,0 +1,21 @@
+[2026-11-16 20:13:40] [start] debug session started
+[info] source=/tmp/opencode/strfix/str_var_concat_lit.ltng
+[info] debug_dir=/tmp/opencode/strfix/debug/str_var_concat_lit
+[2026-11-16 20:13:40] [read] reading source
+[2026-11-16 20:13:40] [lex] tokenizing
+[2026-11-16 20:13:40] [parse] parsing
+[2026-11-16 20:13:40] [ir] writing intermediate representation
+[2026-11-16 20:13:40] [codegen] generating C code
+[2026-11-16 20:13:40] [codegen] C generation complete
+[2026-11-16 20:13:40] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/strfix/str_var_concat_lit" "/tmp/ltng_31335.c" 2>&1
+C compiler output:
+/tmp/ltng_31335.c: In function 'main':
+/tmp/ltng_31335.c:155:20: error: invalid operands to binary + (have 'char *' and 'char *')
+  155 |     if ((strcmp((a + "c"), "abc") == 0)) {
+      |                  ~ ^
+      |                  | |
+      |                  | char *
+      |                  char *
+
+[2026-11-16 20:13:40] [end] debug session finished

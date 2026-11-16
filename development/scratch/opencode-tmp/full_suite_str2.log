@@ -1,0 +1,12 @@
+== Lightning test run ==
+Compiler: /tmp/opencode/ltng
+FAIL: runtime/phase4_finally_control.ltng
+  compile failed; rc=0; Error: internal error occured 
+FAIL: runtime/phase4_finally_exit_exc.ltng
+  compile failed; rc=0; Error: internal error occured 
+FAIL: runtime/phase4_try_else_flow.ltng
+  compile failed; rc=0; Error: internal error occured 
+FAIL: corpus/example_combined.ltng
+  compile failed; rc=0; Error: internal error occured 
+---
+PASS=143 FAIL=4 SKIP=0

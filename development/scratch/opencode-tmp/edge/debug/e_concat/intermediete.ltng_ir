@@ -1,0 +1,33 @@
+LightningIR v1
+functions:
+statements:
+  - node: TRY
+    name: "_v0_e"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    has_catch: 1
+    has_else: 0
+    has_finally: 0
+    for_var: "e"
+    body:
+      - node: THROW
+        name: "\"E\""
+        value: "\"m\""
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    orelse:
+      - node: WRITE
+        name: ""
+        value: "({ char _ltc[512]; snprintf(_ltc,512,\"%s%s\", \"x\",({ char __ltcn[64]; snprintf(__ltcn,64,\"%lld\",(long long)(_v0_e__typeatoi(_v0_e__type))); __ltcn; })); _ltc; })"
+        var_type: string
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0

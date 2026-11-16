@@ -1,0 +1,8 @@
+
+ --> /main/language/tests/semantic/phase5_return_mismatch_neg.ltng:2:5
+   |
+ 2 |     return "text"
+   |     ^
+   = error: Return type mismatch in function 'bad': expected 'int'
+
+Check failed: 1 error(s)

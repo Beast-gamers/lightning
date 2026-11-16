@@ -1,0 +1,9 @@
+function runloop(){
+    let last = 0
+    for (i from 1 to 3) {
+        let fn = function(){ return i }
+        set last = fn()
+    }
+    write(last)
+}
+runloop()

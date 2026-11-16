@@ -1,0 +1,12 @@
+function x(base, a) {
+    return a
+}
+function y(base, a) {
+    return base + a
+}
+let b = 5
+b.x(10)
+write(b)
+let c = 3
+c.y(7)
+write(c)

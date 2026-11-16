@@ -1,0 +1,6 @@
+let i = 1
+write(i)
+set i = i + 1
+write(i)
+set i = i + 1
+write(i)

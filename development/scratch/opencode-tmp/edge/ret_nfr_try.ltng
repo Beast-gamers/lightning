@@ -1,0 +1,10 @@
+function inc(x){ return x+1 }
+function mk(){
+    try {
+        return inc
+    } catch (e) {
+        return inc
+    }
+}
+let fn = mk()
+write(fn(4))

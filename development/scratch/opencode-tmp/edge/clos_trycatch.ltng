@@ -1,0 +1,10 @@
+let fn = function(x){
+    try {
+        if (x == 0) { throw "zero" }
+        return x
+    } catch (e) {
+        return -1
+    }
+}
+write(fn(5))
+write(fn(0))

@@ -1,0 +1,54 @@
+LightningIR v1
+functions:
+statements:
+  - node: LET
+    name: "s"
+    value: "ab"
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+  - node: SWITCH
+    name: ""
+    value: "s"
+    var_type: string
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+    cases:
+      - node: CASE
+        name: ""
+        value: "(\"a\"+\"b\")"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: WRITE
+            name: ""
+            value: "hit"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0
+      - node: CASE
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 1
+        is_base_assign: 0
+        body:
+          - node: WRITE
+            name: ""
+            value: "miss"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0

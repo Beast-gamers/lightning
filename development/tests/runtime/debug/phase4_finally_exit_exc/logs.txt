@@ -1,0 +1,139 @@
+[2026-11-16 20:49:35] [start] debug session started
+[info] source=tests/runtime/phase4_finally_exit_exc.ltng
+[info] debug_dir=tests/runtime/debug/phase4_finally_exit_exc
+[2026-11-16 20:49:35] [read] reading source
+[2026-11-16 20:49:35] [lex] tokenizing
+[2026-11-16 20:49:35] [parse] parsing
+[2026-11-16 20:49:35] [ir] writing intermediate representation
+[2026-11-16 20:49:35] [codegen] generating C code
+[2026-11-16 20:49:35] [codegen] C generation complete
+[2026-11-16 20:49:35] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/fail" "/tmp/ltng_17919.c" 2>&1
+C compiler output:
+/tmp/ltng_17919.c: In function 'main':
+/tmp/ltng_17919.c:256:39: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size between 127 and 254 [-Wformat-truncation=]
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |                                       ^~                   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:256:13: note: 'snprintf' output between 3 and 1153 bytes into a destination of size 256
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:44: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size 256 [-Wformat-truncation=]
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |                                            ^~   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:13: note: 'snprintf' output between 1 and 1024 bytes into a destination of size 256
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:43: warning: '%s' directive output may be truncated writing up to 8191 bytes into a region of size 4096 [-Wformat-truncation=]
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |                                           ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:13: note: 'snprintf' output between 1 and 8192 bytes into a destination of size 4096
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:42: warning: '%s' directive output may be truncated writing up to 2047 bytes into a region of size 256 [-Wformat-truncation=]
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |                                          ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:13: note: 'snprintf' output between 1 and 2048 bytes into a destination of size 256
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:68: warning: '%s' directive output may be truncated writing up to 255 bytes into a region of size between 1 and 512 [-Wformat-truncation=]
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                                                    ^~                                                                              ~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:47: note: 'snprintf' output between 1 and 767 bytes into a destination of size 512
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Compiled 'tests/runtime/phase4_finally_exit_exc.ltng' -> '/tmp/opencode/fail'
+/tmp/ltng_17919.c: In function 'main':
+/tmp/ltng_17919.c:256:39: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size between 127 and 254 [-Wformat-truncation=]
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |                                       ^~                   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:256:13: note: 'snprintf' output between 3 and 1153 bytes into a destination of size 256
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:44: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size 256 [-Wformat-truncation=]
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |                                            ^~   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:13: note: 'snprintf' output between 1 and 1024 bytes into a destination of size 256
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:43: warning: '%s' directive output may be truncated writing up to 8191 bytes into a region of size 4096 [-Wformat-truncation=]
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |                                           ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:13: note: 'snprintf' output between 1 and 8192 bytes into a destination of size 4096
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:42: warning: '%s' directive output may be truncated writing up to 2047 bytes into a region of size 256 [-Wformat-truncation=]
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |                                          ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:13: note: 'snprintf' output between 1 and 2048 bytes into a destination of size 256
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:68: warning: '%s' directive output may be truncated writing up to 255 bytes into a region of size between 1 and 512 [-Wformat-truncation=]
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                                                    ^~                                                                              ~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:47: note: 'snprintf' output between 1 and 767 bytes into a destination of size 512
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c: In function 'main':
+/tmp/ltng_17919.c:256:39: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size between 127 and 254 [-Wformat-truncation=]
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |                                       ^~                   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:256:13: note: 'snprintf' output between 3 and 1153 bytes into a destination of size 256
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:44: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size 256 [-Wformat-truncation=]
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |                                            ^~   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:13: note: 'snprintf' output between 1 and 1024 bytes into a destination of size 256
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:43: warning: '%s' directive output may be truncated writing up to 8191 bytes into a region of size 4096 [-Wformat-truncation=]
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |                                           ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:13: note: 'snprintf' output between 1 and 8192 bytes into a destination of size 4096
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:42: warning: '%s' directive output may be truncated writing up to 2047 bytes into a region of size 256 [-Wformat-truncation=]
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |                                          ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:13: note: 'snprintf' output between 1 and 2048 bytes into a destination of size 256
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:68: warning: '%s' directive output may be truncated writing up to 255 bytes into a region of size between 1 and 512 [-Wformat-truncation=]
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                                                    ^~                                                                              ~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:47: note: 'snprintf' output between 1 and 767 bytes into a destination of size 512
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c: In function 'main':
+/tmp/ltng_17919.c:256:39: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size between 127 and 254 [-Wformat-truncation=]
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |                                       ^~                   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:256:13: note: 'snprintf' output between 3 and 1153 bytes into a destination of size 256
+  256 |             snprintf(_v0_e, 256, "%s: %s", _ltng_exc_type, _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:44: warning: '%s' directive output may be truncated writing up to 1023 bytes into a region of size 256 [-Wformat-truncation=]
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |                                            ^~   ~~~~~~~~~~~~~
+/tmp/ltng_17919.c:260:13: note: 'snprintf' output between 1 and 1024 bytes into a destination of size 256
+  260 |             snprintf(_v0_e__message, 256, "%s", _ltng_exc_msg);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:43: warning: '%s' directive output may be truncated writing up to 8191 bytes into a region of size 4096 [-Wformat-truncation=]
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |                                           ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:262:13: note: 'snprintf' output between 1 and 8192 bytes into a destination of size 4096
+  262 |             snprintf(_v0_e__trace, 4096, "%s", _ltng_exc_trace);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:42: warning: '%s' directive output may be truncated writing up to 2047 bytes into a region of size 256 [-Wformat-truncation=]
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |                                          ^~   ~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:270:13: note: 'snprintf' output between 1 and 2048 bytes into a destination of size 256
+  270 |             snprintf(_v0_e__value, 256, "%s", _ltng_exc_value);
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:68: warning: '%s' directive output may be truncated writing up to 255 bytes into a region of size between 1 and 512 [-Wformat-truncation=]
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                                                    ^~                                                                              ~~~~~~~~~~~~~~
+/tmp/ltng_17919.c:273:47: note: 'snprintf' output between 1 and 767 bytes into a destination of size 512
+  273 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", _v0_e__type, ": "); _ltc; }), _v0_e__message); _ltc; }));
+      |                                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-11-16 20:49:37] [end] debug session finished

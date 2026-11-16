@@ -1,0 +1,11 @@
+function counter() {
+    let n = 0
+    let inc = function() {
+        set n = n + 1
+        return n
+    }
+    write(inc())
+    write(inc())
+    write(inc())
+}
+counter()

@@ -1,0 +1,4 @@
+let x = char
+x.unlock()
+set x = toint("3")
+write(typeof(x))

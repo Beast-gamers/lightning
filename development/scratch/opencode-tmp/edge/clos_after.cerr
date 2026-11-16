@@ -1,0 +1,20 @@
+
+ --> /tmp/opencode/edge/clos_after.ltng:1:10
+   |
+ 1 | function f(){
+   |          ^
+   = error: Cannot use reserved word as function name
+
+ --> /tmp/opencode/edge/clos_after.ltng:5:3
+   |
+ 5 |   return g()
+   |   ^
+   = error: 'return' can only be used inside a function
+
+ --> /tmp/opencode/edge/clos_after.ltng:6:1
+   |
+ 6 | }
+   | ^
+   = error: Unexpected '}'
+
+Compilation failed: 3 error(s)

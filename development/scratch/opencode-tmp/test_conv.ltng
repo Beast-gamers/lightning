@@ -1,0 +1,7 @@
+let a = tofloat("3")
+write(a)
+write(typeof(a))
+let b = tochar("hello")
+write(b)
+write(typeof(b))
+write(tofloat("2") + 1)

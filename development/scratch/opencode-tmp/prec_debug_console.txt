@@ -1,0 +1,16 @@
+[2026-11-13 22:58:58] [start] debug session started
+[info] source=/tmp/opencode/prec.ltng
+[info] debug_dir=/tmp/opencode/debug/prec
+[2026-11-13 22:58:58] [read] reading source
+[2026-11-13 22:58:58] [lex] tokenizing
+[2026-11-13 22:58:58] [parse] parsing
+[2026-11-13 22:58:58] [ir] writing intermediate representation
+[2026-11-13 22:58:58] [codegen] generating C code
+[2026-11-13 22:58:58] [codegen] C generation complete
+[2026-11-13 22:58:58] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/prec_out" "/tmp/ltng_25879.c" 2>&1
+Compiled '/tmp/opencode/prec.ltng' -> '/tmp/opencode/prec_out'
+[C compiler (object)] ok
+[C compiler (assembly)] ok
+[C compiler (debug-symbol binary)] ok
+[2026-11-13 22:59:00] [end] debug session finished

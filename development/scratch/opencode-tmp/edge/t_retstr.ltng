@@ -1,0 +1,3 @@
+function get(){ return "hi" }
+let y = get()
+write(typeof(y))

@@ -1,0 +1,2 @@
+function maker(){ return function(x){ return x } }
+write(maker()(10) * 2)

@@ -1,0 +1,5 @@
+function twice(cb,x){
+    return cb(cb(x))
+}
+function inc(x){ return x + 1 }
+write(twice(inc, 5))

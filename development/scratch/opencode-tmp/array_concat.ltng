@@ -1,0 +1,7 @@
+let a = [5, 6]
+let m = [[1, 2], [3, 4]]
+write("x" + a[1])
+write(a[1] + "x")
+write("m=" + m[2][1])
+let s = a[1] + "-" + a[2]
+write(s)

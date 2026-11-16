@@ -1,0 +1,8 @@
+
+ --> /tmp/opencode/paren3/nested3.ltng:1:10
+   |
+ 1 | function f() -> int { return 2 }
+   |          ^
+   = error: Cannot use reserved word as function name
+
+Compilation failed: 1 error(s)

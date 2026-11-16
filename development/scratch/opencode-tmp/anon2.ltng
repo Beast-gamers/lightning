@@ -1,0 +1,4 @@
+let dbl = function(x) {
+    return x * 2
+}
+write(dbl(5))

@@ -1,0 +1,8 @@
+
+ --> /main/language/code/test_err_reserved.ltng:2:5
+   |
+ 2 | let write = 5
+   |     ^
+   = error: Expected variable name after 'let'
+
+Check failed: 1 error(s)

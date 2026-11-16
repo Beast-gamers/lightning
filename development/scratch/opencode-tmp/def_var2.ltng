@@ -1,0 +1,10 @@
+function outer() {
+    let x = 42
+    function abc(a = x) {
+        return a
+    }
+    return abc()
+}
+
+write(outer())
+write(abc(7))

@@ -1,0 +1,79 @@
+hello world
+
+ 
+a
+0
+1
+-1
+42
+-42
+999999
+0.0
+3.14
+-3.14
+1.0
+A
+Z
+0
+true
+false
+true
+false
+10
+3.14
+hello
+X
+true
+3
+7
+20
+5
+1
+-5
+14
+20
+4
+3.33333
+11
+100
+0
+int
+int
+string
+string
+bool
+string
+x = 5
+hello world
+5 + 5 = 10
+typeof: int
+5world
+$5
+   
+	
+
+
+<raw>
+<b>bold</b>
+2 < 3
+a<b
+
+
+	
+\
+"
+'
+this is a long string that tests the buffer limits of the write function and should print correctly
+15
+2
+26
+21
+5
+-7
+7
+-7
+-7
+0
+1
+0
+1

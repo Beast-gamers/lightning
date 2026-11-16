@@ -1,0 +1,4 @@
+function foo(x){ return x * 2 }
+let x = 0
+set x = foo(3)
+write(x)

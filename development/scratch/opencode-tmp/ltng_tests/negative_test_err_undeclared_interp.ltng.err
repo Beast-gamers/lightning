@@ -1,0 +1,8 @@
+
+ --> /main/language/code/test_err_undeclared_interp.ltng:3:7
+   |
+ 3 | write("$[y]")
+   |       ^
+   = error: Variable 'y' not declared (used in string interpolation)
+
+Check failed: 1 error(s)

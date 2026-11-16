@@ -1,0 +1,18 @@
+[2026-11-15 10:37:35] [start] debug session started
+[info] source=/tmp/opencode/edge/e_concat.ltng
+[info] debug_dir=/tmp/opencode/edge/debug/e_concat
+[2026-11-15 10:37:35] [read] reading source
+[2026-11-15 10:37:35] [lex] tokenizing
+[2026-11-15 10:37:35] [parse] parsing
+[2026-11-15 10:37:35] [ir] writing intermediate representation
+[2026-11-15 10:37:35] [codegen] generating C code
+[2026-11-15 10:37:35] [codegen] C generation complete
+[2026-11-15 10:37:35] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/edge/e_concat" "/tmp/ltng_11501.c" 2>&1
+C compiler output:
+/tmp/ltng_11501.c: In function 'main':
+/tmp/ltng_11501.c:182:135: error: implicit declaration of function '_v0_e__typeatoi' [-Wimplicit-function-declaration]
+  182 |             printf("%s\n", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", "x",({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",(long long)(_v0_e__typeatoi(_v0_e__type))); __ltcn; })); _ltc; }));
+      |                                                                                                                                       ^~~~~~~~~~~~~~~
+
+[2026-11-15 10:37:36] [end] debug session finished

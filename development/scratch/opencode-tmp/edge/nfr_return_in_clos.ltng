@@ -1,0 +1,7 @@
+function base(x){ return x + 2 }
+function maker(){
+    let fn = base
+    return function(y){ return fn(y) }
+}
+let g = maker()
+write(g(5))

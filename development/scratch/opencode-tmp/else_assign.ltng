@@ -1,0 +1,12 @@
+function compute() {
+    return "ok"
+}
+
+let result = ""
+try {
+    set result = compute()
+} catch (e) {
+    write("failed: " + e.message)
+} else {
+    write("succeeded: " + result)
+}

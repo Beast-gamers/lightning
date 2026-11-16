@@ -1,0 +1,5 @@
+let it = [10, 20, 30]
+for (i from 1 to it.length) {
+    write(it[i])
+}
+write("done")

@@ -1,0 +1,4 @@
+let x = array
+let y = array
+write(typeof(x))
+write(typeof(y))

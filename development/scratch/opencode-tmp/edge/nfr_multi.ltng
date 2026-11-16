@@ -1,0 +1,10 @@
+function inc(x){
+    return x+1
+}
+function dbl(x){
+    return x*2
+}
+let fn = inc
+write(fn(2))
+set fn = dbl
+write(fn(3))

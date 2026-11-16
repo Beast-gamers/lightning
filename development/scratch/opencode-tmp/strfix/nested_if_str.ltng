@@ -1,0 +1,2 @@
+let a="ab"
+if ((a+"c")=="abc") { if ((a*2)=="abab") { write("ok") } }

@@ -1,0 +1,5 @@
+function x(base, a) {
+    return a
+}
+let b = 5
+x(b, 10)

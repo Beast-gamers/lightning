@@ -1,0 +1,9 @@
+let a = [1,2,3]
+let fns
+# not array of funcs, just test logic
+let sum = 0
+for (v in a) {
+    let fn = function(x){ return x + v }
+    set sum = sum + fn(10)
+}
+write(sum)

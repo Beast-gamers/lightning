@@ -1,0 +1,6 @@
+write(tobool("1"))
+write(tobool("0"))
+write(tobool("true"))
+write(tobool(""))
+write(tobool(1))
+write(tobool(0))

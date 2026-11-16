@@ -1,0 +1,38 @@
+LightningIR v1
+functions:
+statements:
+  - node: IF
+    name: ""
+    value: "(strcmp((\"ab\" + \"c\"), \"abc\") == 0)"
+    var_type: int
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+    body:
+      - node: WRITE
+        name: ""
+        value: "yes"
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+    orelse:
+      - node: ELSE
+        name: ""
+        value: ""
+        var_type: string
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        body:
+          - node: WRITE
+            name: ""
+            value: "no"
+            var_type: string
+            is_variable: 0
+            is_expr: 0
+            is_default: 0
+            is_base_assign: 0

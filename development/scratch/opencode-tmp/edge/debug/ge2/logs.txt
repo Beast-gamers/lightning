@@ -1,0 +1,18 @@
+[2026-11-15 09:35:04] [start] debug session started
+[info] source=/tmp/opencode/edge/ge2.ltng
+[info] debug_dir=/tmp/opencode/edge/debug/ge2
+[2026-11-15 09:35:04] [read] reading source
+[2026-11-15 09:35:04] [lex] tokenizing
+[2026-11-15 09:35:04] [parse] parsing
+[2026-11-15 09:35:04] [ir] writing intermediate representation
+[2026-11-15 09:35:04] [codegen] generating C code
+[2026-11-15 09:35:04] [codegen] C generation complete
+[2026-11-15 09:35:04] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/edge/ge2" "/tmp/ltng_25398.c" 2>&1
+C compiler output:
+/tmp/ltng_25398.c: In function 'main':
+/tmp/ltng_25398.c:178:36: error: called object is not a function or function pointer
+  178 |     printf("%lld\n", (long long)(1+atof(maker(_ltng_retbuf(), 2, 11))(5)));
+      |                                    ^~~~
+
+[2026-11-15 09:35:05] [end] debug session finished

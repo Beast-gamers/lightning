@@ -1,0 +1,10 @@
+let dbl = function(x) {
+    return x * 2
+}
+const inc = function(n) {
+    return n + 1
+}
+let add = function(a, b) {
+    return a + b
+}
+write(add(dbl(2), inc(1)))

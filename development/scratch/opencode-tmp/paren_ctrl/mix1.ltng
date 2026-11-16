@@ -1,0 +1,2 @@
+let a=5
+if (((a + 1) * 2) == (12)) { write("yes") } else { write("no") }

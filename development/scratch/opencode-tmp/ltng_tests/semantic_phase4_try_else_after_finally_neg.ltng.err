@@ -1,0 +1,14 @@
+
+ --> /main/language/tests/semantic/phase4_try_else_after_finally_neg.ltng:7:3
+   |
+ 7 | } else {
+   |   ^
+   = error: Unexpected token
+
+ --> /main/language/tests/semantic/phase4_try_else_after_finally_neg.ltng:9:1
+   |
+ 9 | }
+   | ^
+   = error: Unexpected '}'
+
+Check failed: 2 error(s)

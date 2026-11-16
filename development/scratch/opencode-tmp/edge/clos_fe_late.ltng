@@ -1,0 +1,14 @@
+let a = [1,2,3]
+let g1
+let g2
+let g3
+let idx = 0
+for (v in a) {
+    set idx = idx + 1
+    if (idx == 1) { set g1 = function(){ return v } }
+    if (idx == 2) { set g2 = function(){ return v } }
+    if (idx == 3) { set g3 = function(){ return v } }
+}
+write(g1())
+write(g2())
+write(g3())

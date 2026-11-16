@@ -1,0 +1,2 @@
+let b = tobool(1)
+write(b)

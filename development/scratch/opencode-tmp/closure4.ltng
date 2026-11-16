@@ -1,0 +1,11 @@
+function apply(cb, v) {
+    return cb(v)
+}
+function makeOffset(n) {
+    return function(x) {
+        return x + n
+    }
+}
+let off5 = makeOffset(5)
+write(apply(off5, 10))
+write(off5(20))

@@ -1,0 +1,4 @@
+let double = function(x) {
+    return x * 2
+}
+write(double(5))

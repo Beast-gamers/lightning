@@ -1,0 +1,8 @@
+
+ --> /main/language/code/test_err_semicolon.ltng:2:15
+   |
+ 2 | write("hello");
+   |               ^
+   = error: Semicolons are not allowed in ltng
+
+Check failed: 1 error(s)

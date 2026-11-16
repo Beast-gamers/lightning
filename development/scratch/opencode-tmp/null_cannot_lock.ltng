@@ -1,0 +1,3 @@
+# null dtype cannot be locked
+let x
+x.lock()

@@ -1,0 +1,4 @@
+let a="a"
+let b="b"
+let s = (a + b) * 2
+if (typeof(s) == "string") { write(s) }

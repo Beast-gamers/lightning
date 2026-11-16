@@ -1,0 +1,2 @@
+function maker(){ return function(x){ return x + 1 } }
+if (maker()(5) == 6) { write("ok") } else { write("bad") }

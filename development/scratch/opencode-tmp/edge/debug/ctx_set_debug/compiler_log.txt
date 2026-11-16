@@ -1,0 +1,37 @@
+LTNG /tmp/opencode/edge/ctx_set_debug.ltng:1:35 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: x
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", x);
+    return _ret;
+-----------
+
+LTNG /tmp/opencode/edge/ctx_set_debug.ltng:1:15 | RETURN
+  [expr:expr] ltng-span: unknown
+    C: "a____anon_0"
+---- C ----
+    _ltng_fn_pop();
+    snprintf(_ret, 256, "%s", "a____anon_0");
+    return _ret;
+-----------
+
+LTNG /tmp/opencode/edge/ctx_set_debug.ltng:2:1 | LET (r)
+  [expr:rhs] ltng-span: unknown
+    C: 0
+---- C ----
+    snprintf(r, 256, "0");
+-----------
+
+LTNG /tmp/opencode/edge/ctx_set_debug.ltng:3:1 | SET (r)
+  [expr:rhs] ltng-span: unknown
+    C: ({ char __ct0[256]; snprintf(__ct0,256,"%s",a(_ltng_retbuf(), 3, 9)); __ltng_call_indirect(__ct0,_ltng_retbuf(),3,12,1,_ltng_ad((double)(8))); })
+---- C ----
+    { long long _e = (long long)atoll(({ char __ct0[256]; snprintf(__ct0,256,"%s",a(_ltng_retbuf(), 3, 9)); __ltng_call_indirect(__ct0,_ltng_retbuf(),3,12,1,_ltng_ad((double)(8))); })); snprintf(r, 256, "%lld", _e); }
+-----------
+
+LTNG /tmp/opencode/edge/ctx_set_debug.ltng:4:1 | WRITE (r)
+---- C ----
+    printf("%s\n", r);
+-----------
+

@@ -1,0 +1,7 @@
+function get(){ return 1 }
+write(typeof(get()))
+let y = get()
+write(typeof(y))
+let z = 0
+set z = get()
+write(z)

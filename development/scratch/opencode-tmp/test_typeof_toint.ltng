@@ -1,0 +1,4 @@
+write(typeof(toint("5")))
+write(typeof(toint("3.14")))
+write(typeof(tostring("hello")))
+write(typeof(tobool("true")))

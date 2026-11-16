@@ -1,0 +1,15 @@
+# typeof with type conversion calls
+write(typeof(bool("t")))
+write(typeof(bool("f")))
+write(typeof(bool(true)))
+write(typeof(bool(false)))
+write(typeof(bool(0)))
+write(typeof(bool(42)))
+write(typeof(int("10")))
+write(typeof(string("hello")))
+write(typeof(bool("1")))
+
+# typeof in interpolation with type conversion
+write("$[typeof(bool("t"))]")
+write("$[typeof(int("10"))]")
+write("$[typeof(string("x"))]")

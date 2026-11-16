@@ -1,0 +1,21 @@
+[2026-11-16 20:17:09] [start] debug session started
+[info] source=/tmp/opencode/strfix/switch_str_case_expr.ltng
+[info] debug_dir=/tmp/opencode/strfix/debug/switch_str_case_expr
+[2026-11-16 20:17:09] [read] reading source
+[2026-11-16 20:17:09] [lex] tokenizing
+[2026-11-16 20:17:09] [parse] parsing
+[2026-11-16 20:17:09] [ir] writing intermediate representation
+[2026-11-16 20:17:09] [codegen] generating C code
+[2026-11-16 20:17:09] [codegen] C generation complete
+[2026-11-16 20:17:09] [cc] invoking C compiler
+C compiler command: cc -static -o "/tmp/opencode/strfix/switch_str_case_expr" "/tmp/ltng_776.c" 2>&1
+C compiler output:
+/tmp/ltng_776.c: In function 'main':
+/tmp/ltng_776.c:155:23: error: invalid operands to binary + (have 'char *' and 'char *')
+  155 |     if (strcmp(s, ("a"+"b")) == 0) {
+      |                    ~~~^
+      |                    |  |
+      |                    |  char *
+      |                    char *
+
+[2026-11-16 20:17:10] [end] debug session finished

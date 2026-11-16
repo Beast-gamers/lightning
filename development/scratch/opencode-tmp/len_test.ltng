@@ -1,0 +1,5 @@
+let it = [10, 20, 30]
+write(it.length)
+write(it[1])
+write(it[2])
+write(it[3])

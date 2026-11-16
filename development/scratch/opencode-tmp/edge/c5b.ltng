@@ -1,0 +1,6 @@
+function maker(){
+    return function(x){ return x + 1 }
+}
+let f1 = maker()
+let r = f1(5)
+write(r)

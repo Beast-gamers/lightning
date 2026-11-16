@@ -1,0 +1,4 @@
+let code = 42
+write("before exit var")
+exit code
+write("after exit - should not print")

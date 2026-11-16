@@ -1,0 +1,32 @@
+while:
+0
+1
+2
+do-while:
+0
+1
+2
+for up:
+1
+2
+3
+4
+5
+for step +2:
+0
+2
+4
+6
+8
+10
+for step -1 (down):
+3
+2
+1
+0
+for step *2:
+1
+2
+4
+8
+16

@@ -1,0 +1,12 @@
+let a = string
+let b = char
+let c = float
+let d = int
+write(typeof(a))
+write(typeof(b))
+write(typeof(c))
+write(typeof(d))
+write(a)
+write(b)
+write(c)
+write(d)

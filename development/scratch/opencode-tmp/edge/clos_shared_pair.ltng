@@ -1,0 +1,15 @@
+function pair(){
+    let n = 0
+    let inc = function(){
+        set n = n + 1
+        return n
+    }
+    let get = function(){
+        return n
+    }
+    write(inc())
+    write(inc())
+    write(get())
+    write(inc())
+}
+pair()

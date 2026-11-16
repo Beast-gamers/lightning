@@ -1,0 +1,6 @@
+function mk(){
+    const k = 5
+    return function(x){ return x + k }
+}
+let fn = mk()
+write(fn(3))

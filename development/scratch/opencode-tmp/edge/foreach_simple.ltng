@@ -1,0 +1,5 @@
+let a = [1,2,3]
+for (v in a) {
+    let fn = function(x){ return x + v }
+    write(fn(10))
+}

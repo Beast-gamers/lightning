@@ -1,0 +1,10 @@
+
+ --> /tmp/opencode/paren_ctrl/sw1.ltng:6:1
+   |
+   = error: Expected ':' after case value
+
+ --> /tmp/opencode/paren_ctrl/sw1.ltng:6:1
+   |
+   = error: Expected '}' to close switch
+
+Compilation failed: 2 error(s)

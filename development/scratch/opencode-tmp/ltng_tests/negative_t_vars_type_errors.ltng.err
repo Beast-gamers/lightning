@@ -1,0 +1,9 @@
+warning: variable 'v' is already locked
+
+ --> /main/language/code/t_vars_type_errors.ltng:5:1
+   |
+ 5 | set v = "string"
+   | ^
+   = error: Cannot change type of locked variable 'v' from int to string
+
+Check failed: 1 error(s)

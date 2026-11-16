@@ -1,0 +1,6 @@
+function add1(x){ return x + 1 }
+function apply(cb,v){ return cb(v) }
+function id(cb){ return cb }
+let h = id(add1)
+write(h(4))
+write(apply(h,9))

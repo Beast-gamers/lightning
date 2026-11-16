@@ -1,0 +1,5 @@
+# locked variable still blocks type changes
+let x = 5
+x.lock()
+set x = "hello"
+write(x)

@@ -1,0 +1,2 @@
+let a="ab"
+if ((a+"c")=="abc") { write("yes") } else { write("no") }

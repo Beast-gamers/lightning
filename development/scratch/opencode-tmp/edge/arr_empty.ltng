@@ -1,0 +1,6 @@
+let a = array
+write(a.length)
+a.push(5)
+write(a.length)
+write(a.pop())
+write(a.length)

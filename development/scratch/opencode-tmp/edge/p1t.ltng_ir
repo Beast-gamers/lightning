@@ -1,0 +1,47 @@
+LightningIR v1
+functions:
+  - node: FUNCTION
+    name: "foo"
+    value: ""
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0
+    for_var: "foo"
+    body:
+      - node: RETURN
+        name: ""
+        value: "atof(x)+1"
+        var_type: float
+        is_variable: 0
+        is_expr: 1
+        is_default: 0
+        is_base_assign: 0
+    params:
+      - node: PARAM
+        name: "x"
+        value: ""
+        var_type: float
+        is_variable: 0
+        is_expr: 0
+        is_default: 0
+        is_base_assign: 0
+        for_var: "x"
+statements:
+  - node: LET
+    name: "y"
+    value: "foo(_ltng_retbuf(), 2, 9, _ltng_ad((double)(1+2)))"
+    var_type: float
+    is_variable: 0
+    is_expr: 1
+    is_default: 0
+    is_base_assign: 0
+  - node: WRITE
+    name: ""
+    value: "float"
+    var_type: string
+    is_variable: 0
+    is_expr: 0
+    is_default: 0
+    is_base_assign: 0

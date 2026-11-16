@@ -1,0 +1,2 @@
+let a="ab"
+if ((a * 2) == ("abab")) { write("yes") } else { write("no") }

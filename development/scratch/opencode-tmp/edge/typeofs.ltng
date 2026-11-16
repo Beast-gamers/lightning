@@ -1,0 +1,3 @@
+write(typeof(1))
+write(typeof("a"))
+write(typeof(true))

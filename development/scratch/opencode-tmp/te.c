@@ -1,0 +1,85 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <ctype.h>
+static char *_ltng_concat(char *buf, size_t sz, int n, ...) { va_list ap; va_start(ap,n); buf[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); strncat(buf,s,sz-strlen(buf)-1); } va_end(ap); return buf; }
+static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { buf[0]=0; if (n < 0) n = 0; for (long long i=0; i<n && strlen(buf) < sz-1; i++) { strncat(buf, s, sz-strlen(buf)-1); } return buf; }
+static char *_ltng_retbuf(void){ static char b[32][256]; static int i; i=(i+1)%32; b[i][0]=0; return b[i]; }
+static char *_ltng_ad(double v){ char *b=_ltng_retbuf(); snprintf(b,256,"%g",v); return b; }
+static char *_ltng_as(const char *s){ char *b=_ltng_retbuf(); if(s){ strncpy(b,s,255); b[255]=0; } return b; }
+static char *_ltng_from_int(char *buf, long long v){ snprintf(buf,256,"%lld",v); return buf; }
+static char *_ltng_from_double(char *buf, double v){ snprintf(buf,256,"%g",v); return buf; }
+static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit(*p)) h=1; else if(*p=='.'){} else return 0; } return h; }
+static char *_ltng_add_sn(const char *a, const char *b){ static char buf[32][256]; static int _ltng_asn_idx=0; _ltng_asn_idx=(_ltng_asn_idx+1)%32; char *r=buf[_ltng_asn_idx]; r[0]=0; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a),nb=atof(b); snprintf(r,256,"%g",na+nb); } else { snprintf(r,256,"%s%s",a,b); } return r; }
+
+int main(void) {
+    char zi[256] = "0";
+    char zf[256] = "0";
+    char zs[256] = "";
+    char nz[256] = "0";
+    char big[256] = "0";
+    char bigf[256] = "0";
+    char sc[256] = "";
+    char ch[256] = "";
+    char ch2[256] = "";
+    char bt[256] = "false";
+    char bf[256] = "false";
+    char bsum[256] = "0";
+    char ms[256] = "0";
+    char rd[256] = "0";
+    char base[256] = "0";
+    char derived[256] = "0";
+    char ts[256] = "";
+    char iv[256] = "0";
+    char cx[256] = "0";
+    char cy[256] = "0";
+
+    snprintf(zi, sizeof(zi), "0");
+    snprintf(zf, sizeof(zf), "0");
+    zs[0] = '\0';
+    printf("%s\n", zi);
+    printf("%s\n", zf);
+    printf("%s\n", zs);
+    { long long _e = (-0); snprintf(nz, sizeof(nz), "%lld", _e); }
+    printf("%s\n", nz);
+    snprintf(big, sizeof(big), "999999");
+    snprintf(bigf, sizeof(bigf), "999999");
+    printf("%s\n", big);
+    printf("%s\n", bigf);
+    snprintf(sc, sizeof(sc), "A");
+    printf("%s\n", sc);
+    snprintf(ch, sizeof(ch), "A");
+    snprintf(ch2, sizeof(ch2), "%s", ({ char _ltc[512]; snprintf(_ltc,512,"%s%s", ch,({ char __ltcn[64]; snprintf(__ltcn,64,"%lld",((long long))(1)); __ltcn; })); _ltc; }));
+    printf("%s\n", ch2);
+    snprintf(bt, sizeof(bt), "true");
+    snprintf(bf, sizeof(bf), "false");
+    { long long _e = ((bt[0]=='t'?1:0)+(bf[0]=='t'?1:0)); snprintf(bsum, sizeof(bsum), "%lld", _e); }
+    printf("%s\n", bsum);
+    snprintf(ms, sizeof(ms), "1");
+    snprintf(ms, sizeof(ms), "2");
+    snprintf(ms, sizeof(ms), "3");
+    snprintf(ms, sizeof(ms), "4");
+    printf("%s\n", ms);
+    snprintf(rd, sizeof(rd), "1");
+    printf("%s\n", rd);
+    snprintf(rd, sizeof(rd), "2");
+    printf("%s\n", rd);
+    snprintf(base, sizeof(base), "10");
+    { long long _e = (atoi(base)*2); snprintf(derived, sizeof(derived), "%lld", _e); }
+    printf("%s\n", derived);
+    snprintf(ts, sizeof(ts), "%s", "int");
+    printf("%s\n", ts);
+    snprintf(ts, sizeof(ts), "%s", "int");
+    printf("%s\n", ts);
+    snprintf(iv, sizeof(iv), "10");
+    printf("%s\n", iv);
+    snprintf(iv, sizeof(iv), "99");
+    printf("%s\n", iv);
+    snprintf(cx, sizeof(cx), "5");
+    snprintf(cy, sizeof(cy), "3");
+    printf("%lld\n", (long long)(atoi(cx)+atoi(cy)*2-1));
+    printf("%lld\n", (long long)((atoi(cx)+atoi(cy))*2-1));
+    printf("%lld\n", (long long)(atoi(cx)*atoi(cy)+atoi(cx)/atoi(cy)));
+    return 0;
+}

@@ -1,0 +1,7 @@
+try {
+    throw "x"
+} catch (e) {
+    write("caught")
+} else {
+    write("else")
+}

@@ -1,0 +1,14 @@
+function mk(){
+    let x = 0
+    let fn = function(){
+        try {
+            set x = x + 1
+            throw "e"
+        } finally {
+            set x = x + 10
+        }
+    }
+    try { fn() } catch (e) { }
+    return x
+}
+write(mk())

@@ -1,0 +1,5 @@
+try-ok 5
+else 5
+finally 5
+catch Negative: n must be >= 0
+finally -1

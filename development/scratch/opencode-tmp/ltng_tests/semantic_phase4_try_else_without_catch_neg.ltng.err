@@ -1,0 +1,14 @@
+
+ --> /main/language/tests/semantic/phase4_try_else_without_catch_neg.ltng:3:3
+   |
+ 3 | } else {
+   |   ^
+   = error: 'else' in a try construct requires a preceding 'catch' clause
+
+ --> /main/language/tests/semantic/phase4_try_else_without_catch_neg.ltng:1:1
+   |
+ 1 | try {
+   | ^
+   = error: 'try' requires a 'catch' or 'finally' clause
+
+Check failed: 2 error(s)
