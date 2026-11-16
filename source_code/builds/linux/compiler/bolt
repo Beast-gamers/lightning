@@ -79,16 +79,17 @@ install_zig() {
 
 print_help() {
     cat <<'EOF'
-Usage: bolt [--debug] [--check] [--compile] [--emit-c] [--version] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]
+Usage: bolt [-d|--debug] [-rc|--check] [-c|--compile] [-e|--emit-c] [-v|--version] [-i|--install] [-u|--uninstall] [-r|--reinstall] [-h|--help] <file.ltng> [args...]
 Options:
-  --compile    Compile to a universal executable in the compiled folder
-  --check      Only check for errors, don't compile
-  --emit-c     Emit generated C code
-  --debug      Show compilation log
-  --version    Show version
-  --install    Install bolt (and internal compiler) to the system
-  --uninstall  Remove bolt and internal compiler from the system
-  --reinstall  Uninstall then install
+  -c,  --compile    Compile to a universal executable in the compiled folder
+  -rc, --check      Only check for errors, don't compile
+  -e,  --emit-c     Emit generated C code
+  -d,  --debug      Show compilation log
+  -v,  --version    Show version
+  -i,  --install    Install bolt (and internal compiler) to the system
+  -u,  --uninstall  Remove bolt and internal compiler from the system
+  -r,  --reinstall  Uninstall then install
+  -h,  --help       Show this help
 EOF
 }
 
@@ -153,15 +154,15 @@ ltng_args=""
 
 for arg in "$@"; do
     case "$arg" in
-        --install) install_compiler; exit 0 ;;
-        --uninstall) uninstall_compiler; exit 0 ;;
-        --reinstall) uninstall_compiler; install_compiler; exit 0 ;;
-        --version) echo "1.0.0"; exit 0 ;;
-        --debug) debug="--debug" ;;
-        --check) check="--check" ;;
-        --compile) compile_mode="1" ;;
-        --emit-c) emit_c="--emit-c" ;;
-        --help) print_help; exit 0 ;;
+        --install|-i) install_compiler; exit 0 ;;
+        --uninstall|-u) uninstall_compiler; exit 0 ;;
+        --reinstall|-r) uninstall_compiler; install_compiler; exit 0 ;;
+        --version|-v) echo "1.0.0"; exit 0 ;;
+        --debug|-d) debug="--debug" ;;
+        --check|-rc) check="--check" ;;
+        --compile|-c) compile_mode="1" ;;
+        --emit-c|-e) emit_c="--emit-c" ;;
+        --help|-h) print_help; exit 0 ;;
         *) ltng_args="$ltng_args $arg" ;;
     esac
 done
