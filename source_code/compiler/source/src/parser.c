@@ -2250,6 +2250,27 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         }
                     }
 
+                    /* Compile complex args containing function calls to proper C expressions.
+                       Raw token text is kept for simple cases to preserve existing behavior. */
+                    char inner_c[MAX_STRING_LEN];
+                    const char *inner_expr = inner;
+                    int has_call = 0;
+                    if (!is_num_lit && !is_simple_str_lit) {
+                        int inq = 0, d = 0; char qc = 0;
+                        for (int i = 0; i < ipos; i++) {
+                            char c = inner[i];
+                            if (inq) { if (c == '\\' && i + 1 < ipos) { i++; continue; } if (c == qc) inq = 0; continue; }
+                            if (c == '"' || c == '\'') { inq = 1; qc = c; continue; }
+                            if (c == '(') { if (i > 0 && (isalnum((unsigned char)inner[i-1]) || inner[i-1] == '_')) has_call = 1; d++; }
+                            else if (c == ')') { if (d > 0) d--; }
+                        }
+                    }
+                    if (has_call) {
+                        inner_c[0] = '\0';
+                        parse_expression_from_string(inner, table, inner_c, sizeof(inner_c));
+                        if (inner_c[0] != '\0') inner_expr = inner_c;
+                    }
+
                     if (strcmp(tok.value, "toint") == 0) {
                         /* toint(expr): preserve existing Lightning behavior */
                         if (is_simple_str_lit) {
@@ -2257,7 +2278,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
                         } else {
-                            pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                            pos += snprintf(out + pos, out_size - pos, "%s", inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tofloat") == 0) {
@@ -2265,7 +2286,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"%g\"", (double)atof(inner));
                         } else {
-                            pos += snprintf(out + pos, out_size - pos, "_ltng_from_double(_ltng_retbuf(), (double)atof(%s))", inner);
+                            pos += snprintf(out + pos, out_size - pos, "_ltng_from_double(_ltng_retbuf(), (double)atof(%s))", inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tostring") == 0) {
@@ -2282,7 +2303,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
                         } else {
-                            pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                            pos += snprintf(out + pos, out_size - pos, "%s", inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tobool") == 0) {
@@ -2304,7 +2325,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         } else {
                             pos += snprintf(out + pos, out_size - pos,
                                 "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?\"true\":\"false\")",
-                                inner, inner, inner);
+                                inner_expr, inner_expr, inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tochar") == 0) {
@@ -2335,7 +2356,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             /* runtime: if numeric string use char code, else first char */
                             pos += snprintf(out + pos, out_size - pos,
                                 "_ltng_as((_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0})))",
-                                inner, inner, inner, inner);
+                                inner_expr, inner_expr, inner_expr, inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     }
