@@ -711,7 +711,7 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
             fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
         } else if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
             pad(out, indent);
-            if (strchr(node->value, '.')) {
+            if (node->var_type == TYPE_FLOAT) {
                 fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
             } else {
                 fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);

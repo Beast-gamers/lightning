@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LTNG_SRC="$ROOT/source_code/builds/bin/ltng"
+REPO_ROOT="$(cd "$ROOT/.." && pwd)"
+LTNG_SRC="$REPO_ROOT/source_code/builds/bin/ltng"
 LTNG="/tmp/opencode/ltng"
 TMP="/tmp/opencode/ltng_tests"
 mkdir -p "$TMP" /tmp/opencode
 
 # Build compiler
-(cd "$ROOT/source_code/compiler" && make >/dev/null)
+(cd "$REPO_ROOT/source_code/compiler" && make >/dev/null)
 cp "$LTNG_SRC" "$LTNG"
 chmod +x "$LTNG" 2>/dev/null || true
 export LTNG_BOLT=1

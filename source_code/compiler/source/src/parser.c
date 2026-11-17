@@ -1592,6 +1592,9 @@ static int expr_is_string_value(const char *expr) {
     if (strncmp(p, "(long long)", 11) == 0 || strncmp(p, "(int)", 5) == 0 ||
         strncmp(p, "(double)", 8) == 0 || strncmp(p, "(float)", 7) == 0)
         return 0;
+    if (strncmp(p, "_ltng_from_double(", 18) == 0 || strncmp(p, "_ltng_from_int(", 15) == 0 ||
+        strncmp(p, "_ltng_ad(", 9) == 0)
+        return 0;
     /* Bool numeric forms */
     if (strstr(p, "[0]=='t'") != NULL || strstr(p, "[0]=='T'") != NULL) return 0;
     /* Known string-producing helpers/exprs (not generic buffers like _ltng_retbuf/_ltng_ad) */
@@ -1618,10 +1621,12 @@ static int expr_is_string_value(const char *expr) {
             if (*q == '\0') return 1;
         }
     }
+    /* Numeric conversion calls/wrappers anywhere => numeric expression */
+    if (strstr(p, "atof(") || strstr(p, "atoi(") || strstr(p, "atoll(") ||
+        strstr(p, "_ltng_from_double(") || strstr(p, "_ltng_from_int(") || strstr(p, "_ltng_ad("))
+        return 0;
     /* Contains C string literals => string expression */
     if (strchr(p, '"') != NULL) return 1;
-    /* Numeric conversion calls anywhere => numeric expression */
-    if (strstr(p, "atof(") || strstr(p, "atoi(") || strstr(p, "atoll(")) return 0;
     /* Other specific string helpers */
     if (strstr(p, "_ltng_add_sn") || strstr(p, "_ltng_repeat") || strstr(p, "_ltng_oret_"))
         return 1;
@@ -1749,9 +1754,39 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                 trim_c_expr(ltmp); trim_c_expr(rtmp);
                 int lv = expr_is_string_value(ltmp);
                 int rv = expr_is_string_value(rtmp);
-                if (lv || rv) is_str_cmp = 1;
+                /* Numeric conversion helpers produce numeric values; compare numerically */
+                if ((strstr(ltmp, "_ltng_from_double(") || strstr(ltmp, "_ltng_from_int(") || strstr(ltmp, "_ltng_ad(") ||
+                     strstr(ltmp, "atof(") || strstr(ltmp, "atoi(") || strstr(ltmp, "atoll(")) &&
+                    (strstr(rtmp, "_ltng_from_double(") || strstr(rtmp, "_ltng_from_int(") || strstr(rtmp, "_ltng_ad(") ||
+                     strstr(rtmp, "atof(") || strstr(rtmp, "atoi(") || strstr(rtmp, "atoll(") ||
+                     ((*rtmp=='-'||*rtmp=='+'||isdigit((unsigned char)*rtmp))))) {
+                    is_str_cmp = 0;
+                } else if ((strstr(rtmp, "_ltng_from_double(") || strstr(rtmp, "_ltng_from_int(") || strstr(rtmp, "_ltng_ad(") ||
+                            strstr(rtmp, "atof(") || strstr(rtmp, "atoi(") || strstr(rtmp, "atoll(")) &&
+                           (strstr(ltmp, "_ltng_from_double(") || strstr(ltmp, "_ltng_from_int(") || strstr(ltmp, "_ltng_ad(") ||
+                            strstr(ltmp, "atof(") || strstr(ltmp, "atoi(") || strstr(ltmp, "atoll(") ||
+                            ((*ltmp=='-'||*ltmp=='+'||isdigit((unsigned char)*ltmp))))) {
+                    is_str_cmp = 0;
+                } else if (lv || rv) {
+                    is_str_cmp = 1;
+                }
             }
             if (is_str_cmp) {
+                /* But if it's actually a numeric-conversion helper vs numeric literal/value, compare numerically */
+                {
+                    char lt[4096], rt[4096]; strncpy(lt,left,sizeof(lt)-1); lt[sizeof(lt)-1]=0; strncpy(rt,right,sizeof(rt)-1); rt[sizeof(rt)-1]=0; trim_c_expr(lt); trim_c_expr(rt);
+                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("))!=NULL;
+                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("))!=NULL;
+                    const char *lq2=lt; while(*lq2==' '||*lq2=='\t') lq2++; const char *rq2=rt; while(*rq2==' '||*rq2=='\t') rq2++;
+                    int lnl = (*lq2=='-'||*lq2=='+'||isdigit((unsigned char)*lq2));
+                    int rnl = (*rq2=='-'||*rq2=='+'||isdigit((unsigned char)*rq2));
+                    if ((lnumh && (rnumh || rnl)) || (rnumh && (lnumh || lnl))) {
+                        normalize_value_expr(left, sizeof(left), array_access_used);
+                        normalize_value_expr(right, sizeof(right), array_access_used);
+                        snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
+                        return;
+                    }
+                }
                 /* Normalize both sides as string expressions (handle + / * concat/repeat) */
                 /* In string comparison context, +/* on bare-buffer operands are string ops */
                 {
@@ -1766,13 +1801,90 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                 }
                 normalize_value_expr(left, sizeof(left), array_access_used);
                 normalize_value_expr(right, sizeof(right), array_access_used);
-                if (strcmp(ops[i], "==") == 0)
-                    snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", left, right);
-                else
-                    snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", left, right);
+                /* Ensure numeric literals are quoted for strcmp */
+                {
+                    char lq[4096], rq[4096];
+                    const char *lp = left; while (*lp==' '||*lp=='\t') lp++;
+                    const char *rp = right; while (*rp==' '||*rp=='\t') rp++;
+                    int ln = 0, rn = 0;
+                    {
+                        const char *q = lp;
+                        while (*q=='(' || *q==' '||*q=='\t') q++;
+                        if (*q=='-'||*q=='+') q++;
+                        if (isdigit((unsigned char)*q)) { ln = 1; while (*q) { if (*q==')'||*q==' '||*q=='\t') { q++; continue; } if (!isdigit((unsigned char)*q) && *q!='.') { ln = 0; break; } q++; } }
+                    }
+                    {
+                        const char *q = rp;
+                        while (*q=='(' || *q==' '||*q=='\t') q++;
+                        if (*q=='-'||*q=='+') q++;
+                        if (isdigit((unsigned char)*q)) { rn = 1; while (*q) { if (*q==')'||*q==' '||*q=='\t') { q++; continue; } if (!isdigit((unsigned char)*q) && *q!='.') { rn = 0; break; } q++; } }
+                    }
+                    if (ln) snprintf(lq, sizeof(lq), "\"%s\"", lp); else { strncpy(lq, left, sizeof(lq)-1); lq[sizeof(lq)-1]=0; }
+                    if (rn) snprintf(rq, sizeof(rq), "\"%s\"", rp); else { strncpy(rq, right, sizeof(rq)-1); rq[sizeof(rq)-1]=0; }
+                    {
+                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("))!=NULL;
+                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("))!=NULL;
+                        if ((lnumh && (rnumh || rn)) || (rnumh && (lnumh || ln))) {
+                            snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
+                        } else if (strcmp(ops[i], "==") == 0)
+                            snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lq, rq);
+                        else
+                            snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lq, rq);
+                        /* fallback: numeric helper compared to numeric string literal should be numeric */
+                        {
+                                                        if ((strstr(lq,"_ltng_from_double(")||strstr(lq,"_ltng_from_int(")||strstr(lq,"_ltng_ad(")) && rq[0]=='"') {
+                                /* rq is "num" */
+                                char num[128]; strncpy(num, rq+1, sizeof(num)-1); num[sizeof(num)-1]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
+                                int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
+                                if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], num);
+                            } else if ((strstr(rq,"_ltng_from_double(")||strstr(rq,"_ltng_from_int(")||strstr(rq,"_ltng_ad(")) && lq[0]=='"') {
+                                char num[128]; strncpy(num, lq+1, sizeof(num)-1); num[sizeof(num)-1]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
+                                int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
+                                if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", num, ops[i], right);
+                            }
+                        }
+                    }
+                }
             } else {
                 normalize_value_expr(left, sizeof(left), array_access_used);
                 normalize_value_expr(right, sizeof(right), array_access_used);
+                /* Unwrap numeric-string helper results for numeric comparisons */
+                {
+                    char *sides[2] = {left, right};
+                    for (int si = 0; si < 2; si++) {
+                        char *s = sides[si];
+                        char *p = s; while (*p==' '||*p=='\t') p++;
+                        if (strncmp(p, "_ltng_from_double(_ltng_retbuf(), ", 35) == 0) {
+                            /* extract inner expr up to matching final ) */
+                            const char *inner = p + 35;
+                            const char *end = s + strlen(s);
+                            if (end > p && *(end-1) == ')') {
+                                char tmp[4096]; size_t n = (size_t)((end-1) - inner);
+                                if (n >= sizeof(tmp)) n = sizeof(tmp)-1;
+                                memcpy(tmp, inner, n); tmp[n] = 0;
+                                memmove(s, tmp, strlen(tmp)+1);
+                            }
+                        } else if (strncmp(p, "_ltng_from_int(_ltng_retbuf(), ", 31) == 0) {
+                            const char *inner = p + 31;
+                            const char *end = s + strlen(s);
+                            if (end > p && *(end-1) == ')') {
+                                char tmp[4096]; size_t n = (size_t)((end-1) - inner);
+                                if (n >= sizeof(tmp)) n = sizeof(tmp)-1;
+                                memcpy(tmp, inner, n); tmp[n] = 0;
+                                memmove(s, tmp, strlen(tmp)+1);
+                            }
+                        } else if (strncmp(p, "_ltng_ad(", 9) == 0) {
+                            const char *inner = p + 9;
+                            const char *end = s + strlen(s);
+                            if (end > p && *(end-1) == ')') {
+                                char tmp[4096]; size_t n = (size_t)((end-1) - inner);
+                                if (n >= sizeof(tmp)) n = sizeof(tmp)-1;
+                                memcpy(tmp, inner, n); tmp[n] = 0;
+                                memmove(s, tmp, strlen(tmp)+1);
+                            }
+                        }
+                    }
+                }
                 /* Handle char*-returning calls compared with numeric literals: compare as strings */
                 if (strcmp(ops[i], "==") == 0 || strcmp(ops[i], "!=") == 0) {
                     int ln = 0, rn = 0, lc = 0, rc = 0;
@@ -1790,10 +1902,13 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                             int fnlen = (int)(q - fn);
                             while (*q==' '||*q=='\t') q++;
                             if (*q=='(') {
-                                /* Exclude numeric conversion functions */
+                                /* Exclude numeric conversion / numeric-string helpers */
                                 if (!((fnlen==4 && strncmp(fn,"atoi",4)==0) ||
                                       (fnlen==4 && strncmp(fn,"atof",4)==0) ||
-                                      (fnlen==5 && strncmp(fn,"atoll",5)==0)))
+                                      (fnlen==5 && strncmp(fn,"atoll",5)==0) ||
+                                      (fnlen==18 && strncmp(fn,"_ltng_from_double",18)==0) ||
+                                      (fnlen==15 && strncmp(fn,"_ltng_from_int",15)==0) ||
+                                      (fnlen==9 && strncmp(fn,"_ltng_ad",9)==0)))
                                     lc = 1;
                             }
                         }
@@ -1806,7 +1921,10 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                             if (*q=='(') {
                                 if (!((fnlen==4 && strncmp(fn,"atoi",4)==0) ||
                                       (fnlen==4 && strncmp(fn,"atof",4)==0) ||
-                                      (fnlen==5 && strncmp(fn,"atoll",5)==0)))
+                                      (fnlen==5 && strncmp(fn,"atoll",5)==0) ||
+                                      (fnlen==18 && strncmp(fn,"_ltng_from_double",18)==0) ||
+                                      (fnlen==15 && strncmp(fn,"_ltng_from_int",15)==0) ||
+                                      (fnlen==9 && strncmp(fn,"_ltng_ad",9)==0)))
                                     rc = 1;
                             }
                         }
@@ -1836,6 +1954,67 @@ static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used)
     /* Unwrap fully-enclosing outer parens if they wrap the whole expr? Not necessary;
        but split_top_level works on current level. Handle leading unary ! at top? */
     normalize_or_expr(buf, buf_size, array_access_used);
+    /* Fix: strcmp(numeric_helper, "num") / strcmp("num", numeric_helper) -> numeric compare */
+    for (int pass = 0; pass < 4; pass++) {
+        char *s = buf;
+        char *p = strstr(s, "strcmp(");
+        if (!p) break;
+        /* find matching end of strcmp(...) == 0 or != 0 */
+        /* parse args: strcmp(arg1, arg2) */
+        char *a1 = p + 7;
+        int d = 1, inq = 0; char qc = 0; char *comma = NULL;
+        char *q = a1;
+        for (; *q && d > 0; q++) {
+            char c = *q;
+            if (inq) { if (c == '\\' && q[1]) { q++; continue; } if (c == qc) inq = 0; continue; }
+            if (c == '"' || c == '\'') { inq = 1; qc = c; continue; }
+            if (c == '(') d++;
+            else if (c == ')') { d--; if (d == 0) { break; } }
+            else if (c == ',' && d == 1 && !comma) comma = q;
+        }
+        if (d != 0 || !comma) break;
+        char *endparen = q; /* at ')' */
+        char *after = endparen + 1;
+        while (*after == ' ' || *after == '\t') after++;
+        int is_eq = 0, is_ne = 0;
+        if (strncmp(after, "== 0", 4) == 0) is_eq = 1;
+        else if (strncmp(after, "!= 0", 4) == 0) is_ne = 1;
+        else break;
+        char *endcmp = after + 4;
+        /* extract args */
+        char leftarg[4096], rightarg[4096];
+        int l1 = (int)(comma - a1); if (l1 >= (int)sizeof(leftarg)) l1 = sizeof(leftarg)-1;
+        memcpy(leftarg, a1, l1); leftarg[l1] = 0;
+        char *a2 = comma + 1; while (*a2 == ' ' || *a2 == '\t') a2++;
+        int l2 = (int)(endparen - a2); if (l2 >= (int)sizeof(rightarg)) l2 = sizeof(rightarg)-1;
+        memcpy(rightarg, a2, l2); rightarg[l2] = 0;
+        trim_c_expr(leftarg); trim_c_expr(rightarg);
+        int lnumh = (strstr(leftarg,"_ltng_from_double(")||strstr(leftarg,"_ltng_from_int(")||strstr(leftarg,"_ltng_ad("))!=NULL;
+        int rnumh = (strstr(rightarg,"_ltng_from_double(")||strstr(rightarg,"_ltng_from_int(")||strstr(rightarg,"_ltng_ad("))!=NULL;
+        char numside[128]; int have = 0; char *helperside = NULL; int helper_left = 0;
+        if (lnumh && rightarg[0]=='"') {
+            strncpy(numside, rightarg+1, sizeof(numside)-1); numside[sizeof(numside)-1]=0; char *qe=strchr(numside,'"'); if(qe)*qe=0; helperside=leftarg; helper_left=1; have=1;
+        } else if (rnumh && leftarg[0]=='"') {
+            strncpy(numside, leftarg+1, sizeof(numside)-1); numside[sizeof(numside)-1]=0; char *qe=strchr(numside,'"'); if(qe)*qe=0; helperside=rightarg; helper_left=0; have=1;
+        }
+        if (have) {
+            int ok=1; char *nn=numside; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
+            if (ok) {
+                /* unwrap helper to numeric expr */
+                char h[4096]; strncpy(h, helperside, sizeof(h)-1); h[sizeof(h)-1]=0; trim_c_expr(h);
+                char repl[8192];
+                if (helper_left) snprintf(repl,sizeof(repl),"((double)atof(%s) %s (%s))", h, is_eq?"==":"!=", numside);
+                else snprintf(repl,sizeof(repl),"((%s) %s (double)atof(%s))", numside, is_eq?"==":"!=", h);
+                /* replace from p to endcmp */
+                char newbuf[16384];
+                int prefix = (int)(p - buf);
+                snprintf(newbuf,sizeof(newbuf),"%.*s%s%s", prefix, buf, repl, endcmp);
+                strncpy(buf,newbuf,buf_size-1); buf[buf_size-1]=0;
+                continue;
+            }
+        }
+        break;
+    }
 }
 
 
@@ -1852,6 +2031,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     int has_string_mult = 0;
     int array_access_used = 0;
     int sl=0, sc=0, el=0, ec=0, have_span=0;
+    int pending_divmod = 0; /* 1 if last emitted operator was / or % in numeric context */
 
     while (lexer->current < lexer->count) {
         Token tok = lexer_peek(lexer);
@@ -1918,11 +2098,21 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 break;
             }
             case TOKEN_INT_LIT:
+                if (pending_divmod && (strcmp(tok.value, "0") == 0)) {
+                    error_state_add(parser_errors, tok.line, tok.col,
+                        "Division or modulo by zero");
+                }
                 pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
+                pending_divmod = 0;
                 break;
             case TOKEN_FLOAT_LIT:
+                if (pending_divmod && atof(tok.value) == 0.0) {
+                    error_state_add(parser_errors, tok.line, tok.col,
+                        "Division or modulo by zero");
+                }
                 pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
                 if (!type_locked) result_type = TYPE_FLOAT;
+                pending_divmod = 0;
                 break;
             case TOKEN_STRING:
                 if (arithmetic_used) {
@@ -1943,6 +2133,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 break;
             case TOKEN_IDENT: {
                 int saved_pos = pos;
+                pending_divmod = 0;
                 /* Type conversion functions: toint/tofloat/tostring/tobool/tochar */
                 if ((strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tostring") == 0 ||
                      strcmp(tok.value, "tobool") == 0 || strcmp(tok.value, "tofloat") == 0 ||
@@ -1994,6 +2185,28 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             else if (inner[i] == '"') { end_quote = i; break; }
                         }
                         if (end_quote == ipos - 1) is_simple_str_lit = 1;
+                    }
+                    /* Validate numeric string literals for toint/tofloat */
+                    if (is_simple_str_lit && (strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tofloat") == 0)) {
+                        const char *sv = inner + 1;
+                        int slen = ipos - 2;
+                        /* allow optional sign, digits, optional .digits */
+                        int ok = 0;
+                        if (slen > 0) {
+                            int k = 0; if (sv[k]=='+'||sv[k]=='-') k++;
+                            int digits = 0, dot = 0, valid = 1;
+                            for (; k < slen; k++) {
+                                if (sv[k] >= '0' && sv[k] <= '9') digits = 1;
+                                else if (sv[k] == '.' && !dot) dot = 1;
+                                else { valid = 0; break; }
+                            }
+                            if (valid && digits) ok = 1;
+                        }
+                        if (!ok) {
+                            char msg[256];
+                            snprintf(msg, sizeof(msg), "Invalid conversion: cannot convert \"%.*s\" with %s", slen, sv, tok.value);
+                            error_state_add(parser_errors, tok.line, tok.col, msg);
+                        }
                     }
 
                     if (strcmp(tok.value, "toint") == 0) {
@@ -2109,8 +2322,20 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
                         result_type = TYPE_STRING;
                     } else {
-                        pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
-                        if (!type_locked) result_type = TYPE_INT;
+                        VarType crt = infer_function_return_type(call->name);
+                        if (crt == TYPE_INT) {
+                            pos += snprintf(out + pos, out_size - pos, "(double)atoll(%s)", cexpr);
+                            if (!type_locked) result_type = TYPE_INT;
+                        } else if (crt == TYPE_FLOAT || crt == TYPE_NULL || crt == TYPE_VOID) {
+                            pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                            if (!type_locked) result_type = TYPE_FLOAT;
+                        } else if (crt == TYPE_STRING) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                            if (!type_locked) result_type = TYPE_STRING;
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                            if (!type_locked) result_type = TYPE_FLOAT;
+                        }
                     }
                 } else if (lexer_peek(lexer).type == TOKEN_LPAREN && strcmp(tok.value, "typeof") != 0) {
                     char mangled[MAX_IDENTIFIER_LEN];
@@ -2129,8 +2354,33 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         char cexpr[MAX_STRING_LEN];
                         build_call_cexpr(call, cexpr, sizeof(cexpr));
                         append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
-                        pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
-                        if (!type_locked) result_type = TYPE_STRING;
+                        {
+                            char fr_cname2[MAX_IDENTIFIER_LEN] = {0}; int fr_pc2 = -1;
+                            VarType irt = TYPE_NULL;
+                            if (symbol_table_get_func_ref(table, tok.value, fr_cname2, sizeof(fr_cname2), &fr_pc2) && fr_cname2[0]) {
+                                irt = infer_function_return_type(fr_cname2);
+                            }
+                            if (irt == TYPE_INT) {
+                                pos += snprintf(out + pos, out_size - pos, "(double)atoll(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_INT;
+                            } else if (irt == TYPE_FLOAT || irt == TYPE_VOID || irt == TYPE_NULL) {
+                                /* unknown/void/float: in numeric context treat as numeric */
+                                if (irt == TYPE_NULL && type_locked && result_type == TYPE_STRING) {
+                                    pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                                } else if (irt == TYPE_NULL && !type_locked && result_type == TYPE_STRING) {
+                                    pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                                } else {
+                                    pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                                    if (!type_locked) result_type = TYPE_FLOAT;
+                                }
+                            } else if (irt == TYPE_STRING) {
+                                pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                                if (!type_locked) result_type = TYPE_STRING;
+                            } else {
+                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_FLOAT;
+                            }
+                        }
                     } else {
                         goto collect_ident_var;
                     }
@@ -2185,8 +2435,20 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
                             result_type = TYPE_STRING;
                         } else {
-                            pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
-                            if (!type_locked) result_type = TYPE_INT;
+                            VarType crt = infer_function_return_type(mname.value);
+                            if (crt == TYPE_INT) {
+                                pos += snprintf(out + pos, out_size - pos, "(double)atoll(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_INT;
+                            } else if (crt == TYPE_FLOAT || crt == TYPE_NULL || crt == TYPE_VOID) {
+                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_FLOAT;
+                            } else if (crt == TYPE_STRING) {
+                                pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                                if (!type_locked) result_type = TYPE_STRING;
+                            } else {
+                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_FLOAT;
+                            }
                         }
                     } else if (mname.type == TOKEN_IDENT || token_is_name(mname)) {
                         /* property access: obj.field */
@@ -2213,7 +2475,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 pos += snprintf(out + pos, out_size - pos, "atoi(%s)", fv);
                         } else if (ftype == TYPE_FLOAT) {
                             pos += snprintf(out + pos, out_size - pos, "atof(%s)", fv);
-                            if (!type_locked) result_type = TYPE_INT;
+                            if (!type_locked) result_type = TYPE_STRING;
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "%s", fv);
                             if (!type_locked) result_type = TYPE_STRING;
@@ -2744,6 +3006,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             "Cannot use arithmetic on a string");
                         pos += snprintf(out + pos, out_size - pos, "0");
                     }
+                    pending_divmod = 0;
                 } else {
                     pos += snprintf(out + pos, out_size - pos, "%s",
                         tok.type == TOKEN_PLUS ? "+" :
@@ -2751,6 +3014,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         tok.type == TOKEN_STAR ? "*" :
                         tok.type == TOKEN_SLASH ? "/" : "%");
                     arithmetic_used = 1;
+                    pending_divmod = (tok.type == TOKEN_SLASH || tok.type == TOKEN_PERCENT) ? 1 : 0;
                 }
                 break;
             case TOKEN_AMP_AMP:
@@ -3909,11 +4173,15 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                             memmove(vname, vname + 7, strlen(vname + 7) + 1);
                             
                             /* typeof(toint("5")) → "int", typeof(tostring("x")) → "string",
-                               typeof(tobool("t")) → "bool" */
+                               typeof(tobool("t")) → "bool", typeof(tofloat("5")) → "float", typeof(tochar("x")) → "char" */
                             if (strncmp(vname, "toint(", 6) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
+                            } else if (strncmp(vname, "tofloat(", 8) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "float");
                             } else if (strncmp(vname, "tostring(", 9) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
+                            } else if (strncmp(vname, "tochar(", 7) == 0) {
+                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "char");
                             } else if (strncmp(vname, "tobool(", 7) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
                             } else {
@@ -4932,6 +5200,11 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 lexer_next(lexer); /* consume arg */
                 lexer_next(lexer); /* consume ) */
                 handled = 1;
+                if (arg.type == TOKEN_STRING && (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0 || strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0)) {
+                    const char *sv = arg.value; int slen = (int)strlen(sv), ok = 0;
+                    if (slen > 0) { int k=0; if(sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1; for(;k<slen;k++){ if(sv[k]>='0'&&sv[k]<='9') digits=1; else if(sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} } if(valid&&digits) ok=1; }
+                    if (!ok) { char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %s", sv, conv.value); error_state_add(parser_errors, conv.line, conv.col, msg); }
+                }
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
                     if (arg.type == TOKEN_STRING) snprintf(expr, sizeof(expr), "(long long)atoll(\"%s\")", arg.value);
@@ -4992,6 +5265,10 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 else node->is_expr = 1;
                 /* for string/char exprs that are C expressions, mark expr */
                 if (node->var_type == TYPE_STRING && expr[0] != '"') node->is_expr = 1;
+                /* tostring/tochar literal results emitted as C string literals need expr copy */
+                if (node->var_type == TYPE_STRING && (strcmp(conv.value, "tostring") == 0 || strcmp(conv.value, "string") == 0) && expr[0] == '"') node->is_expr = 1;
+                /* tostring/tochar literal results emitted as C string literals need expr copy */
+                if (node->var_type == TYPE_STRING && (strcmp(conv.value, "tostring") == 0 || strcmp(conv.value, "string") == 0) && expr[0] == '"') node->is_expr = 1;
                 emit(node);
                 return;
             } else {
@@ -6051,6 +6328,11 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                 lexer_next(lexer); /* arg */
                 lexer_next(lexer); /* ) */
                 handled = 1;
+                if (arg.type == TOKEN_STRING && (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0 || strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0)) {
+                    const char *sv = arg.value; int slen = (int)strlen(sv), ok = 0;
+                    if (slen > 0) { int k=0; if(sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1; for(;k<slen;k++){ if(sv[k]>='0'&&sv[k]<='9') digits=1; else if(sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} } if(valid&&digits) ok=1; }
+                    if (!ok) { char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %s", sv, conv.value); error_state_add(parser_errors, conv.line, conv.col, msg); }
+                }
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
                     if (arg.type == TOKEN_STRING) snprintf(expr, sizeof(expr), "(long long)atoll(\"%s\")", arg.value);
@@ -7442,10 +7724,25 @@ static int stmt_always_exits(ASTNode *node) {
 static int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!ret) return 1;
     if (ret->value[0] == '\0' && !ret->is_expr) return want == TYPE_VOID;
     if (want == TYPE_VOID) return 0;
+    if (ret->fs_sl >= 1000) {
+        VarType ct = (VarType)(ret->fs_sl - 1000);
+        if (ct == want) return 1;
+        if ((ct == TYPE_INT || ct == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
+        if (want == TYPE_STRING && (ct == TYPE_CHAR || ct == TYPE_STRING || ct == TYPE_BOOL || ct == TYPE_INT || ct == TYPE_FLOAT)) return 1;
+        if (want == TYPE_CHAR && (ct == TYPE_CHAR || ct == TYPE_STRING)) return 1;
+        if (want == TYPE_BOOL && (ct == TYPE_BOOL || ct == TYPE_INT)) return 1;
+    }
     /* Pass-through variables and call results are represented as strings at
        runtime; only reject clearly conflicting literal returns. */
     if (ret->is_variable) return 1;
-    if (ret->value[0] == '(' || strstr(ret->value, "_ltng_") != NULL) return 1;
+    if (ret->value[0] == '(' || strstr(ret->value, "_ltng_") != NULL) {
+        if (ret->var_type == want) return 1;
+        if ((ret->var_type == TYPE_INT || ret->var_type == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
+        if (want == TYPE_STRING && (ret->var_type == TYPE_CHAR || ret->var_type == TYPE_STRING || ret->var_type == TYPE_BOOL || ret->var_type == TYPE_INT || ret->var_type == TYPE_FLOAT)) return 1;
+        if (want == TYPE_BOOL && (ret->var_type == TYPE_BOOL || ret->var_type == TYPE_INT)) return 1;
+        if (want == TYPE_CHAR && (ret->var_type == TYPE_CHAR || ret->var_type == TYPE_STRING)) return 1;
+        return 1;
+    }
 
     const char *v = ret->value;
     while (*v == ' ' || *v == '\t') v++;
@@ -7469,11 +7766,21 @@ static int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!
             if (*p < '0' || *p > '9') { numeric = 0; break; }
         }
         if (!numeric) {
-            /* Non-literal expressions remain permissive. */
+            /* Non-literal expressions: trust semantic type when available */
+            if (ret->var_type == want) return 1;
+            if ((ret->var_type == TYPE_INT || ret->var_type == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
+            if (want == TYPE_STRING && (ret->var_type == TYPE_CHAR || ret->var_type == TYPE_STRING || ret->var_type == TYPE_BOOL)) return 1;
+            if (want == TYPE_BOOL && (ret->var_type == TYPE_BOOL || ret->var_type == TYPE_INT)) return 1;
             return 1;
         }
         got = dot ? TYPE_FLOAT : TYPE_INT;
     }
+
+    /* Prefer semantic expression type when it is specific (e.g. toint/tofloat conversions emit quoted strings) */
+    if (ret->var_type == want) return 1;
+    if ((ret->var_type == TYPE_INT || ret->var_type == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
+    if (want == TYPE_BOOL && ret->var_type == TYPE_BOOL) return 1;
+    if (want == TYPE_CHAR && ret->var_type == TYPE_CHAR) return 1;
 
     if (got == want) return 1;
     if ((got == TYPE_INT || got == TYPE_FLOAT) &&
@@ -7481,6 +7788,9 @@ static int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!
     if (want == TYPE_CHAR && (got == TYPE_STRING || got == TYPE_CHAR)) return 1;
     if (want == TYPE_STRING && got == TYPE_CHAR) return 1;
     if (want == TYPE_BOOL && (got == TYPE_INT || got == TYPE_BOOL)) return 1;
+    /* Reject clear mismatches like returning string literal from int function */
+    if ((want == TYPE_INT || want == TYPE_FLOAT) && got == TYPE_STRING && ret->var_type == TYPE_STRING) return 0;
+    if (want == TYPE_BOOL && got == TYPE_STRING && ret->var_type == TYPE_STRING) return 0;
     return 0;
 }
 
@@ -7585,17 +7895,30 @@ static VarType analyze_function_returns(ASTNode *node, int *has_return) {
 
 /* Infer the effective return type of a user-defined function. For annotated
    functions returns the annotation; otherwise analyzes return statements.
-   If no return statements are present, returns TYPE_VOID. */
+   If no return statements are present, returns TYPE_VOID.
+   Returns TYPE_NULL when the function/return type is unknown (e.g. self-recursive
+   call during body parsing before the node is linked) so callers can apply
+   legacy numeric behavior instead of treating it as a string return. */
 static VarType infer_function_return_type(const char *fname) {
     ASTNode *fn = find_function_node_by_cname(fname);
     if (!fn) fn = find_function_ast_by_name(fname);
-    if (!fn) return TYPE_STRING;
-    if (fn->has_return_type) return fn->return_type;
-
-    int has_return = 0;
-    VarType rt = analyze_function_returns(fn->body, &has_return);
-    if (!has_return) return TYPE_VOID;
-    return rt;
+    if (fn) {
+        if (fn->has_return_type) return fn->return_type;
+        int has_return = 0;
+        VarType rt = analyze_function_returns(fn->body, &has_return);
+        if (!has_return) return TYPE_VOID;
+        return rt;
+    }
+    /* Fall back to prescanned signatures */
+    FuncInfo *fi = find_funcinfo_by_cname(fname);
+    if (!fi) {
+        for (int i = 0; i < g_func_count; i++) {
+            if (strcmp(g_funcs[i].src, fname) == 0) { fi = &g_funcs[i]; break; }
+        }
+    }
+    if (fi && fi->has_return_type) return fi->return_type;
+    /* Unknown target: preserve legacy numeric behavior */
+    return TYPE_NULL;
 }
 
 static int function_returns_string(const char *fname) {
@@ -8266,6 +8589,34 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             emit(node);
             return;
         }
+        /* Detect sole conversion call for return type inference */
+        VarType conv_override = TYPE_NULL;
+        {
+            Token ct = lexer_peek(lexer);
+            if (ct.type == TOKEN_IDENT && is_type_conversion(ct.value) &&
+                lexer->current + 1 < lexer->count && lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN) {
+                /* check if sole: conv(...) followed by end-of-statement */
+                int i = lexer->current + 2, depth = 1, sole = 0;
+                while (i < lexer->count && depth > 0) {
+                    TokenType tt = lexer->tokens[i].type;
+                    if (tt == TOKEN_LPAREN) depth++;
+                    else if (tt == TOKEN_RPAREN) { depth--; if (depth == 0) { i++; break; } }
+                    else if (tt == TOKEN_NEWLINE || tt == TOKEN_EOF) { depth = -1; break; }
+                    i++;
+                }
+                if (depth == 0) {
+                    if (i >= lexer->count) sole = 1;
+                    else { TokenType tt = lexer->tokens[i].type; if (tt == TOKEN_NEWLINE || tt == TOKEN_EOF || tt == TOKEN_RBRACE) sole = 1; }
+                }
+                if (sole) {
+                    if (strcmp(ct.value, "toint") == 0 || strcmp(ct.value, "int") == 0) conv_override = TYPE_INT;
+                    else if (strcmp(ct.value, "tofloat") == 0 || strcmp(ct.value, "float") == 0) conv_override = TYPE_FLOAT;
+                    else if (strcmp(ct.value, "tobool") == 0 || strcmp(ct.value, "bool") == 0) conv_override = TYPE_BOOL;
+                    else if (strcmp(ct.value, "tochar") == 0 || strcmp(ct.value, "char") == 0) conv_override = TYPE_CHAR;
+                    else if (strcmp(ct.value, "tostring") == 0 || strcmp(ct.value, "string") == 0) conv_override = TYPE_STRING;
+                }
+            }
+        }
         int _esl=0,_esc=0,_eel=0,_eec=0;
         etype = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
         _esl=g_expr_sl; _esc=g_expr_sc; _eel=g_expr_el; _eec=g_expr_ec;
@@ -8274,6 +8625,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
         node->line = kw.line; node->col = kw.col;
         node->var_type = etype;
         node->is_expr = 1;
+        if (conv_override != TYPE_NULL) node->fs_sl = 1000 + (int)conv_override; /* marker: sole conversion return */
         emit(node);
         return;
     }
