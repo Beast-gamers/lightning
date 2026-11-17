@@ -63,11 +63,3 @@ write(typeof(rec.oc))
 let obsum = rec.ob + 0.5
 write(obsum)
 write(typeof(obsum))
-
-function defp(x, di = 2, df = 2.5, ds = "ok") {
-  write(typeof(di))
-  write(typeof(df))
-  write(typeof(ds))
-  return x
-}
-write(defp(1))

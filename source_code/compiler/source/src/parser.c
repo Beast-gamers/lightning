@@ -9261,8 +9261,6 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
                 pn->has_default = 1;
                 pn->var_type = dvt;
                 snprintf(pn->value, MAX_STRING_LEN, "%s", defexpr);
-                /* Reflect concrete default type in function scope for inference/typeof. */
-                symbol_table_update(func_scope, pm, dvt);
             }
             if (!params) params = plast = pn; else { plast->next = pn; plast = pn; }
             pcount++;
