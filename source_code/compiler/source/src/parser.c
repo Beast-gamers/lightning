@@ -1891,9 +1891,9 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                     for (int si = 0; si < 2; si++) {
                         char *s = sides[si];
                         char *p = s; while (*p==' '||*p=='\t') p++;
-                        if (strncmp(p, "_ltng_from_double(_ltng_retbuf(), ", 35) == 0) {
+                        if (strncmp(p, "_ltng_from_double(_ltng_retbuf(), ", 34) == 0) {
                             /* extract inner expr up to matching final ) */
-                            const char *inner = p + 35;
+                            const char *inner = p + 34;
                             const char *end = s + strlen(s);
                             if (end > p && *(end-1) == ')') {
                                 char tmp[4096]; size_t n = (size_t)((end-1) - inner);
@@ -1901,8 +1901,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                                 memcpy(tmp, inner, n); tmp[n] = 0;
                                 memmove(s, tmp, strlen(tmp)+1);
                             }
-                        } else if (strncmp(p, "_ltng_from_int(_ltng_retbuf(), ", 31) == 0) {
-                            const char *inner = p + 31;
+                        } else if (strncmp(p, "_ltng_from_int(_ltng_retbuf(), ", 32) == 0) {
+                            const char *inner = p + 32;
                             const char *end = s + strlen(s);
                             if (end > p && *(end-1) == ')') {
                                 char tmp[4096]; size_t n = (size_t)((end-1) - inner);
@@ -2272,23 +2272,32 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     }
 
                     if (strcmp(tok.value, "toint") == 0) {
-                        /* toint(expr): preserve existing Lightning behavior */
+                        /* toint(expr): numeric result */
                         if (is_simple_str_lit) {
-                            pos += snprintf(out + pos, out_size - pos, "%s", inner);
+                            /* extract content and convert */
+                            char sval[MAX_STRING_LEN]; int sp=0;
+                            for (int i=lit_start;i<lit_end && sp<MAX_STRING_LEN-1;i++){ if(inner[i]=='\\' && i+1<lit_end) sval[sp++]=inner[++i]; else sval[sp++]=inner[i]; }
+                            sval[sp]='\0';
+                            pos += snprintf(out + pos, out_size - pos, "%lld", (long long)atoll(sval));
                         } else if (is_num_lit) {
-                            pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
+                            pos += snprintf(out + pos, out_size - pos, "%lld", (long long)atoll(inner));
                         } else {
-                            pos += snprintf(out + pos, out_size - pos, "%s", inner_expr);
+                            pos += snprintf(out + pos, out_size - pos, "(long long)atoll(%s)", inner_expr);
                         }
-                        if (!type_locked) result_type = TYPE_STRING;
+                        if (!type_locked) result_type = TYPE_INT;
                     } else if (strcmp(tok.value, "tofloat") == 0) {
-                        /* tofloat(expr): convert to float string/value representation */
-                        if (is_num_lit) {
-                            pos += snprintf(out + pos, out_size - pos, "\"%g\"", (double)atof(inner));
+                        /* tofloat(expr): numeric float result */
+                        if (is_simple_str_lit) {
+                            char sval[MAX_STRING_LEN]; int sp=0;
+                            for (int i=lit_start;i<lit_end && sp<MAX_STRING_LEN-1;i++){ if(inner[i]=='\\' && i+1<lit_end) sval[sp++]=inner[++i]; else sval[sp++]=inner[i]; }
+                            sval[sp]='\0';
+                            pos += snprintf(out + pos, out_size - pos, "%.17g", atof(sval));
+                        } else if (is_num_lit) {
+                            pos += snprintf(out + pos, out_size - pos, "%.17g", atof(inner));
                         } else {
-                            pos += snprintf(out + pos, out_size - pos, "_ltng_from_double(_ltng_retbuf(), (double)atof(%s))", inner_expr);
+                            pos += snprintf(out + pos, out_size - pos, "(double)atof(%s)", inner_expr);
                         }
-                        if (!type_locked) result_type = TYPE_STRING;
+                        if (!type_locked) result_type = TYPE_FLOAT;
                     } else if (strcmp(tok.value, "tostring") == 0) {
                         /* string(expr): convert bool literals and number literals
                            to quoted strings, else pass through */
@@ -2307,27 +2316,23 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         }
                         if (!type_locked) result_type = TYPE_STRING;
                     } else if (strcmp(tok.value, "tobool") == 0) {
-                        /* bool(expr): true unless null/empty/"0"/"false" */
+                        /* bool(expr): numeric bool result (0/1 in C expressions) */
                         if (ipos == 1 && inner[0] == '0') {
-                            pos += snprintf(out + pos, out_size - pos, "\"false\"");
+                            pos += snprintf(out + pos, out_size - pos, "0");
                         } else if (is_num_lit) {
-                            pos += snprintf(out + pos, out_size - pos, "\"true\"");
+                            pos += snprintf(out + pos, out_size - pos, "%d", (atof(inner)!=0.0)?1:0);
                         } else if (is_simple_str_lit) {
-                            if (ipos == 2) {
-                                pos += snprintf(out + pos, out_size - pos, "\"false\"");
-                            } else if (ipos == 3 && inner[1] == '0') {
-                                pos += snprintf(out + pos, out_size - pos, "\"false\"");
-                            } else if (ipos == 7 && memcmp(inner + 1, "false", 5) == 0) {
-                                pos += snprintf(out + pos, out_size - pos, "\"false\"");
-                            } else {
-                                pos += snprintf(out + pos, out_size - pos, "\"true\"");
-                            }
+                            int bv = 1;
+                            if (lit_end - lit_start == 0) bv = 0;
+                            else if (lit_end - lit_start == 1 && inner[lit_start] == '0') bv = 0;
+                            else if (lit_end - lit_start == 5 && memcmp(inner + lit_start, "false", 5) == 0) bv = 0;
+                            pos += snprintf(out + pos, out_size - pos, "%d", bv);
                         } else {
                             pos += snprintf(out + pos, out_size - pos,
-                                "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?\"true\":\"false\")",
+                                "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?1:0)",
                                 inner_expr, inner_expr, inner_expr);
                         }
-                        if (!type_locked) result_type = TYPE_STRING;
+                        if (!type_locked) result_type = TYPE_BOOL;
                     } else if (strcmp(tok.value, "tochar") == 0) {
                         /* tochar(expr): convert to single-character string */
                         if (is_simple_str_lit && ipos >= 3) {
@@ -2548,6 +2553,15 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     }
                 } else if (strcmp(tok.value, "typeof") == 0) {
                     /* typeof was already consumed by lexer_next; parse typeof(arg) */
+                    lexer->current--; /* unconsume typeof for try_parse_typeof */
+                    Token tres;
+                    if (try_parse_typeof(lexer, table, &tres)) {
+                        pos += snprintf(out + pos, out_size - pos, "\"%s\"", tres.value);
+                        if (!type_locked) result_type = TYPE_STRING;
+                        continue;
+                    }
+                    /* try_parse_typeof restored position on failure; consume typeof and fallback */
+                    lexer_next(lexer);
                     Token open = lexer_peek(lexer);
                     if (open.type != TOKEN_LPAREN) {
                         goto collect_ident_var;
@@ -2562,30 +2576,17 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         pos += snprintf(out + pos, out_size - pos, "0");
                         continue;
                     }
-                    VarType vt;
-                    if (arg.type == TOKEN_INT_LIT) {
-                        vt = TYPE_INT;
-                    } else if (arg.type == TOKEN_FLOAT_LIT) {
-                        vt = TYPE_FLOAT;
-                    } else if (arg.type == TOKEN_STRING) {
-                        vt = TYPE_STRING;
-                    } else if (arg.type == TOKEN_CHAR) {
-                        vt = TYPE_STRING;
-                    } else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) {
-                        vt = TYPE_BOOL;
-                    } else if (arg.type == TOKEN_IDENT || token_is_name(arg)) {
-                        char mangled[MAX_IDENTIFIER_LEN];
-                        mangle_name(arg.value, mangled, MAX_IDENTIFIER_LEN);
-                        if (symbol_table_has(table, mangled)) {
-                            vt = symbol_table_get(table, mangled);
-                        } else {
-                            vt = TYPE_STRING;
-                        }
-                    } else {
-                        vt = TYPE_STRING;
+                    VarType vt = TYPE_STRING;
+                    if (arg.type == TOKEN_INT_LIT) vt = TYPE_INT;
+                    else if (arg.type == TOKEN_FLOAT_LIT) vt = TYPE_FLOAT;
+                    else if (arg.type == TOKEN_STRING) vt = TYPE_STRING;
+                    else if (arg.type == TOKEN_CHAR) vt = TYPE_STRING;
+                    else if ((arg.type == TOKEN_IDENT || token_is_name(arg)) && is_bool_value(arg.value)) vt = TYPE_BOOL;
+                    else if (arg.type == TOKEN_IDENT || token_is_name(arg)) {
+                        char mangled[MAX_IDENTIFIER_LEN]; mangle_name(arg.value, mangled, MAX_IDENTIFIER_LEN);
+                        if (symbol_table_has(table, mangled)) vt = symbol_table_get(table, mangled);
                     }
-                    const char *vtname = type_name_str(vt);
-                    pos += snprintf(out + pos, out_size - pos, "\"%s\"", vtname);
+                    pos += snprintf(out + pos, out_size - pos, "\"%s\"", type_name_str(vt));
                     if (!type_locked) result_type = TYPE_STRING;
                     continue;
                 } else {
@@ -5259,16 +5260,32 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         if (sole_conv) {
             Token conv = lexer_next(lexer); /* conversion name */
             lexer_next(lexer); /* ( */
-            Token arg = lexer_peek(lexer);
+            /* Collect full argument for complex cases */
+            char inner_raw[MAX_STRING_LEN] = {0};
+            int irpos = 0, depth = 1;
+            int arg_start = lexer->current;
+            while (lexer->current < lexer->count && depth > 0) {
+                Token itok = lexer_peek(lexer);
+                if (itok.type == TOKEN_LPAREN) depth++;
+                else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
+                else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
+                itok = lexer_next(lexer);
+                token_append_source(inner_raw, &irpos, MAX_STRING_LEN, itok);
+            }
+            while (irpos > 0 && (inner_raw[irpos-1] == ' ' || inner_raw[irpos-1] == '\t')) irpos--;
+            inner_raw[irpos] = '\0';
+            int arg_end = lexer->current;
+            if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume ) */
+            }
+            Token arg = lexer->tokens[arg_start];
+            int arg_tok_count = arg_end - arg_start;
             char expr[MAX_STRING_LEN] = "0";
             VarType expr_type = TYPE_STRING;
             int handled = 0;
             /* Simple argument: single literal or identifier */
-            if ((arg.type == TOKEN_STRING || arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT ||
-                 arg.type == TOKEN_CHAR || arg.type == TOKEN_IDENT) &&
-                lexer->tokens[lexer->current + 1].type == TOKEN_RPAREN) {
-                lexer_next(lexer); /* consume arg */
-                lexer_next(lexer); /* consume ) */
+            if (arg_tok_count == 1 && (arg.type == TOKEN_STRING || arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT ||
+                 arg.type == TOKEN_CHAR || arg.type == TOKEN_IDENT)) {
                 handled = 1;
                 if (arg.type == TOKEN_STRING && (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0 || strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0)) {
                     const char *sv = arg.value; int slen = (int)strlen(sv), ok = 0;
@@ -5281,7 +5298,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     else if (arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT) snprintf(expr, sizeof(expr), "%lld", (long long)atoll(arg.value));
                     else if (arg.type == TOKEN_CHAR) snprintf(expr, sizeof(expr), "%lld", (long long)(unsigned char)arg.value[0]);
                     else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) snprintf(expr, sizeof(expr), "%d", (strcmp(arg.value,"true")==0||strcmp(arg.value,"t")==0)?1:0);
-                    else { /* ident var */ char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"(long long)atoll(%s)", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"0"); }
+                    else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"(long long)atoll(%s)", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"0"); }
                 } else if (strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0) {
                     expr_type = TYPE_FLOAT;
                     if (arg.type == TOKEN_STRING) snprintf(expr, sizeof(expr), "(double)atof(\"%s\")", arg.value);
@@ -5290,7 +5307,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"(double)atof(%s)", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"0.0"); }
                 } else if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
                     if (arg.type == TOKEN_IDENT && !is_bool_value(arg.value)) {
-                        handled = 0; /* runtime variable: fall back to legacy */
+                        handled = 0; /* runtime variable: handle below */
                     } else {
                         expr_type = TYPE_BOOL;
                         if (arg.type == TOKEN_STRING) {
@@ -5312,7 +5329,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) snprintf(expr,sizeof(expr),"\"%s\"", (strcmp(arg.value,"true")==0||strcmp(arg.value,"t")==0)?"true":"false");
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"%s", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"\"\""); }
                 } else { /* tochar/char */
-                    expr_type = TYPE_STRING; /* char stored as string buffer */
+                    expr_type = TYPE_STRING;
                     if (arg.type == TOKEN_STRING) {
                         if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"%c%c\"", arg.value[0], arg.value[1]);
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
@@ -5321,30 +5338,46 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
                 }
             }
-            if (handled) {
-                /* For bool, emit as string literal expr to be safe with storage */
-                if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
-                    /* store "true"/"false" */
+            if (!handled) {
+                /* Complex/runtime arg: compile conversion expression via general path, then adapt for typed storage */
+                char conv_expr_src[MAX_STRING_LEN];
+                snprintf(conv_expr_src, sizeof(conv_expr_src), "%s(%s)", conv.value, inner_raw);
+                char compiled[MAX_STRING_LEN]; compiled[0] = '\0';
+                VarType ctype = parse_expression_from_string(conv_expr_src, table, compiled, sizeof(compiled));
+                if (compiled[0] == '\0') snprintf(compiled, sizeof(compiled), "0");
+                if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
+                    expr_type = TYPE_INT;
+                    if (ctype == TYPE_INT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    else snprintf(expr,sizeof(expr),"(long long)atoll(%s)", compiled);
+                } else if (strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0) {
+                    expr_type = TYPE_FLOAT;
+                    if (ctype == TYPE_FLOAT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    else snprintf(expr,sizeof(expr),"(double)atof(%s)", compiled);
+                } else if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
+                    expr_type = TYPE_BOOL;
+                    if (ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"%s", compiled);
+                    else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0)?\"true\":\"false\")", compiled, compiled, compiled);
+                } else {
+                    expr_type = TYPE_STRING;
+                    snprintf(expr,sizeof(expr),"%s", compiled);
                 }
-                symbol_table_add_locked(table, mangled, (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0)?TYPE_BOOL:expr_type);
-                const char *cname = symbol_table_get_cname(table, mangled);
-                ASTNode *node = create_node(NODE_LET, cname, expr);
-                node->var_type = (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0)?TYPE_BOOL:expr_type;
-                /* bool/string literal results are non-expr values in storage form */
-                if (node->var_type == TYPE_BOOL || node->var_type == TYPE_STRING) node->is_expr = 0;
-                else node->is_expr = 1;
-                /* for string/char exprs that are C expressions, mark expr */
-                if (node->var_type == TYPE_STRING && expr[0] != '"') node->is_expr = 1;
-                /* tostring/tochar literal results emitted as C string literals need expr copy */
-                if (node->var_type == TYPE_STRING && (strcmp(conv.value, "tostring") == 0 || strcmp(conv.value, "string") == 0) && expr[0] == '"') node->is_expr = 1;
-                /* tostring/tochar literal results emitted as C string literals need expr copy */
-                if (node->var_type == TYPE_STRING && (strcmp(conv.value, "tostring") == 0 || strcmp(conv.value, "string") == 0) && expr[0] == '"') node->is_expr = 1;
-                emit(node);
-                return;
-            } else {
-                /* Complex arg: fall back to legacy behavior */
-                lexer->current -= 2; /* rewind conv and ( */
             }
+            symbol_table_add_locked(table, mangled, (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0)?TYPE_BOOL:expr_type);
+            const char *cname = symbol_table_get_cname(table, mangled);
+            ASTNode *node = create_node(NODE_LET, cname, expr);
+            node->var_type = (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0)?TYPE_BOOL:expr_type;
+            if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) node->is_expr = 1;
+            else if (node->var_type == TYPE_BOOL) {
+                node->is_expr = 0; /* "true"/"false" literal strings stored as bool value */
+                /* if complex expr produced C ternary string expr, treat as expr copy */
+                if (strchr(expr, '(') != NULL || strncmp(expr, "_ltng", 5) == 0) node->is_expr = 1;
+            } else {
+                /* string/char */
+                node->is_expr = 1;
+                if (expr[0] == '"' && strchr(expr, '(') == NULL) node->is_expr = 1; /* string literal copied via snprintf in some paths */
+            }
+            emit(node);
+            return;
         }
         char expr[MAX_STRING_LEN];
         VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
@@ -6388,15 +6421,31 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         if (sole_conv) {
             Token conv = lexer_next(lexer);
             lexer_next(lexer); /* ( */
-            Token arg = lexer_peek(lexer);
+            /* Collect full argument for complex cases */
+            char inner_raw[MAX_STRING_LEN] = {0};
+            int irpos = 0, depth = 1;
+            int arg_start = lexer->current;
+            while (lexer->current < lexer->count && depth > 0) {
+                Token itok = lexer_peek(lexer);
+                if (itok.type == TOKEN_LPAREN) depth++;
+                else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
+                else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
+                itok = lexer_next(lexer);
+                token_append_source(inner_raw, &irpos, MAX_STRING_LEN, itok);
+            }
+            while (irpos > 0 && (inner_raw[irpos-1] == ' ' || inner_raw[irpos-1] == '\t')) irpos--;
+            inner_raw[irpos] = '\0';
+            int arg_end = lexer->current;
+            if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume ) */
+            }
+            Token arg = lexer->tokens[arg_start];
+            int arg_tok_count = arg_end - arg_start;
             char expr[MAX_STRING_LEN] = "0";
             VarType expr_type = TYPE_STRING;
             int handled = 0;
-            if ((arg.type == TOKEN_STRING || arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT ||
-                 arg.type == TOKEN_CHAR || arg.type == TOKEN_IDENT) &&
-                lexer->tokens[lexer->current + 1].type == TOKEN_RPAREN) {
-                lexer_next(lexer); /* arg */
-                lexer_next(lexer); /* ) */
+            if (arg_tok_count == 1 && (arg.type == TOKEN_STRING || arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT ||
+                 arg.type == TOKEN_CHAR || arg.type == TOKEN_IDENT)) {
                 handled = 1;
                 if (arg.type == TOKEN_STRING && (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0 || strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0)) {
                     const char *sv = arg.value; int slen = (int)strlen(sv), ok = 0;
@@ -6418,7 +6467,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"(double)atof(%s)", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"0.0"); }
                 } else if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
                     if (arg.type == TOKEN_IDENT && !is_bool_value(arg.value)) {
-                        handled = 0; /* runtime variable: fall back to legacy */
+                        handled = 0;
                     } else {
                         expr_type = TYPE_BOOL;
                         if (arg.type == TOKEN_STRING) {
@@ -6449,19 +6498,43 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
                 }
             }
-            if (handled) {
-                if (!check_set_type_immutable(table, mangled, expr_type, set_tok.line, set_tok.col, lexer))
-                    return;
-                symbol_table_update(table, mangled, expr_type);
-                ASTNode *node = create_node(NODE_SET, cname, expr);
-                node->var_type = expr_type;
-                if (node->var_type == TYPE_BOOL || (node->var_type == TYPE_STRING && expr[0] == '"')) node->is_expr = 0;
-                else node->is_expr = 1;
-                emit(node);
-                return;
-            } else {
-                lexer->current -= 2; /* rewind conv and ( */
+            if (!handled) {
+                char conv_expr_src[MAX_STRING_LEN];
+                snprintf(conv_expr_src, sizeof(conv_expr_src), "%s(%s)", conv.value, inner_raw);
+                char compiled[MAX_STRING_LEN]; compiled[0] = '\0';
+                VarType ctype = parse_expression_from_string(conv_expr_src, table, compiled, sizeof(compiled));
+                if (compiled[0] == '\0') snprintf(compiled, sizeof(compiled), "0");
+                if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
+                    expr_type = TYPE_INT;
+                    if (ctype == TYPE_INT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    else snprintf(expr,sizeof(expr),"(long long)atoll(%s)", compiled);
+                } else if (strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0) {
+                    expr_type = TYPE_FLOAT;
+                    if (ctype == TYPE_FLOAT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    else snprintf(expr,sizeof(expr),"(double)atof(%s)", compiled);
+                } else if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
+                    expr_type = TYPE_BOOL;
+                    if (ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"%s", compiled);
+                    else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0)?\"true\":\"false\")", compiled, compiled, compiled);
+                } else {
+                    expr_type = TYPE_STRING;
+                    snprintf(expr,sizeof(expr),"%s", compiled);
+                }
             }
+            if (!check_set_type_immutable(table, mangled, expr_type, set_tok.line, set_tok.col, lexer))
+                return;
+            symbol_table_update(table, mangled, expr_type);
+            ASTNode *node = create_node(NODE_SET, cname, expr);
+            node->var_type = expr_type;
+            if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) node->is_expr = 1;
+            else if (node->var_type == TYPE_BOOL) {
+                node->is_expr = 0;
+                if (strchr(expr, '(') != NULL || strncmp(expr, "_ltng", 5) == 0) node->is_expr = 1;
+            } else {
+                node->is_expr = 1;
+            }
+            emit(node);
+            return;
         }
         char expr[MAX_STRING_LEN];
         VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);

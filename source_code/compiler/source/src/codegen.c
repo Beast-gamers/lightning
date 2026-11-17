@@ -267,7 +267,9 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                         expr_out, sizeof(expr_out));
                     if (etype == TYPE_FLOAT) {
                         fprintf(out, "%%g");
-                    } else if (etype == TYPE_STRING) {
+                    } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
+                        fprintf(out, "%%s");
+                    } else if (etype == TYPE_BOOL) {
                         fprintf(out, "%%s");
                     } else {
                         fprintf(out, "%%lld");
@@ -327,8 +329,10 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                             expr_out, sizeof(expr_out));
                         if (etype == TYPE_FLOAT) {
                             fprintf(out, ", (double)(%s)", expr_out);
-                        } else if (etype == TYPE_STRING) {
+                        } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
                             fprintf(out, ", %s", expr_out);
+                        } else if (etype == TYPE_BOOL) {
+                            fprintf(out, ", ((%s)?\"true\":\"false\")", expr_out);
                         } else {
                             fprintf(out, ", (long long)(%s)", expr_out);
                         }
@@ -380,7 +384,9 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                         expr_out, sizeof(expr_out));
                     if (etype == TYPE_FLOAT) {
                         fprintf(out, "%%g");
-                    } else if (etype == TYPE_STRING) {
+                    } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
+                        fprintf(out, "%%s");
+                    } else if (etype == TYPE_BOOL) {
                         fprintf(out, "%%s");
                     } else {
                         fprintf(out, "%%lld");
@@ -440,8 +446,10 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                             expr_out, sizeof(expr_out));
                         if (etype == TYPE_FLOAT) {
                             fprintf(out, ", (double)(%s)", expr_out);
-                        } else if (etype == TYPE_STRING) {
+                        } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
                             fprintf(out, ", %s", expr_out);
+                        } else if (etype == TYPE_BOOL) {
+                            fprintf(out, ", ((%s)?\"true\":\"false\")", expr_out);
                         } else {
                             fprintf(out, ", (long long)(%s)", expr_out);
                         }
@@ -706,7 +714,8 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
 static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
     if (node->is_expr) {
         /* expression result (string or computed) */
-        if (node->var_type == TYPE_STRING || strstr(node->value, "_ltng_add_sn") == node->value) {
+        if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT || node->var_type == TYPE_CHAR ||
+            strstr(node->value, "_ltng_add_sn") == node->value) {
             pad(out, indent);
             fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
         } else if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
@@ -716,6 +725,9 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
             } else {
                 fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
             }
+        } else if (node->var_type == TYPE_BOOL) {
+            pad(out, indent);
+            fprintf(out, "printf(\"%%s\\n\", (%s) ? \"true\" : \"false\");\n", node->value);
         } else {
             pad(out, indent);
             fprintf(out, "printf(\"%%s\\n\", %s);\n", node->value);
