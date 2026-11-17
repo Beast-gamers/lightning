@@ -853,7 +853,7 @@ static void transform_string_multiply(char *expr, int size) {
         count_expr = right;
     } else {
         static char cntbuf[512];
-        snprintf(cntbuf, sizeof(cntbuf), "atoi(%s)", right);
+        snprintf(cntbuf, sizeof(cntbuf), "atoll(%s)", right);
         count_expr = cntbuf;
     }
     int left_is_num = 1;
@@ -1161,7 +1161,7 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                 /* variable * variable: assume left is string, right is count */
                 strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
                 normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
-                snprintf(countbuf, sizeof(countbuf), "atoi(%s)", right);
+                snprintf(countbuf, sizeof(countbuf), "atoll(%s)", right);
             }
             char rep[8192];
             snprintf(rep, sizeof(rep), "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", str_operand, countbuf);
@@ -2090,6 +2090,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     int array_access_used = 0;
     int sl=0, sc=0, el=0, ec=0, have_span=0;
     int pending_divmod = 0; /* 1 if last emitted operator was / or % in numeric context */
+    int pending_divmod_is_mod = 0;
+    int pending_divmod_line = 0, pending_divmod_col = 0;
 
     while (lexer->current < lexer->count) {
         Token tok = lexer_peek(lexer);
@@ -2145,11 +2147,11 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 } else {
                     if (is_inc)
                         pos += snprintf(out + pos, out_size - pos,
-                            "({ long long _n = (long long)(atoi(%s) + 1); snprintf(%s, sizeof(%s), \"%%lld\", _n); _n; })",
+                            "({ long long _n = (long long)(atoll(%s) + 1); snprintf(%s, sizeof(%s), \"%%lld\", _n); _n; })",
                             mangled, mangled, mangled);
                     else
                         pos += snprintf(out + pos, out_size - pos,
-                            "({ long long _n = (long long)(atoi(%s) - 1); snprintf(%s, sizeof(%s), \"%%lld\", _n); _n; })",
+                            "({ long long _n = (long long)(atoll(%s) - 1); snprintf(%s, sizeof(%s), \"%%lld\", _n); _n; })",
                             mangled, mangled, mangled);
                 }
                 result_type = vt;
@@ -2160,7 +2162,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     error_state_add(parser_errors, tok.line, tok.col,
                         "Division or modulo by zero");
                 }
-                pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
+                if (pending_divmod) {
+                    pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
+                        (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")),
+                        tok.value, pending_divmod_line, pending_divmod_col);
+                } else {
+                    pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
+                }
                 pending_divmod = 0;
                 break;
             case TOKEN_FLOAT_LIT:
@@ -2168,7 +2176,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     error_state_add(parser_errors, tok.line, tok.col,
                         "Division or modulo by zero");
                 }
-                pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
+                if (pending_divmod) {
+                    pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
+                        pending_divmod_is_mod ? "_LTNG_NZMOD_D" : "_LTNG_NZDIV_D",
+                        tok.value, pending_divmod_line, pending_divmod_col);
+                } else {
+                    pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
+                }
                 if (!type_locked) result_type = TYPE_FLOAT;
                 pending_divmod = 0;
                 break;
@@ -2199,7 +2213,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 break;
             case TOKEN_IDENT: {
                 int saved_pos = pos;
-                pending_divmod = 0;
+                int _pd_save = pending_divmod, _pd_mod_save = pending_divmod_is_mod;
+                int _pd_l_save = pending_divmod_line, _pd_c_save = pending_divmod_col;
+                pending_divmod = 0; /* prevent leaking into sub-parsing; restore for final operand emission if needed */
                 /* Type conversion functions: toint/tofloat/tostring/tobool/tochar and aliases */
                 if ((is_type_conversion(tok.value) ||
                      strcmp(tok.value, "int") == 0 || strcmp(tok.value, "float") == 0 ||
@@ -2429,7 +2445,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos,
-                                "_ltng_as((_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0})))",
+                                "_ltng_as((_ltng_is_num_str(%s)?((char[]){(char)atoll(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0})))",
                                 inner_expr, inner_expr, inner_expr, inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_CHAR;
@@ -2608,7 +2624,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             else if (ftype == TYPE_STRING)
                                 pos += snprintf(out + pos, out_size - pos, "%s", fv);
                             else
-                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", fv);
+                                pos += snprintf(out + pos, out_size - pos, "atoll(%s)", fv);
                         } else if (ftype == TYPE_FLOAT) {
                             pos += snprintf(out + pos, out_size - pos, "atof(%s)", fv);
                             if (!type_locked) result_type = TYPE_STRING;
@@ -2661,6 +2677,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 } else {
                 collect_ident_var:
                     ; /* C99: declaration after label */
+                    pending_divmod = _pd_save; pending_divmod_is_mod = _pd_mod_save;
+                    pending_divmod_line = _pd_l_save; pending_divmod_col = _pd_c_save;
                     char mangled[MAX_IDENTIFIER_LEN];
                     mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                     if (!symbol_table_has(table, mangled)) {
@@ -2682,28 +2700,36 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         if (result_type == TYPE_STRING && !type_locked && vtype != TYPE_ARRAY) {
                             pos += snprintf(out + pos, out_size - pos, "%s", cname);
                         } else switch (vtype) {
-                            case TYPE_INT:
-                                pos += snprintf(out + pos, out_size - pos, "atoi(%s)", cname);
-                                break;
-                            case TYPE_FLOAT:
-                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cname);
-                                if (!type_locked) {
-                                    if (result_type == TYPE_INT) result_type = TYPE_FLOAT;
-                                }
-                                break;
+                            case TYPE_INT: {
+                                char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atoll(%s)", cname);
+                                if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
+                                else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                pending_divmod = 0;
+                                break; }
+                            case TYPE_FLOAT: {
+                                char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atof(%s)", cname);
+                                if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D"), _opnd, pending_divmod_line, pending_divmod_col);
+                                else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                if (!type_locked) { if (result_type == TYPE_INT) result_type = TYPE_FLOAT; }
+                                pending_divmod = 0;
+                                break; }
                             case TYPE_CHAR:
                             case TYPE_STRING:
                             case TYPE_OBJECT:
                                 pos += snprintf(out + pos, out_size - pos, "%s", cname);
                                 if (!type_locked) result_type = TYPE_STRING;
+                                pending_divmod = 0;
                                 break;
-                            case TYPE_BOOL:
-                                pos += snprintf(out + pos, out_size - pos,
-                                    "(%s[0]=='t'?1:0)", cname);
-                                break;
+                            case TYPE_BOOL: {
+                                char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "(%s[0]=='t'?1:0)", cname);
+                                if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
+                                else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                pending_divmod = 0;
+                                break; }
                             case TYPE_NULL:
                             default:
                                 pos += snprintf(out + pos, out_size - pos, "%s", cname);
+                                pending_divmod = 0;
                                 break;
                             case TYPE_ARRAY:
                                 /* Check for .length property and array method calls */
@@ -2973,7 +2999,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     VarType vt = symbol_table_get(table, mangled2);
                                     if (vt == TYPE_INT) {
                                         pos += snprintf(out + pos, out_size - pos,
-                                            "({ long long _t = (long long)atoi(%s); snprintf(%s, sizeof(%s), \"%%lld\", _t + 1); _t; })",
+                                            "({ long long _t = (long long)atoll(%s); snprintf(%s, sizeof(%s), \"%%lld\", _t + 1); _t; })",
                                             mangled2, mangled2, mangled2);
                                     } else if (vt == TYPE_FLOAT) {
                                         pos += snprintf(out + pos, out_size - pos,
@@ -2988,7 +3014,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     VarType vt = symbol_table_get(table, mangled2);
                                     if (vt == TYPE_INT) {
                                         pos += snprintf(out + pos, out_size - pos,
-                                            "({ long long _t = (long long)atoi(%s); snprintf(%s, sizeof(%s), \"%%lld\", _t - 1); _t; })",
+                                            "({ long long _t = (long long)atoll(%s); snprintf(%s, sizeof(%s), \"%%lld\", _t - 1); _t; })",
                                             mangled2, mangled2, mangled2);
                                     } else if (vt == TYPE_FLOAT) {
                                         pos += snprintf(out + pos, out_size - pos,
@@ -3146,7 +3172,14 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         tok.type == TOKEN_STAR ? "*" :
                         tok.type == TOKEN_SLASH ? "/" : "%");
                     arithmetic_used = 1;
-                    pending_divmod = (tok.type == TOKEN_SLASH || tok.type == TOKEN_PERCENT) ? 1 : 0;
+                    if (tok.type == TOKEN_SLASH || tok.type == TOKEN_PERCENT) {
+                        pending_divmod = 1;
+                        pending_divmod_is_mod = (tok.type == TOKEN_PERCENT);
+                        pending_divmod_line = tok.line;
+                        pending_divmod_col = tok.col;
+                    } else {
+                        pending_divmod = 0;
+                    }
                 }
                 break;
             case TOKEN_AMP_AMP:
@@ -5448,7 +5481,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         else if (arg.value[0]=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
                         else if (arg.value[0]=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
-                    } else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
+                    } else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoll(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
                 }
             }
             if (!handled) {
@@ -6649,7 +6682,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         else if (arg.value[0]=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
                         else if (arg.value[0]=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
-                    } else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
+                    } else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoll(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
                 }
             }
             if (!handled) {
@@ -6935,9 +6968,9 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                             VarType vt = symbol_table_get(table, mangled);
                             if (vt == TYPE_STRING) pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "%s", mangled);
                             else if (vt == TYPE_BOOL) pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "(%s[0]=='t'||%s[0]=='T')?1:0", mangled, mangled);
-                            else if (vt == TYPE_INT) pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "atoi(%s)", mangled);
+                            else if (vt == TYPE_INT) pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "atoll(%s)", mangled);
                             else if (vt == TYPE_FLOAT) pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "atof(%s)", mangled);
-                            else pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "atoi(%s)", mangled);
+                            else pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "atoll(%s)", mangled);
                         } else if (is_c_reserved(ct.value)) {
                             pos += snprintf(cexpr + pos, MAX_STRING_LEN - pos, "%s", ct.value);
                         } else {

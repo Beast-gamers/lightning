@@ -1,0 +1,2 @@
+DivisionError: Division by zero
+  at main (phase1_div_zero_condition.ltng:3:8)

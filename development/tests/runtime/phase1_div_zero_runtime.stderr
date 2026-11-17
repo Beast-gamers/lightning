@@ -1,2 +1,2 @@
 DivisionError: Division by zero
-  at main (phase1_div_zero_runtime.ltng:3:1)
+  at main (phase1_div_zero_runtime.ltng:3:12)

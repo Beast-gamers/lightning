@@ -1,0 +1,4 @@
+function id(x) -> int { return x }
+let a = 10
+let b = 0
+write(id(a / b))

@@ -1,0 +1,5 @@
+let a = 10
+let b = 0
+if (a / b > 0) {
+  write("x")
+}

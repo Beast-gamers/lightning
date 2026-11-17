@@ -499,7 +499,6 @@ static int cg_find_top_binop(const char *expr, char op, int *out_pos) {
         if (c == '(' || c == '[' || c == '{') { depth++; continue; }
         if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; continue; }
         if (depth == 0 && c == op) {
-            /* avoid matching // comments (not expected) and ensure it's the operator */
             last = i;
         }
     }
@@ -507,51 +506,102 @@ static int cg_find_top_binop(const char *expr, char op, int *out_pos) {
     return 0;
 }
 
+/* Rewrite / and % into safe runtime helpers. Mode: 0=int, 1=float, 2=generic (uses double-safe div, int-safe mod via fmod when needed? prefer int mod only if clearly int).
+   For broad coverage we apply a conservative best-effort transform on top-level binary ops within each scanned segment. */
+static int cg_expr_has_divmod(const char *expr) {
+    int depth = 0, in_str = 0, in_chr = 0, esc = 0;
+    for (int i = 0; expr[i]; i++) {
+        char c = expr[i];
+        if (in_str) { if (esc) esc = 0; else if (c == '\\') esc = 1; else if (c == '"') in_str = 0; continue; }
+        if (in_chr) { if (esc) esc = 0; else if (c == '\\') esc = 1; else if (c == '\'') in_chr = 0; continue; }
+        if (c == '"') { in_str = 1; continue; }
+        if (c == '\'') { in_chr = 1; continue; }
+        if (c == '(' || c == '[' || c == '{') { depth++; continue; }
+        if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; continue; }
+        if ((c == '/' || c == '%') && depth == 0) return 1;
+    }
+    return 0;
+}
+
 static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_float, int line, int col) {
-    /* Try to find a top-level / or % and wrap with safe macro. Returns 1 if rewritten. */
-    int pos = -1; char op = 0;
-    /* prefer rightmost? for a/b/c left-assoc, rewriting whole as macro is wrong if we pick middle; 
-       but easier: handle only simple single-op expressions at top level after stripping outer parens */
-    const char *e = expr;
-    /* strip leading/trailing spaces and one layer of outer parens if they wrap whole expr */
-    char tmp[4096]; strncpy(tmp, e, sizeof(tmp)-1); tmp[sizeof(tmp)-1]=0;
+    if (!expr || !expr[0]) return 0;
+    if (!strchr(expr, '/') && !strchr(expr, '%')) return 0;
+
+    char tmp[8192];
+    strncpy(tmp, expr, sizeof(tmp)-1); tmp[sizeof(tmp)-1]=0;
+
     /* trim */
     char *t = tmp; while (*t==' '||*t=='\t'||*t=='\n'||*t=='\r') t++;
     size_t L = strlen(t); while (L>0 && (t[L-1]==' '||t[L-1]=='\t'||t[L-1]=='\n'||t[L-1]=='\r')) { t[--L]=0; }
-    if (L>=2 && t[0]=='(' && t[L-1]==')') {
-        int d=0,in_s=0,in_c=0,esc=0,ok=1;
-        for (size_t i=0;i<L;i++){ char c=t[i];
-            if(in_s){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='"')in_s=0; continue; }
-            if(in_c){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='\'')in_c=0; continue; }
-            if(c=='"'){in_s=1;continue;} if(c=='\''){in_c=1;continue;}
-            if(c=='(')d++; else if(c==')'){d--; if(d==0 && i+1<L){ok=0;break;}}
+
+    /* Unwrap one layer of outer parens that wrap the whole expression (repeat a few times) */
+    for (int pass = 0; pass < 4; pass++) {
+        L = strlen(t);
+        if (L>=2 && t[0]=='(' && t[L-1]==')') {
+            int d=0,in_s=0,in_c=0,esc=0,ok=1;
+            for (size_t i=0;i<L;i++){ char c=t[i];
+                if(in_s){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='"')in_s=0; continue; }
+                if(in_c){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='\'')in_c=0; continue; }
+                if(c=='"'){in_s=1;continue;} if(c=='\''){in_c=1;continue;}
+                if(c=='(')d++; else if(c==')'){d--; if(d==0 && i+1<L){ok=0;break;}}
+            }
+            if(ok && d==0){ t[L-1]=0; t++; while(*t==' '||*t=='\t') t++; continue; }
         }
-        if(ok && d==0){ t[L-1]=0; t++; }
+        break;
     }
+
+    /* Only rewrite if there's a div/mod at top level in this (possibly unwrapped) expr.
+       This avoids breaking expressions where / % appear only inside nested subexpressions we can't safely restructure here;
+       we apply iteratively on lhs to catch left-associative chains. */
+    if (!cg_expr_has_divmod(t)) return 0;
+
     int pdiv=-1, pmod=-1;
     cg_find_top_binop(t, '/', &pdiv);
     cg_find_top_binop(t, '%', &pmod);
-    if (pdiv < 0 && pmod < 0) return 0;
-    if (pmod > pdiv) { pos = pmod; op = '%'; } else { pos = pdiv; op = '/'; }
-    /* ensure not part of something else - crude but ok */
-    char lhs[2048], rhs[2048];
-    int lp = pos; if (lp >= (int)sizeof(lhs)) lp = sizeof(lhs)-1;
-    memcpy(lhs, t, lp); lhs[lp]=0;
-    strncpy(rhs, t+pos+1, sizeof(rhs)-1); rhs[sizeof(rhs)-1]=0;
+    int pos = -1; char op = 0;
+    if (pmod > pdiv) { pos = pmod; op = '%'; } else if (pdiv >= 0) { pos = pdiv; op = '/'; }
+    if (pos < 0) return 0;
+
+    char lhs_raw[4096], rhs_raw[4096];
+    int lp = pos; if (lp >= (int)sizeof(lhs_raw)) lp = sizeof(lhs_raw)-1;
+    memcpy(lhs_raw, t, lp); lhs_raw[lp]=0;
+    strncpy(rhs_raw, t+pos+1, sizeof(rhs_raw)-1); rhs_raw[sizeof(rhs_raw)-1]=0;
+
     /* trim lhs/rhs */
-    char *a=lhs; while(*a==' '||*a=='\t') a++; size_t la=strlen(a); while(la>0&&(a[la-1]==' '||a[la-1]=='\t')) a[--la]=0;
-    char *b=rhs; while(*b==' '||*b=='\t') b++; size_t lb=strlen(b); while(lb>0&&(b[lb-1]==' '||b[lb-1]=='\t')) b[--lb]=0;
+    char *a=lhs_raw; while(*a==' '||*a=='\t') a++; size_t la=strlen(a); while(la>0&&(a[la-1]==' '||a[la-1]=='\t')) a[--la]=0;
+    char *b=rhs_raw; while(*b==' '||*b=='\t') b++; size_t lb=strlen(b); while(lb>0&&(b[lb-1]==' '||b[lb-1]=='\t')) b[--lb]=0;
     if (!*a || !*b) return 0;
-    /* avoid rewriting if lhs/rhs still contain top-level / % ? for a/b/c, splitting at rightmost gives wrong grouping for macros (macros need rhs as divisor expr). 
-       But _LTNG_DIV_LL(A,B,...) computes A/B with B checked; for left-assoc a/b/c == (a/b)/c, rightmost top-level / in "a/b/c" is the second one -> lhs "a/b", rhs "c" which is correct. Good. */
+
+    /* Recursively rewrite lhs to protect inner left-associative ops (e.g. a/b/c). */
+    char lhs_rw[8192];
+    int lhs_changed = cg_rewrite_divmod(lhs_rw, sizeof(lhs_rw), a, is_float, line, col);
+    const char *lhs_final = lhs_changed ? lhs_rw : a;
+
     if (is_float) {
-        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_D(%s,%s,%d,%d)", a,b,line,col);
-        else snprintf(out,outsz,"_LTNG_FMOD_D(%s,%s,%d,%d)", a,b,line,col);
+        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_D(%s,%s,%d,%d)", lhs_final,b,line,col);
+        else snprintf(out,outsz,"_LTNG_FMOD_D(%s,%s,%d,%d)", lhs_final,b,line,col);
     } else {
-        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_LL(%s,%s,%d,%d)", a,b,line,col);
-        else snprintf(out,outsz,"_LTNG_MOD_LL(%s,%s,%d,%d)", a,b,line,col);
+        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_LL(%s,%s,%d,%d)", lhs_final,b,line,col);
+        else snprintf(out,outsz,"_LTNG_MOD_LL(%s,%s,%d,%d)", lhs_final,b,line,col);
     }
     return 1;
+}
+
+/* Try float-mode rewrite first (safer for mixed/unknown numeric exprs in conditions/returns), then int-mode. */
+static int cg_rewrite_divmod_auto(char *out, size_t outsz, const char *expr, int prefer_float, int line, int col) {
+    if (!expr || !cg_expr_has_divmod(expr)) return 0;
+    if (prefer_float) return cg_rewrite_divmod(out, outsz, expr, 1, line, col);
+    /* heuristic: if expr contains atof or '.' outside strings, treat as float */
+    int in_s=0,in_c=0,esc=0,has_dot=0;
+    for (const char *p=expr; *p; p++) {
+        char c=*p;
+        if(in_s){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='"')in_s=0; continue; }
+        if(in_c){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='\'')in_c=0; continue; }
+        if(c=='"'){in_s=1;continue;} if(c=='\''){in_c=1;continue;}
+        if(c=='.') has_dot=1;
+    }
+    if (has_dot || strstr(expr, "atof(") || strstr(expr, "(double)")) return cg_rewrite_divmod(out, outsz, expr, 1, line, col);
+    return cg_rewrite_divmod(out, outsz, expr, 0, line, col);
 }
 
 static void codegen_assign(FILE *out, ASTNode *node, int indent) {
@@ -864,7 +914,7 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
 static void codegen_read(FILE *out, ASTNode *node, int indent) {
     pad(out, indent);
     if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; if(!_ltng_is_num_str(_rb)){ fprintf(stderr, \"Error: expected integer input for '%s'\\n\", %s); exit(1); } snprintf(%s, 256, \"%%lld\", (long long)atoi(_rb)); %s[255]='\\0'; } }\n",
+        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; if(!_ltng_is_num_str(_rb)){ fprintf(stderr, \"Error: expected integer input for '%s'\\n\", %s); exit(1); } snprintf(%s, 256, \"%%lld\", (long long)atoll(_rb)); %s[255]='\\0'; } }\n",
             node->name, node->name, node->name, node->name, node->name);
     } else if (node->var_type == TYPE_BOOL) {
         fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, 256, \"%%s\", (strcmp(_rb,\"true\")==0||strcmp(_rb,\"t\")==0)?\"true\":\"false\"); %s[255]='\\0'; } }\n",
@@ -1199,7 +1249,7 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
     } else if (op == '*') {
         fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s) * (long long)(%s))", var, var, step);
     } else if (op == '/') {
-        fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(%s) != 0 ? (long long)atoll(%s) / (long long)(%s) : 0)", var, var, var, step);
+        fprintf(out, "snprintf(%s, 256, \"%%lld\", _LTNG_DIV_LL((long long)atoll(%s), (long long)(%s), %d, %d))", var, var, step, node->line, node->col);
     } else {
         fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s) + (long long)(%s))", var, var, step);
     }
@@ -2015,6 +2065,10 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "#define _LTNG_MOD_LL(A,B,L,C) ({ long long _b=(long long)(B); _b==0?_ltng_mod0_ll((L),(C)):((long long)(A)%%_b); })\n");
     fprintf(out, "#define _LTNG_DIV_D(A,B,L,C) ({ double _b=(double)(B); _b==0.0?_ltng_div0_d((L),(C)):((double)(A)/_b); })\n");
     fprintf(out, "#define _LTNG_FMOD_D(A,B,L,C) ({ double _b=(double)(B); _b==0.0?_ltng_mod0_d((L),(C)):fmod((double)(A),_b); })\n");
+    fprintf(out, "#define _LTNG_NZDIV_LL(V,L,C) ({ long long _v=(long long)(V); _v==0?_ltng_div0_ll((L),(C)):_v; })\n");
+    fprintf(out, "#define _LTNG_NZMOD_LL(V,L,C) ({ long long _v=(long long)(V); _v==0?_ltng_mod0_ll((L),(C)):_v; })\n");
+    fprintf(out, "#define _LTNG_NZDIV_D(V,L,C) ({ double _v=(double)(V); _v==0.0?_ltng_div0_d((L),(C)):_v; })\n");
+    fprintf(out, "#define _LTNG_NZMOD_D(V,L,C) ({ double _v=(double)(V); _v==0.0?_ltng_mod0_d((L),(C)):_v; })\n");
     fprintf(out, "static char *_ltng_ptr_to_str(void *p){ static char b[32][32]; static int i; i=(i+1)%%32; snprintf(b[i], sizeof(b[i]), \"%%llu\", (unsigned long long)(uintptr_t)p); return b[i]; }\n");
     fprintf(out, "static void *_ltng_str_to_ptr(const char *s){ if(!s||!*s) return NULL; return (void*)(uintptr_t)strtoull(s, NULL, 10); }\n");
     fprintf(out, "\n");

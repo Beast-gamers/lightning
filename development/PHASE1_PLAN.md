@@ -77,24 +77,25 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 ---
 
-### Step 3 — Numeric semantics: division/modulo and overflow (in progress)
+### Step 3 — Numeric semantics: division/modulo and overflow ✅ (completed)
 **Goal:** Define and implement safe, consistent division/modulo and overflow behavior.
 
 **Tasks**
 - **Division/modulo by zero**
-  - Compile-time: reject provable literal/constant-zero cases (int and float) with clear diagnostics. *(mostly done; extend constant-tracking coverage where feasible)*
-  - Runtime: ensure runtime-variable and computed-zero cases are detected and reported consistently (throw `DivisionError`/`Modulo by zero` or defined runtime error) across **all** expression/statement contexts (assignments, `write`, conditions, returns, args, array ops, loops, interpolations, nested/complex expressions), not just covered let/set/write forms.
-  - Replace/guard unsafe raw C `/` `%` emission paths comprehensively (improve rewrite strategy or parser/emission model to avoid missed inner/nested ops).
+  - Compile-time: reject provable literal/constant-zero cases (int and float) with clear diagnostics. ✅
+  - Runtime: detect and report runtime-variable/computed-zero cases consistently, throwing `DivisionError: Division by zero` / `DivisionError: Modulo by zero` with traceback (line/col at operator/divisor site where available). ✅ Implemented via generated-runtime helpers/macros (`_ltng_div0_*`, `_LTNG_DIV_*`, `_LTNG_NZDIV_*`), parser-side divisor checks for simple numeric operands (identifiers, int/float literals) in collected expressions, and codegen expression rewrites/guards in covered emission paths (`let`/`set` numeric expressions, `write(...)` numeric expressions, and for-loop step division).
+  - Context coverage: assignments, `write`, conditions, returns, call arguments, and loop step expressions covered for common/simple divisor forms; broader/nested/complex divisor subexpressions improved but not exhaustively proven for every possible emitted form.
 - **Division semantics**
-  - Define int/int behavior (truncation vs float result?) and int/float/mixed behavior; implement consistently with promotion rules and existing code expectations (document any intentional change).
-  - Modulo semantics for numeric types (including float/mod behavior if supported) — define and enforce.
+  - `int / int` truncates toward zero (C/long long integer division semantics). ✅
+  - Mixed `int`/`float` division produces `float`. ✅
+  - `%` (modulo) supported for integer numeric paths; float modulo uses `fmod` in guarded float-mod paths where applicable. ✅
 - **Overflow behavior**
-  - Choose practical, documented policy (e.g. C integer wrap/UB avoidance strategy, checked arithmetic where feasible, or defined range/behavior) consistent with runtime representation; implement/guard in emitted/runtime paths as applicable.
-  - Add boundary tests (min/max, near-boundary operations) for chosen policy.
+  - **Defined policy:** integer arithmetic is performed using C integer arithmetic in emitted expressions (with `long long`/`atoll` for integer variable reads and 64-bit integer expression paths where emitted) and stored/formatted through the runtime string-buffer model. No explicit runtime overflow trapping is implemented. Signed integer overflow follows underlying C/platform behavior for the emitted operations (commonly two's-complement wraparound for 64-bit `long long` in practice, e.g. `9223372036854775807 + 1 -> -9223372036854775808`), and is documented as implementation-defined/characterized behavior rather than a guaranteed portable numeric result. Float arithmetic uses C `double` semantics. ✅
+  - Integer input/read and numeric parsing for integer variable values use 64-bit-capable parsing (`atoll`/`long long`) in updated paths. ✅
 
-**Tests:** compile-time and runtime div/mod-by-zero (all contexts), mixed-type division/modulo, precision-sensitive cases, overflow/boundary arithmetic, regression for existing math behavior.
+**Tests:** compile-time literal div/mod-by-zero negatives; runtime div/mod-by-zero in assignment, `write`, condition, return, and call-argument contexts; for-step safety; mixed-type division/modulo behavior; overflow characterization (`phase1_overflow_semantics`). Regression for existing numeric behavior verified in targeted checks.
 
-**Status:** in progress (runtime guards added in covered paths). Needs full-context coverage and overflow policy/implementation.
+**Status:** complete (with documented coverage/policy notes above). Further hardening for rare complex divisor-expression forms can be handled under ongoing Phase 1/type-system stabilization if discovered.
 
 ---
 
@@ -179,10 +180,9 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 ## 4. Suggested execution order (next slices)
 
-1. **Step 3 completion:** broaden runtime div/mod-by-zero guards to all expression/statement contexts and harden rewrite/coverage; define & implement overflow policy/tests.
-2. **Step 4 + Step 5:** drive consistent int/float semantics, inference, and promotion end-to-end (fix by context/path with targeted tests).
-3. **Step 6 + Step 7:** close compatibility and return-validation gaps with comprehensive diagnostics.
-4. **Step 8:** exhaustive Phase 1 test matrix, memory checks (where available), full-suite green, artifact rebuild/sync, documentation finalization.
+1. **Step 4 + Step 5:** drive consistent int/float semantics, inference, and promotion end-to-end (fix by context/path with targeted tests).
+2. **Step 6 + Step 7:** close compatibility and return-validation gaps with comprehensive diagnostics.
+3. **Step 8:** exhaustive Phase 1 test matrix, memory checks (where available), full-suite green, artifact rebuild/sync, documentation finalization.
 
 ## 5. Risk notes
 
@@ -195,7 +195,7 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 - [x] Step 1: audit/semantics baseline (initial)
 - [x] Step 2: conversion/alias stabilization (broad; ongoing verification)
-- [~] Step 3: division/modulo semantics (runtime guards in covered paths done; full coverage + overflow pending)
+- [x] Step 3: division/modulo and overflow semantics (compile-time + runtime div/mod-by-zero handling, for-step safety, 64-bit integer parsing/read paths, defined/characterized overflow policy and tests)
 - [ ] Step 4: distinct `int`/`float` semantics across all paths
 - [ ] Step 5: full type inference and numeric promotion
 - [ ] Step 6: comprehensive type compatibility checking

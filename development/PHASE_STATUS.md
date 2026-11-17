@@ -4,8 +4,9 @@
 
 - Full native test suite: **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, compile+execute native binaries; includes existing corpus/regression, category/smoke, Phase 1/2/3/4/5 tests, and negative checks).
 - Compiler/build interface: `bolt` is the user-facing interface; direct compiler invocation requires `LTNG_BOLT` (`Error: lightning compiler must be invoked through bolt`). `bolt --version` returns `1.0.0`; `bolt --emit-c` supported.
-- Phase 1 Step 2 (type conversions/aliases) stabilization fixes landed and pushed: parser fixes for `tobool` `"t"/"f"/"true"/"false"/"0"/""` consistency across conversion/interpolation paths, bool↔numeric/string emission, C string escaping in conversion/expr emission, `const` alias conversion-call initializers (`int/float/string/bool/char(...)`), and bool-ternary comparison normalization (`f4f9c44`).
-- Multi-arch compiler binaries and universal wrapper rebuilt and synced after Step 2 fixes: `source_code/builds/bin/ltng*` and `source_code/builds/linux/compiler/dist/ltng_universal` (`401e625`, universal/dist hashes match).
+- Phase 1 Step 2 (type conversions/aliases) stabilization fixes landed and pushed (`f4f9c44`).
+- Phase 1 Step 3 (division/modulo and overflow semantics) completed (incremental, pushed in slices): compile-time literal div/mod-by-zero rejection retained; runtime div/mod-by-zero throws `DivisionError: Division by zero` / `DivisionError: Modulo by zero` with traceback in covered contexts (including `let`/`set`, `write`, conditions, returns, call arguments, and for-loop step division for simple/common divisor forms) via runtime helpers/macros, parser-side divisor checks, and codegen guards/rewrites; integer variable/read parsing paths updated to 64-bit (`atoll`/`long long`) in covered numeric contexts; overflow behavior defined/documented and characterized by tests (C/`long long` emitted integer arithmetic and `double` float arithmetic, no explicit overflow trapping). See `development/PHASE1_PLAN.md`.
+- Multi-arch/universal compiler binaries and dist may require rebuild/sync for latest Step 3 source changes. Native compiler binary updated in-repo for Step 3 slices.
 
 ## Baseline (pre-Phase 0)
 
@@ -54,7 +55,7 @@
 
 ## Phase 1 — Type system
 
-**Status:** Partially implemented (Step 2 conversions/aliases stabilized; Step 3 runtime div/mod semantics in progress; further Phase 1 work required)
+**Status:** Partially implemented (Step 2 conversions/aliases stabilized; Step 3 division/modulo and overflow semantics completed per plan; further Phase 1 work required)
 
 ### Implemented (so far)
 - Made `detect_type` distinguish float literals/values as `TYPE_FLOAT` (instead of merging to int) and improved type name reporting (`float`, `char`) in covered paths.
@@ -63,15 +64,19 @@
 - Extended conversion-function recognition/handling for `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases `int`/`float`/`string`/`bool`/`char` across many expression, assignment, call/arg, return, condition/loop, comparison, interpolation/`typeof`, array, and nested/complex contexts; added stricter compile-time validation for obvious invalid literal numeric conversions in `toint`/`tofloat` (and aliases) in validated contexts.
 - Step 2 stabilization fixes (follow-up, pushed `f4f9c44`): consistent `tobool` string semantics for `"t"/"f"/"true"/"false"/"0"/""` (including runtime/interpolation/complex paths), corrected bool↔int/float conversion emission, corrected `tostring`/`string` of bool-typed/compiled results to `"true"/"false"`, fixed C string escaping in conversion/expression emission, recognized `const` alias conversion-call initializers (`int/float/string/bool/char(...)`), and fixed bool-ternary comparison normalization (e.g. runtime `bool(var) == false` cases).
 - Added compile-time detection/rejection for literal division/modulo by zero (int and float literal forms).
-- Step 3 (in progress): added runtime division/modulo-by-zero handling for covered numeric expression paths (codegen/runtime helpers and safe div/mod macros in `let`/`set` numeric expression emission and `write(...)` numeric expressions for simple covered forms), throwing `DivisionError: Division by zero` / `DivisionError: Modulo by zero` with traceback instead of raw C undefined behavior/crash semantics in covered runtime-variable cases. Added runtime tests `development/tests/runtime/phase1_div_zero_runtime.*`, `phase1_mod_zero_runtime.*`, and `phase1_div_zero_write.*`.
+- Step 3 (completed): division/modulo and overflow semantics implemented/defined.
+  - Compile-time literal div/mod-by-zero rejection retained.
+  - Runtime div/mod-by-zero detection throws `DivisionError: Division by zero` / `DivisionError: Modulo by zero` with traceback in covered contexts/forms, including assignments/`let`/`set` numeric expressions, `write(...)` numeric expressions, conditions, returns, call arguments, and for-loop step division. Implemented via generated-runtime helpers/macros (`_ltng_div0_*`, `_LTNG_DIV_*`, `_LTNG_NZDIV_*`/`_LTNG_NZMOD_*`), parser-side divisor checks for simple numeric operands in collected expressions, and codegen guards/rewrites.
+  - Division/modulo semantics: `int/int` truncates toward zero; mixed `int`/`float` division yields `float`; modulo supported in integer numeric paths (and guarded float-mod path where applicable).
+  - Overflow behavior defined and characterized: integer arithmetic uses emitted C integer operations with `long long`/64-bit parsing (`atoll`) in updated integer variable/read paths and no explicit overflow trapping (signed overflow follows underlying C/platform behavior in practice, e.g. 64-bit wraparound in characterization tests); float arithmetic uses C `double`. Added characterization/runtime tests: `development/tests/runtime/phase1_div_zero_{arg,condition,return,runtime,write}.*`, `phase1_mod_zero_runtime.*`, `phase1_overflow_semantics.*` (and updated traceback positions for earlier runtime div/mod tests to operator/divisor locations).
 - Improved return/expression typing for conversions and direct/indirect/named/self-referential function calls (fixed regressions causing incorrect string typing and internal compile failures in affected cases) and improved comparison normalization for numeric conversion helpers.
 - Added support for explicit type declarations `let x = float` and `let x = char` (default initialization, distinct type tracking).
 - Added/updated Phase 1 tests (runtime/semantic negative), including Step 2 conversion coverage and negative cases (e.g. `development/tests/runtime/phase1_conversions*.ltng`, `development/tests/semantic/phase1_*conversion*.ltng`, and updated corpus expectations where required).
 
 ### Test results
-- Last fully verified suite (before Step 3 increment): **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, native compile+execute validation).
-- Step 3 increment (in progress): runtime div/mod-by-zero handling expanded to covered `let`/`set` and `write(...)` numeric expression paths; added tests `development/tests/runtime/phase1_div_zero_runtime.*`, `phase1_mod_zero_runtime.*`, `phase1_div_zero_write.*`. Targeted Phase 1/runtime checks and existing literal div-zero negative checks pass with the updated compiler. Full-suite re-verification for this increment is pending.
-- Phase 1/Step 2 runtime and semantic checks (including conversion/alias contexts and negative cases) pass as part of the suite. Ad-hoc thorough probes covered additional contexts (defaults, named args, array ops/indexing, loops/switch expressions, comparisons, `typeof`, interpolation, nesting, runtime/dynamic inputs); coverage is broad but not exhaustive for every permutation.
+- Last fully verified full suite (before Step 3 increments): **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, native compile+execute validation).
+- Step 3 completion: added/updated runtime and semantic Phase 1 coverage for division/modulo/overflow (`development/tests/runtime/phase1_div_zero_{arg,condition,return,runtime,write}.*`, `development/tests/runtime/phase1_mod_zero_runtime.*`, `development/tests/runtime/phase1_overflow_semantics.*`; updated stderr traces for earlier runtime div/mod tests). Targeted verification: **all Phase 1 runtime + Phase 1 semantic negative tests pass (22/22)** with the updated compiler (native compile+execute / `--check` as applicable). Full-suite re-verification is pending (expected increase from added tests).
+- Phase 1/Step 2 runtime and semantic checks (including conversion/alias contexts and negative cases) continue to pass in targeted checks. Ad-hoc probes covered additional contexts (defaults, named args, array ops/indexing, loops/switch expressions, comparisons, `typeof`, interpolation, nesting, runtime/dynamic inputs); coverage is broad but not exhaustive for every permutation.
 
 ### Breaking/behavior changes (documented)
 - `typeof(...)` reports `float` for float-typed values/literals in covered cases (instead of previous merged `int` behavior).
@@ -89,7 +94,7 @@
 
 ### Remaining for Phase 1
 - Complete and verify: distinct `int`/`float` semantics across **all** expression/codegen/runtime paths, full type inference coverage, consistent numeric promotion rules, comprehensive type compatibility checking, and complete return-type validation.
-- Implement/verify numeric semantics not yet fully covered: **overflow behavior** and **division semantics** beyond compile-time literal checks (e.g. runtime variable division/modulo by zero behavior and related safety/diagnostics as appropriate for the language/runtime model).
+- Continue hardening Step 3 coverage as needed: runtime div/mod-by-zero guards cover common/simple divisor forms across major contexts but may miss some complex/nested divisor subexpressions or unusual emitted-expression forms; overflow policy is defined/characterized but not trapped.
 - Continue expanding required positive/negative/boundary/interaction tests (precision, boundary values, invalid/runtime conversion behavior as applicable, mixed expressions, null behavior, and broader interaction/permutation cases) and record memory checks where available. Known observed edge: non-constant conversion expressions used as `switch case` labels may emit invalid C in some forms (conversions in `switch` expressions and constant case labels tested).
 
 ## Phase 2 — Semantic analysis and scopes

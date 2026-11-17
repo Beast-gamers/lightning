@@ -1,2 +1,2 @@
 DivisionError: Modulo by zero
-  at main (phase1_mod_zero_runtime.ltng:3:1)
+  at main (phase1_mod_zero_runtime.ltng:3:12)
