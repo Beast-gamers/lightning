@@ -1,0 +1,135 @@
+# Step 2: conversions in all contexts (toint/tofloat/tostring/tobool/tochar and aliases)
+
+function add(a,b){ return a + b }
+function idv(x){ return x }
+
+# let/const/set with literals and runtime vars
+let li = toint("42")
+const ci = toint("7")
+let lf = tofloat("2.5")
+const cf = tofloat("3.5")
+let ls = tostring(99)
+const cs = tostring(true)
+let lb = tobool(0)
+const cb = tobool(1)
+let lc = tochar(65)
+const cc = tochar(66)
+write(li)
+write(ci)
+write(lf)
+write(cf)
+write(ls)
+write(cs)
+write(lb)
+write(cb)
+write(lc)
+write(cc)
+
+let sv = "3"
+let nv = 66
+set li = toint(sv)
+set lf = tofloat(sv)
+set ls = tostring(nv)
+set lb = tobool(sv)
+set lc = tochar(nv)
+write(li)
+write(lf)
+write(ls)
+write(lb)
+write(lc)
+
+# aliases in expressions
+write(int("9"))
+write(float("1.25"))
+write(string(10))
+write(bool(0))
+write(char(67))
+let ai = int("11")
+let af = float("2.75")
+let asv = string(12)
+let ab = bool(1)
+let ac = char(68)
+write(ai)
+write(af)
+write(asv)
+write(ab)
+write(ac)
+
+# returns and params
+function rti(x) -> int { return toint(x) }
+function rtf(x) -> float { return tofloat(x) }
+function rts(x) -> string { return tostring(x) }
+function rtb(x) -> bool { return tobool(x) }
+function rtc(x) -> char { return tochar(x) }
+write(rti("5"))
+write(rtf("4.5"))
+write(rts(6))
+write(rtb(0))
+write(rtc(69))
+
+function rti2(x){ return int(x) }
+function rtc2(x){ return char(x) }
+write(rti2("8"))
+write(rtc2(70))
+
+# call args and nested/complex
+write(add(toint("2"), toint("3")))
+write(add(tofloat("1.5"), tofloat("2.5")))
+write(idv(tostring(77)))
+write(idv(tobool("")))
+write(idv(tochar(71)))
+
+write(toint(add(2,3)))
+write(tofloat(add(1,2)))
+write(tostring(add(4,5)))
+write(tochar(add(64,8)))
+
+# conditions/comparisons
+if (toint("1") == 1) { write("c1") } else { write("bad") }
+if (tofloat("1.5") > 1) { write("c2") } else { write("bad") }
+if (tobool(1)) { write("c3") } else { write("bad") }
+if (int("2") == 2) { write("c4") } else { write("bad") }
+if (toint(add(1,1)) == 2) { write("c5") } else { write("bad") }
+
+# arrays: literals, indexing, push
+let arr = [toint("1"), tofloat(2), tostring(3), tochar(72), tobool(1)]
+write(arr[1])
+write(arr[2])
+write(arr[3])
+write(arr[4])
+write(arr[5])
+arr.push(tochar(73))
+arr.push(toint("7"))
+write(arr[6])
+write(arr[7])
+write(arr[toint("2")])
+
+# typeof
+write(typeof(toint(1)))
+write(typeof(tofloat(1)))
+write(typeof(tostring(1)))
+write(typeof(tobool(1)))
+write(typeof(tochar(65)))
+write(typeof(int(1)))
+write(typeof(char(65)))
+let ti = typeof(toint(1))
+write(ti)
+
+# interpolation in write/let, runtime/dynamic vars
+write("i=$[toint(1)] f=$[tofloat(2)] s=$[tostring(3)] b=$[tobool(1)] c=$[tochar(74)]")
+let si = "x=$[int(4)] y=$[float(5.5)] z=$[string(6)] w=$[bool(0)] v=$[char(75)]"
+write(si)
+let dv = "65"
+write("d=$[toint(dv)] f=$[tofloat(dv)] c=$[tochar(dv)] b=$[tobool(dv)] s=$[tostring(dv)]")
+
+# nested conversions
+write(toint(tofloat("3.9")))
+write(tofloat(toint("3.9")))
+write(tostring(toint(8)))
+write(tobool(toint(0)))
+write(tochar(toint(76)))
+
+# dynamic/runtime conversion results
+let rs = "66"
+write(tochar(rs))
+write(toint(rs))

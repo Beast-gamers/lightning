@@ -590,7 +590,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             else fprintf(out, "char %s[256] = \"\";\n", node->name);
         }
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
-        if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+        if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
             {
@@ -608,6 +608,11 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                     fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+            } else if (node->var_type == TYPE_BOOL) {
+                if (_is_call_res)
+                    fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
+                else
+                    fprintf(out, "snprintf(%s, 256, \"%%s\", (%s) ? \"true\" : \"false\");\n", node->name, node->value);
             } else {
                 if (_is_call_res)
                     fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
@@ -640,7 +645,10 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         pad(out, indent);
         fprintf(out, "snprintf(%s, 256, \"", node->name);
         if (node->var_type == TYPE_BOOL) {
-            write_c_string(out, bool_to_str(node->value));
+            const char *bv = node->value;
+            if (strcmp(bv, "1") == 0) write_c_string(out, "true");
+            else if (strcmp(bv, "0") == 0) write_c_string(out, "false");
+            else write_c_string(out, bool_to_str(bv));
         } else {
             /* INT/FLOAT literals are stored as-is, matching `set` (e.g. 3.14 stays "3.14"). */
             write_c_string(out, node->value);
@@ -834,7 +842,7 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
     }
     if (node->is_expr) {
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
-        if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+        if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
             fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n",
@@ -849,6 +857,11 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                     fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+            } else if (node->var_type == TYPE_BOOL) {
+                if (_is_call_res)
+                    fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
+                else
+                    fprintf(out, "snprintf(%s, 256, \"%%s\", (%s) ? \"true\" : \"false\");\n", node->name, node->value);
             } else {
                 if (_is_call_res)
                     fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
@@ -856,7 +869,7 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                     fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
             }
         }
-    } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
+    } else if ((node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR) && has_interpolation(node->value)) {
         codegen_assign_interpolated(out, node->name, node->value, indent);
     } else {
         pad(out, indent);
@@ -900,8 +913,10 @@ static void emit_arg_expr(FILE *out, ASTNode *a) {
         fputs(a->value, out);
     } else if (a->is_variable && a->value[0] != '\0') {
         fputs(a->value, out);
-    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT || a->var_type == TYPE_CHAR) && a->value[0] != '\0') {
         fputs(a->value, out);
+    } else if (a->var_type == TYPE_BOOL && a->value[0] != '\0') {
+        fprintf(out, "((%s)?\"true\":\"false\")", a->value);
     } else if (a->value[0] == '\0') {
         fputs("\"\"", out);
     } else {
@@ -1339,7 +1354,7 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
         pad(out, indent); fprintf(out, "%s[0] = '\\0';\n", target);
         return;
     }
-    if (node->var_type == TYPE_STRING || node->var_type == TYPE_OBJECT ||
+    if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
         node->var_type == TYPE_NULL ||
         strstr(node->value, "_ltng_add_sn") == node->value) {
         pad(out, indent);
@@ -1348,6 +1363,10 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
     } else if (node->var_type == TYPE_FLOAT) {
         pad(out, indent);
         fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+            target, node->value[0] ? node->value : "0");
+    } else if (node->var_type == TYPE_BOOL) {
+        pad(out, indent);
+        fprintf(out, "snprintf(%s, 256, \"%%s\", (%s) ? \"true\" : \"false\");\n",
             target, node->value[0] ? node->value : "0");
     } else {
         pad(out, indent);

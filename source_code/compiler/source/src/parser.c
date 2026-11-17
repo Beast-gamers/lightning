@@ -290,15 +290,14 @@ static int is_return_type_keyword(const char *name) {
     return is_type_keyword(name) || strcmp(name, "void") == 0;
 }
 
-/* Return 1 for type keywords that can be used as conversion functions:
-   int(expr), string(expr), bool(expr), tofloat(expr), tochar(expr). These are
-   function calls, not type declarations, when followed by '('. */
+/* Return 1 for type conversion functions/calls: toint/int, tofloat/float,
+   tostring/string, tobool/bool, tochar/char. */
 static int is_type_conversion(const char *name) {
-    return strcmp(name, "toint") == 0 ||
-           strcmp(name, "tostring") == 0 ||
-           strcmp(name, "tobool") == 0 ||
-           strcmp(name, "tofloat") == 0 ||
-           strcmp(name, "tochar") == 0;
+    return strcmp(name, "toint") == 0 || strcmp(name, "int") == 0 ||
+           strcmp(name, "tostring") == 0 || strcmp(name, "string") == 0 ||
+           strcmp(name, "tobool") == 0 || strcmp(name, "bool") == 0 ||
+           strcmp(name, "tofloat") == 0 || strcmp(name, "float") == 0 ||
+           strcmp(name, "tochar") == 0 || strcmp(name, "char") == 0;
 }
 
 static int is_ltng_reserved(const char *name) {
@@ -1519,10 +1518,14 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
                 } else {
                     val[0] = '\x01'; strncpy(val + 1, expr, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
                 }
-            } else if (etype == TYPE_STRING || etype == TYPE_OBJECT || etype == TYPE_ARRAY) {
+            } else if (etype == TYPE_STRING || etype == TYPE_OBJECT || etype == TYPE_ARRAY || etype == TYPE_CHAR) {
                 val[0] = '\x01'; strncpy(val + 1, expr, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+            } else if (etype == TYPE_BOOL) {
+                char wrapped[MAX_STRING_LEN];
+                snprintf(wrapped, sizeof(wrapped), "((%s)?\"true\":\"false\")", expr);
+                val[0] = '\x01'; strncpy(val + 1, wrapped, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
             } else {
-                /* numeric/bool expression: convert to string at runtime */
+                /* numeric expression: convert to string at runtime */
                 char wrapped[MAX_STRING_LEN];
                 if (etype == TYPE_FLOAT) snprintf(wrapped, sizeof(wrapped), "_ltng_ad((double)(%s))", expr);
                 else snprintf(wrapped, sizeof(wrapped), "_ltng_ad((double)(long long)(%s))", expr);
@@ -2171,10 +2174,16 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             case TOKEN_IDENT: {
                 int saved_pos = pos;
                 pending_divmod = 0;
-                /* Type conversion functions: toint/tofloat/tostring/tobool/tochar */
-                if ((strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tostring") == 0 ||
-                     strcmp(tok.value, "tobool") == 0 || strcmp(tok.value, "tofloat") == 0 ||
-                     strcmp(tok.value, "tochar") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                /* Type conversion functions: toint/tofloat/tostring/tobool/tochar and aliases */
+                if ((is_type_conversion(tok.value) ||
+                     strcmp(tok.value, "int") == 0 || strcmp(tok.value, "float") == 0 ||
+                     strcmp(tok.value, "string") == 0 || strcmp(tok.value, "bool") == 0 ||
+                     strcmp(tok.value, "char") == 0) && lexer_peek(lexer).type == TOKEN_LPAREN) {
+                    int _ck_int = (strcmp(tok.value,"toint")==0||strcmp(tok.value,"int")==0);
+                    int _ck_float = (strcmp(tok.value,"tofloat")==0||strcmp(tok.value,"float")==0);
+                    int _ck_str = (strcmp(tok.value,"tostring")==0||strcmp(tok.value,"string")==0);
+                    int _ck_bool = (strcmp(tok.value,"tobool")==0||strcmp(tok.value,"bool")==0);
+                    int _ck_char = (strcmp(tok.value,"tochar")==0||strcmp(tok.value,"char")==0);
                     lexer_next(lexer); /* consume ( */
                     char inner[MAX_STRING_LEN];
                     int ipos = 0;
@@ -2227,8 +2236,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         /* escaped-quote literal form: \"...\" */
                         is_simple_str_lit = 1; lit_start = 2; lit_end = ipos - 2;
                     }
-                    /* Validate numeric string literals for toint/tofloat */
-                    if (is_simple_str_lit && (strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tofloat") == 0)) {
+                    /* Validate numeric string literals for toint/tofloat (and aliases) */
+                    if (is_simple_str_lit && (_ck_int || _ck_float)) {
                         const char *sv = inner + lit_start;
                         int slen = lit_end - lit_start;
                         /* allow optional sign, digits, optional .digits */
@@ -2250,43 +2259,66 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         }
                     }
 
-                    /* Compile complex args containing function calls to proper C expressions.
-                       Raw token text is kept for simple cases to preserve existing behavior. */
-                    char inner_c[MAX_STRING_LEN];
+                    /* Determine arg form/type. Compile complex expressions; keep simple idents/lits raw. */
+                    char inner_c[MAX_STRING_LEN]; inner_c[0] = '\0';
                     const char *inner_expr = inner;
-                    int has_call = 0;
-                    if (!is_num_lit && !is_simple_str_lit) {
-                        int inq = 0, d = 0; char qc = 0;
-                        for (int i = 0; i < ipos; i++) {
-                            char c = inner[i];
-                            if (inq) { if (c == '\\' && i + 1 < ipos) { i++; continue; } if (c == qc) inq = 0; continue; }
-                            if (c == '"' || c == '\'') { inq = 1; qc = c; continue; }
-                            if (c == '(') { if (i > 0 && (isalnum((unsigned char)inner[i-1]) || inner[i-1] == '_')) has_call = 1; d++; }
-                            else if (c == ')') { if (d > 0) d--; }
+                    VarType inner_ctype = TYPE_STRING;
+                    int inner_compiled = 0;
+                    int is_simple_ident_arg = 0;
+                    if (is_num_lit) {
+                        inner_ctype = num_has_dot ? TYPE_FLOAT : TYPE_INT;
+                    } else if (is_simple_str_lit) {
+                        inner_ctype = TYPE_STRING;
+                    } else {
+                        /* Check if simple identifier (optionally with no complex ops) */
+                        int simple_ident = 0;
+                        {
+                            const char *p = inner; while (*p==' '||*p=='\t') p++;
+                            if (isalpha((unsigned char)*p) || *p=='_') {
+                                const char *q = p+1;
+                                while (isalnum((unsigned char)*q) || *q=='_') q++;
+                                while (*q==' '||*q=='\t') q++;
+                                if (*q=='\0') simple_ident = 1;
+                            }
+                        }
+                        if (simple_ident) {
+                            is_simple_ident_arg = 1;
+                            char mname[MAX_IDENTIFIER_LEN]; mangle_name(inner, mname, MAX_IDENTIFIER_LEN);
+                            if (symbol_table_has(table, mname)) {
+                                inner_ctype = symbol_table_get(table, mname);
+                                inner_expr = symbol_table_get_cname(table, mname);
+                            } else if (is_bool_value(inner)) {
+                                inner_ctype = TYPE_BOOL;
+                                inner_expr = inner;
+                            } else {
+                                inner_ctype = TYPE_STRING;
+                                inner_expr = inner;
+                            }
+                        } else {
+                            /* Complex expression: compile */
+                            inner_ctype = parse_expression_from_string(inner, table, inner_c, sizeof(inner_c));
+                            if (inner_c[0] != '\0') { inner_expr = inner_c; inner_compiled = 1; }
+                            else { inner_ctype = TYPE_STRING; }
                         }
                     }
-                    if (has_call) {
-                        inner_c[0] = '\0';
-                        parse_expression_from_string(inner, table, inner_c, sizeof(inner_c));
-                        if (inner_c[0] != '\0') inner_expr = inner_c;
-                    }
 
-                    if (strcmp(tok.value, "toint") == 0) {
-                        /* toint(expr): numeric result */
+                    /* helper: inner is a runtime C numeric value only when compiled to numeric expr */
+                    int inner_is_cnum = inner_compiled && (inner_ctype == TYPE_INT || inner_ctype == TYPE_FLOAT || inner_ctype == TYPE_BOOL);
+                    if (_ck_int) {
                         if (is_simple_str_lit) {
-                            /* extract content and convert */
                             char sval[MAX_STRING_LEN]; int sp=0;
                             for (int i=lit_start;i<lit_end && sp<MAX_STRING_LEN-1;i++){ if(inner[i]=='\\' && i+1<lit_end) sval[sp++]=inner[++i]; else sval[sp++]=inner[i]; }
                             sval[sp]='\0';
                             pos += snprintf(out + pos, out_size - pos, "%lld", (long long)atoll(sval));
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "%lld", (long long)atoll(inner));
+                        } else if (inner_is_cnum) {
+                            pos += snprintf(out + pos, out_size - pos, "(long long)(%s)", inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "(long long)atoll(%s)", inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_INT;
-                    } else if (strcmp(tok.value, "tofloat") == 0) {
-                        /* tofloat(expr): numeric float result */
+                    } else if (_ck_float) {
                         if (is_simple_str_lit) {
                             char sval[MAX_STRING_LEN]; int sp=0;
                             for (int i=lit_start;i<lit_end && sp<MAX_STRING_LEN-1;i++){ if(inner[i]=='\\' && i+1<lit_end) sval[sp++]=inner[++i]; else sval[sp++]=inner[i]; }
@@ -2294,13 +2326,13 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%.17g", atof(sval));
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "%.17g", atof(inner));
+                        } else if (inner_is_cnum) {
+                            pos += snprintf(out + pos, out_size - pos, "(double)(%s)", inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "(double)atof(%s)", inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_FLOAT;
-                    } else if (strcmp(tok.value, "tostring") == 0) {
-                        /* string(expr): convert bool literals and number literals
-                           to quoted strings, else pass through */
+                    } else if (_ck_str) {
                         if (ipos == 4 && memcmp(inner, "true", 4) == 0) {
                             pos += snprintf(out + pos, out_size - pos, "\"true\"");
                         } else if (ipos == 5 && memcmp(inner, "false", 5) == 0) {
@@ -2311,12 +2343,15 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "\"false\"");
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
+                        } else if (inner_is_cnum && (inner_ctype == TYPE_INT || inner_ctype == TYPE_BOOL)) {
+                            pos += snprintf(out + pos, out_size - pos, "_ltng_from_int(_ltng_retbuf(), (long long)(%s))", inner_expr);
+                        } else if (inner_is_cnum && inner_ctype == TYPE_FLOAT) {
+                            pos += snprintf(out + pos, out_size - pos, "_ltng_from_double(_ltng_retbuf(), (double)(%s))", inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "%s", inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_STRING;
-                    } else if (strcmp(tok.value, "tobool") == 0) {
-                        /* bool(expr): numeric bool result (0/1 in C expressions) */
+                    } else if (_ck_bool) {
                         if (ipos == 1 && inner[0] == '0') {
                             pos += snprintf(out + pos, out_size - pos, "0");
                         } else if (is_num_lit) {
@@ -2327,45 +2362,45 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             else if (lit_end - lit_start == 1 && inner[lit_start] == '0') bv = 0;
                             else if (lit_end - lit_start == 5 && memcmp(inner + lit_start, "false", 5) == 0) bv = 0;
                             pos += snprintf(out + pos, out_size - pos, "%d", bv);
+                        } else if (inner_is_cnum && inner_ctype == TYPE_BOOL) {
+                            pos += snprintf(out + pos, out_size - pos, "((%s)?1:0)", inner_expr);
+                        } else if (inner_is_cnum) {
+                            pos += snprintf(out + pos, out_size - pos, "((%s)!=0?1:0)", inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos,
                                 "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?1:0)",
                                 inner_expr, inner_expr, inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_BOOL;
-                    } else if (strcmp(tok.value, "tochar") == 0) {
-                        /* tochar(expr): convert to single-character string */
+                    } else if (_ck_char) {
                         if (is_simple_str_lit && ipos >= 3) {
-                            /* take first character of string literal */
-                            char ch = inner[1];
-                            if (ch == '\\' && ipos >= 4) {
-                                /* keep escape sequence as-is inside string literal */
+                            char ch = inner[lit_start];
+                            if (ch == '\\' && lit_start + 1 < lit_end) {
                                 char esc[8] = {0};
-                                esc[0] = inner[1]; esc[1] = inner[2];
+                                esc[0] = inner[lit_start]; esc[1] = inner[lit_start + 1];
                                 pos += snprintf(out + pos, out_size - pos, "\"%s\"", esc);
                             } else {
                                 pos += snprintf(out + pos, out_size - pos, "\"%c\"", ch);
                             }
                         } else if (is_num_lit) {
                             int iv = (int)atoll(inner);
-                            if (iv >= 0 && iv <= 127) {
-                                if (iv == '\\' || iv == '"' || iv == '\n' || iv == '\t') {
-                                    pos += snprintf(out + pos, out_size - pos, "_ltng_ad((double)(%d))", iv);
-                                } else {
-                                    pos += snprintf(out + pos, out_size - pos, "\"%c\"", iv);
-                                }
+                            if (iv >= 0 && iv <= 127 && iv != '\\' && iv != '"' && iv != '\n' && iv != '\t' && iv != '\r' && iv != '\0') {
+                                pos += snprintf(out + pos, out_size - pos, "\"%c\"", iv);
                             } else {
-                                pos += snprintf(out + pos, out_size - pos, "\"%c\"", (unsigned char)iv);
+                                pos += snprintf(out + pos, out_size - pos, "({ char _tc[8]; int _cv=(int)(%d); if(_cv=='\\n') snprintf(_tc,8,\"\\n\"); else if(_cv=='\\t') snprintf(_tc,8,\"\\t\"); else if(_cv=='\\r') snprintf(_tc,8,\"\\r\"); else if(_cv=='\\\\') snprintf(_tc,8,\"\\\\\"); else if(_cv=='\\\"') snprintf(_tc,8,\"\\\"\"); else { _tc[0]=(char)_cv; _tc[1]=0; } _ltng_as(_tc); })", iv);
                             }
+                        } else if (inner_is_cnum) {
+                            pos += snprintf(out + pos, out_size - pos,
+                                "({ char _tc[2]; _tc[0]=(char)(int)(%s); _tc[1]=0; _ltng_as(_tc); })",
+                                inner_expr);
                         } else {
-                            /* runtime: if numeric string use char code, else first char */
                             pos += snprintf(out + pos, out_size - pos,
                                 "_ltng_as((_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0})))",
                                 inner_expr, inner_expr, inner_expr, inner_expr);
                         }
-                        if (!type_locked) result_type = TYPE_STRING;
+                        if (!type_locked) result_type = TYPE_CHAR;
                     }
-                    break;
+                    continue;
                 }
                 if (is_bool_value(tok.value)) {
                     pos += snprintf(out + pos, out_size - pos, "%s",
@@ -3420,15 +3455,15 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                     /* typeof(toint("5")) → "int", typeof(tofloat("5")) → "float",
                        typeof(tostring("x")) → "string", typeof(tochar("x")) → "char",
                        typeof(tobool("t")) → "bool" */
-                    if (strncmp(vname, "toint(", 6) == 0) {
+                    if (strncmp(vname, "toint(", 6) == 0 || strncmp(vname, "int(", 4) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
-                    } else if (strncmp(vname, "tofloat(", 8) == 0) {
+                    } else if (strncmp(vname, "tofloat(", 8) == 0 || strncmp(vname, "float(", 6) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "float");
-                    } else if (strncmp(vname, "tostring(", 9) == 0) {
+                    } else if (strncmp(vname, "tostring(", 9) == 0 || strncmp(vname, "string(", 7) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
-                    } else if (strncmp(vname, "tochar(", 7) == 0) {
+                    } else if (strncmp(vname, "tochar(", 7) == 0 || strncmp(vname, "char(", 5) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "char");
-                    } else if (strncmp(vname, "tobool(", 7) == 0) {
+                    } else if (strncmp(vname, "tobool(", 7) == 0 || strncmp(vname, "bool(", 5) == 0) {
                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
                     } else {
                         /* typeof(func(...)) for user-defined functions */
@@ -3528,10 +3563,15 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                         int folded = 0;
                         const char *conv_name = NULL; int prefix = 0;
                         if (strncmp(vname, "toint(", 6) == 0) { conv_name = "toint"; prefix = 6; }
+                        else if (strncmp(vname, "int(", 4) == 0) { conv_name = "toint"; prefix = 4; }
                         else if (strncmp(vname, "tofloat(", 8) == 0) { conv_name = "tofloat"; prefix = 8; }
+                        else if (strncmp(vname, "float(", 6) == 0) { conv_name = "tofloat"; prefix = 6; }
                         else if (strncmp(vname, "tostring(", 9) == 0) { conv_name = "tostring"; prefix = 9; }
+                        else if (strncmp(vname, "string(", 7) == 0) { conv_name = "tostring"; prefix = 7; }
                         else if (strncmp(vname, "tobool(", 7) == 0) { conv_name = "tobool"; prefix = 7; }
+                        else if (strncmp(vname, "bool(", 5) == 0) { conv_name = "tobool"; prefix = 5; }
                         else if (strncmp(vname, "tochar(", 7) == 0) { conv_name = "tochar"; prefix = 7; }
+                        else if (strncmp(vname, "char(", 5) == 0) { conv_name = "tochar"; prefix = 5; }
                         if (conv_name && vname[vlen - 1] == ')') {
                             char inner[MAX_STRING_LEN];
                             int ilen = vlen - prefix - 1; if (ilen < 0) ilen = 0;
@@ -3679,11 +3719,11 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             return 0;
         }
         VarType cvt;
-        if (strcmp(arg.value, "toint") == 0) cvt = TYPE_INT;
-        else if (strcmp(arg.value, "tofloat") == 0) cvt = TYPE_FLOAT;
-        else if (strcmp(arg.value, "tostring") == 0) cvt = TYPE_STRING;
-        else if (strcmp(arg.value, "tochar") == 0) cvt = TYPE_CHAR;
-        else cvt = TYPE_BOOL; /* tobool */
+        if (strcmp(arg.value, "toint") == 0 || strcmp(arg.value, "int") == 0) cvt = TYPE_INT;
+        else if (strcmp(arg.value, "tofloat") == 0 || strcmp(arg.value, "float") == 0) cvt = TYPE_FLOAT;
+        else if (strcmp(arg.value, "tostring") == 0 || strcmp(arg.value, "string") == 0) cvt = TYPE_STRING;
+        else if (strcmp(arg.value, "tochar") == 0 || strcmp(arg.value, "char") == 0) cvt = TYPE_CHAR;
+        else cvt = TYPE_BOOL; /* tobool/bool */
         result->type = TOKEN_STRING;
         strncpy(result->value, var_type_name(cvt), MAX_STRING_LEN - 1);
         result->value[MAX_STRING_LEN - 1] = '\0';
@@ -4245,15 +4285,15 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                             
                             /* typeof(toint("5")) → "int", typeof(tostring("x")) → "string",
                                typeof(tobool("t")) → "bool", typeof(tofloat("5")) → "float", typeof(tochar("x")) → "char" */
-                            if (strncmp(vname, "toint(", 6) == 0) {
+                            if (strncmp(vname, "toint(", 6) == 0 || strncmp(vname, "int(", 4) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
-                            } else if (strncmp(vname, "tofloat(", 8) == 0) {
+                            } else if (strncmp(vname, "tofloat(", 8) == 0 || strncmp(vname, "float(", 6) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "float");
-                            } else if (strncmp(vname, "tostring(", 9) == 0) {
+                            } else if (strncmp(vname, "tostring(", 9) == 0 || strncmp(vname, "string(", 7) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
-                            } else if (strncmp(vname, "tochar(", 7) == 0) {
+                            } else if (strncmp(vname, "tochar(", 7) == 0 || strncmp(vname, "char(", 5) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "char");
-                            } else if (strncmp(vname, "tobool(", 7) == 0) {
+                            } else if (strncmp(vname, "tobool(", 7) == 0 || strncmp(vname, "bool(", 5) == 0) {
                                 rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
                             } else {
                                 /* typeof(func(...)) for user-defined functions */
@@ -4567,8 +4607,10 @@ static void append_arg_expr(char *out, int *pos, int out_size, ASTNode *a) {
         *pos += snprintf(out + *pos, rem, "%s", a->value);
     } else if (a->is_variable && a->value[0] != '\0') {
         *pos += snprintf(out + *pos, rem, "%s", a->value);
-    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0') {
+    } else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT || a->var_type == TYPE_CHAR) && a->value[0] != '\0') {
         *pos += snprintf(out + *pos, rem, "%s", a->value);
+    } else if (a->var_type == TYPE_BOOL && a->value[0] != '\0') {
+        *pos += snprintf(out + *pos, rem, "((%s)?\"true\":\"false\")", a->value);
     } else if (a->value[0] == '\0') {
         *pos += snprintf(out + *pos, rem, "\"\"");
     } else {
@@ -4682,8 +4724,10 @@ static void append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char 
                 p += snprintf(next_expr + p, rem, ",%s", a->value);
             else if (a->is_variable && a->value[0] != '\0')
                 p += snprintf(next_expr + p, rem, ",%s", a->value);
-            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0')
+            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT || a->var_type == TYPE_CHAR) && a->value[0] != '\0')
                 p += snprintf(next_expr + p, rem, ",%s", a->value);
+            else if (a->var_type == TYPE_BOOL && a->value[0] != '\0')
+                p += snprintf(next_expr + p, rem, ",((%s)?\"true\":\"false\")", a->value);
             else if (a->value[0] == '\0')
                 p += snprintf(next_expr + p, rem, ",\"\"");
             else
@@ -4806,8 +4850,10 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
                 p += snprintf(next_expr + p, rem, ",%s", a->value);
             else if (a->is_variable && a->value[0] != '\0')
                 p += snprintf(next_expr + p, rem, ",%s", a->value);
-            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT) && a->value[0] != '\0')
+            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT || a->var_type == TYPE_CHAR) && a->value[0] != '\0')
                 p += snprintf(next_expr + p, rem, ",%s", a->value);
+            else if (a->var_type == TYPE_BOOL && a->value[0] != '\0')
+                p += snprintf(next_expr + p, rem, ",((%s)?\"true\":\"false\")", a->value);
             else if (a->value[0] == '\0')
                 p += snprintf(next_expr + p, rem, ",\"\"");
             else
@@ -5329,7 +5375,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) snprintf(expr,sizeof(expr),"\"%s\"", (strcmp(arg.value,"true")==0||strcmp(arg.value,"t")==0)?"true":"false");
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"%s", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"\"\""); }
                 } else { /* tochar/char */
-                    expr_type = TYPE_STRING;
+                    expr_type = TYPE_CHAR;
                     if (arg.type == TOKEN_STRING) {
                         if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"%c%c\"", arg.value[0], arg.value[1]);
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
@@ -5357,15 +5403,21 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     expr_type = TYPE_BOOL;
                     if (ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"%s", compiled);
                     else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0)?\"true\":\"false\")", compiled, compiled, compiled);
+                } else if (strcmp(conv.value, "tochar") == 0 || strcmp(conv.value, "char") == 0) {
+                    expr_type = TYPE_CHAR;
+                    snprintf(expr,sizeof(expr),"%s", compiled);
                 } else {
                     expr_type = TYPE_STRING;
                     snprintf(expr,sizeof(expr),"%s", compiled);
                 }
             }
-            symbol_table_add_locked(table, mangled, (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0)?TYPE_BOOL:expr_type);
+            VarType _let_vt = expr_type;
+            if (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0) _let_vt = TYPE_BOOL;
+            if (strcmp(conv.value,"tochar")==0||strcmp(conv.value,"char")==0) _let_vt = TYPE_CHAR;
+            symbol_table_add_locked(table, mangled, _let_vt);
             const char *cname = symbol_table_get_cname(table, mangled);
             ASTNode *node = create_node(NODE_LET, cname, expr);
-            node->var_type = (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0)?TYPE_BOOL:expr_type;
+            node->var_type = _let_vt;
             if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) node->is_expr = 1;
             else if (node->var_type == TYPE_BOOL) {
                 node->is_expr = 0; /* "true"/"false" literal strings stored as bool value */
@@ -6489,7 +6541,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) snprintf(expr,sizeof(expr),"\"%s\"", (strcmp(arg.value,"true")==0||strcmp(arg.value,"t")==0)?"true":"false");
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"%s", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"\"\""); }
                 } else { /* tochar/char */
-                    expr_type = TYPE_STRING;
+                    expr_type = TYPE_CHAR;
                     if (arg.type == TOKEN_STRING) {
                         if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"%c%c\"", arg.value[0], arg.value[1]);
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
@@ -6516,16 +6568,22 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     expr_type = TYPE_BOOL;
                     if (ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"%s", compiled);
                     else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0)?\"true\":\"false\")", compiled, compiled, compiled);
+                } else if (strcmp(conv.value, "tochar") == 0 || strcmp(conv.value, "char") == 0) {
+                    expr_type = TYPE_CHAR;
+                    snprintf(expr,sizeof(expr),"%s", compiled);
                 } else {
                     expr_type = TYPE_STRING;
                     snprintf(expr,sizeof(expr),"%s", compiled);
                 }
             }
-            if (!check_set_type_immutable(table, mangled, expr_type, set_tok.line, set_tok.col, lexer))
+            VarType _set_vt = expr_type;
+            if (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0) _set_vt = TYPE_BOOL;
+            if (strcmp(conv.value,"tochar")==0||strcmp(conv.value,"char")==0) _set_vt = TYPE_CHAR;
+            if (!check_set_type_immutable(table, mangled, _set_vt, set_tok.line, set_tok.col, lexer))
                 return;
-            symbol_table_update(table, mangled, expr_type);
+            symbol_table_update(table, mangled, _set_vt);
             ASTNode *node = create_node(NODE_SET, cname, expr);
-            node->var_type = expr_type;
+            node->var_type = _set_vt;
             if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) node->is_expr = 1;
             else if (node->var_type == TYPE_BOOL) {
                 node->is_expr = 0;

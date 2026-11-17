@@ -1,0 +1,1 @@
+if (tofloat("bad") > 1) { write(1) }
