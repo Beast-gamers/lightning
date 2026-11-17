@@ -1512,6 +1512,41 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
         pad(out, indent); fprintf(out, "%s[0] = '\\0';\n", target);
         return;
     }
+    /* Enforce annotated function return type coercion (int/float) for distinct semantics. */
+    if (g_codegen_current_fn && g_codegen_current_fn->has_return_type) {
+        VarType want = g_codegen_current_fn->return_type;
+        if (want == TYPE_INT) {
+            pad(out, indent);
+            if (node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
+                node->var_type == TYPE_OBJECT || node->var_type == TYPE_NULL ||
+                strstr(node->value, "_ltng_add_sn") == node->value) {
+                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s));\n",
+                    target, node->value[0] ? node->value : "\"0\"");
+            } else if (node->var_type == TYPE_FLOAT) {
+                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(double)(%s));\n",
+                    target, node->value[0] ? node->value : "0");
+            } else if (node->var_type == TYPE_BOOL) {
+                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)((%s)?1:0));\n",
+                    target, node->value[0] ? node->value : "0");
+            } else {
+                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(%s));\n",
+                    target, node->value[0] ? node->value : "0");
+            }
+            return;
+        } else if (want == TYPE_FLOAT) {
+            pad(out, indent);
+            if (node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
+                node->var_type == TYPE_OBJECT || node->var_type == TYPE_NULL ||
+                strstr(node->value, "_ltng_add_sn") == node->value) {
+                fprintf(out, "snprintf(%s, 256, \"%%g\", (double)atof(%s));\n",
+                    target, node->value[0] ? node->value : "\"0\"");
+            } else {
+                fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+                    target, node->value[0] ? node->value : "0");
+            }
+            return;
+        }
+    }
     if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
         node->var_type == TYPE_NULL ||
         strstr(node->value, "_ltng_add_sn") == node->value) {
