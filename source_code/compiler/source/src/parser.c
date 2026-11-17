@@ -1808,7 +1808,17 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                             ((*ltmp=='-'||*ltmp=='+'||isdigit((unsigned char)*ltmp))))) {
                     is_str_cmp = 0;
                 } else if (lv || rv) {
-                    is_str_cmp = 1;
+                    /* Bool-ternary int expressions (e.g. (cond?1:0)) compared with 0/1 are numeric comparisons */
+                    int l_bool_tern = (strstr(ltmp,"?1:0")!=NULL || strstr(ltmp,"? 1:0")!=NULL || strstr(ltmp,"?1 : 0")!=NULL || strstr(ltmp,"? 1 : 0")!=NULL);
+                    int r_bool_tern = (strstr(rtmp,"?1:0")!=NULL || strstr(rtmp,"? 1:0")!=NULL || strstr(rtmp,"?1 : 0")!=NULL || strstr(rtmp,"? 1 : 0")!=NULL);
+                    const char *ltp = ltmp; while(*ltp=='('||*ltp==' '||*ltp=='\t') ltp++;
+                    const char *rtp = rtmp; while(*rtp=='('||*rtp==' '||*rtp=='\t') rtp++;
+                    int l_num01 = (strcmp(ltp,"0")==0 || strcmp(ltp,"1")==0);
+                    int r_num01 = (strcmp(rtp,"0")==0 || strcmp(rtp,"1")==0);
+                    if ((l_bool_tern && r_num01) || (r_bool_tern && l_num01))
+                        is_str_cmp = 0;
+                    else
+                        is_str_cmp = 1;
                 }
             }
             if (is_str_cmp) {
@@ -1881,6 +1891,14 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                                 char num[128]; strncpy(num, lq+1, sizeof(num)-1); num[sizeof(num)-1]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
                                 if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", num, ops[i], right);
+                            } else {
+                                /* bool/int ternary expr compared with quoted "0"/"1" numeric literal: compare numerically */
+                                int lq_qnum = (lq[0]=='"' && (strcmp(lq,"\"0\"")==0 || strcmp(lq,"\"1\"")==0));
+                                int rq_qnum = (rq[0]=='"' && (strcmp(rq,"\"0\"")==0 || strcmp(rq,"\"1\"")==0));
+                                int l_tern = (strstr(lq,"?1:0")!=NULL || strstr(lq,"? 1 : 0")!=NULL);
+                                int r_tern = (strstr(rq,"?1:0")!=NULL || strstr(rq,"? 1 : 0")!=NULL);
+                                if (lq_qnum && r_tern) snprintf(buf, buf_size, "(%s) %s (%s)", lq[1]=='1'?"1":"0", ops[i], rq);
+                                else if (rq_qnum && l_tern) snprintf(buf, buf_size, "(%s) %s (%s)", lq, ops[i], rq[1]=='1'?"1":"0");
                             }
                         }
                     }
@@ -2155,11 +2173,19 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 pending_divmod = 0;
                 break;
             case TOKEN_STRING:
-                if (arithmetic_used) {
-                    pos += snprintf(out + pos, out_size - pos, "\"%s\"", tok.value);
-                    if (!type_locked) result_type = TYPE_STRING;
-                } else {
-                    pos += snprintf(out + pos, out_size - pos, "\"%s\"", tok.value);
+                {
+                    if (pos < out_size - 1) out[pos++] = '"';
+                    for (const char *sp = tok.value; *sp && pos < out_size - 2; sp++) {
+                        unsigned char c = (unsigned char)*sp;
+                        if (c == '\\') { out[pos++]='\\'; out[pos++]='\\'; }
+                        else if (c == '"') { out[pos++]='\\'; out[pos++]='"'; }
+                        else if (c == '\n') { out[pos++]='\\'; out[pos++]='n'; }
+                        else if (c == '\t') { out[pos++]='\\'; out[pos++]='t'; }
+                        else if (c == '\r') { out[pos++]='\\'; out[pos++]='r'; }
+                        else { out[pos++] = c; }
+                    }
+                    if (pos < out_size - 1) out[pos++] = '"';
+                    out[pos] = '\0';
                     if (!type_locked) result_type = TYPE_STRING;
                 }
                 break;
@@ -2312,6 +2338,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%lld", (long long)atoll(sval));
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "%lld", (long long)atoll(inner));
+                        } else if (is_bool_value(inner)) {
+                            pos += snprintf(out + pos, out_size - pos, "%d", (strcmp(inner,"true")==0||strcmp(inner,"t")==0)?1:0);
                         } else if (inner_is_cnum) {
                             pos += snprintf(out + pos, out_size - pos, "(long long)(%s)", inner_expr);
                         } else {
@@ -2326,6 +2354,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%.17g", atof(sval));
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "%.17g", atof(inner));
+                        } else if (is_bool_value(inner)) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", (strcmp(inner,"true")==0||strcmp(inner,"t")==0)?"1.0":"0.0");
                         } else if (inner_is_cnum) {
                             pos += snprintf(out + pos, out_size - pos, "(double)(%s)", inner_expr);
                         } else {
@@ -2343,7 +2373,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "\"false\"");
                         } else if (is_num_lit) {
                             pos += snprintf(out + pos, out_size - pos, "\"%s\"", inner);
-                        } else if (inner_is_cnum && (inner_ctype == TYPE_INT || inner_ctype == TYPE_BOOL)) {
+                        } else if (inner_is_cnum && inner_ctype == TYPE_BOOL) {
+                            pos += snprintf(out + pos, out_size - pos, "((%s)?\"true\":\"false\")", inner_expr);
+                        } else if (inner_is_cnum && inner_ctype == TYPE_INT) {
                             pos += snprintf(out + pos, out_size - pos, "_ltng_from_int(_ltng_retbuf(), (long long)(%s))", inner_expr);
                         } else if (inner_is_cnum && inner_ctype == TYPE_FLOAT) {
                             pos += snprintf(out + pos, out_size - pos, "_ltng_from_double(_ltng_retbuf(), (double)(%s))", inner_expr);
@@ -2358,9 +2390,11 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%d", (atof(inner)!=0.0)?1:0);
                         } else if (is_simple_str_lit) {
                             int bv = 1;
-                            if (lit_end - lit_start == 0) bv = 0;
-                            else if (lit_end - lit_start == 1 && inner[lit_start] == '0') bv = 0;
-                            else if (lit_end - lit_start == 5 && memcmp(inner + lit_start, "false", 5) == 0) bv = 0;
+                            int slen = lit_end - lit_start;
+                            if (slen == 0) bv = 0;
+                            else if (slen == 1 && inner[lit_start] == '0') bv = 0;
+                            else if (slen == 1 && inner[lit_start] == 'f') bv = 0;
+                            else if (slen == 5 && memcmp(inner + lit_start, "false", 5) == 0) bv = 0;
                             pos += snprintf(out + pos, out_size - pos, "%d", bv);
                         } else if (inner_is_cnum && inner_ctype == TYPE_BOOL) {
                             pos += snprintf(out + pos, out_size - pos, "((%s)?1:0)", inner_expr);
@@ -2368,8 +2402,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "((%s)!=0?1:0)", inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos,
-                                "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0?1:0)",
-                                inner_expr, inner_expr, inner_expr);
+                                "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0&&strcmp(%s,\"f\")!=0?1:0)",
+                                inner_expr, inner_expr, inner_expr, inner_expr);
                         }
                         if (!type_locked) result_type = TYPE_BOOL;
                     } else if (_ck_char) {
@@ -3615,7 +3649,7 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                                 if (is_num_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", (atof(inner)!=0.0)?"true":"false"); folded=1; }
                                 else if (is_bool_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", (inner[0]=='t')?"true":"false"); folded=1; }
                                 else if (is_str_lit) {
-                                    if (ilen==2 || (ilen==3 && inner[1]=='0') || (ilen==7 && memcmp(inner+1,"false",5)==0))
+                                    if (ilen==2 || (ilen==3 && inner[1]=='0') || (ilen==3 && inner[1]=='f') || (ilen==7 && memcmp(inner+1,"false",5)==0))
                                         rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false");
                                     else rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true");
                                     folded=1;
@@ -5369,19 +5403,52 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     }
                 } else if (strcmp(conv.value, "tostring") == 0 || strcmp(conv.value, "string") == 0) {
                     expr_type = TYPE_STRING;
-                    if (arg.type == TOKEN_STRING) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
-                    else if (arg.type == TOKEN_CHAR) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
-                    else if (arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
+                    if (arg.type == TOKEN_STRING || arg.type == TOKEN_CHAR) {
+                        int p = 0;
+                        expr[p++] = '"';
+                        for (const char *sp = arg.value; *sp && p < (int)sizeof(expr)-3; sp++) {
+                            unsigned char c = (unsigned char)*sp;
+                            if (c=='\\') { expr[p++]='\\'; expr[p++]='\\'; }
+                            else if (c=='"') { expr[p++]='\\'; expr[p++]='"'; }
+                            else if (c=='\n') { expr[p++]='\\'; expr[p++]='n'; }
+                            else if (c=='\t') { expr[p++]='\\'; expr[p++]='t'; }
+                            else if (c=='\r') { expr[p++]='\\'; expr[p++]='r'; }
+                            else expr[p++] = c;
+                        }
+                        expr[p++] = '"'; expr[p] = '\0';
+                    } else if (arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
                     else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) snprintf(expr,sizeof(expr),"\"%s\"", (strcmp(arg.value,"true")==0||strcmp(arg.value,"t")==0)?"true":"false");
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"%s", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"\"\""); }
                 } else { /* tochar/char */
                     expr_type = TYPE_CHAR;
                     if (arg.type == TOKEN_STRING) {
-                        if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"%c%c\"", arg.value[0], arg.value[1]);
+                        unsigned char ch = (unsigned char)(arg.value[0]?arg.value[0]:0);
+                        if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"\\%c\"", arg.value[1]);
+                        else if (ch=='\n') snprintf(expr,sizeof(expr),"\"\\n\"");
+                        else if (ch=='\t') snprintf(expr,sizeof(expr),"\"\\t\"");
+                        else if (ch=='\r') snprintf(expr,sizeof(expr),"\"\\r\"");
+                        else if (ch=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
+                        else if (ch=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
+                        else snprintf(expr,sizeof(expr),"\"%c\"", ch);
+                    } else if (arg.type == TOKEN_INT_LIT) {
+                        int iv = (int)atoi(arg.value);
+                        if (iv=='\n') snprintf(expr,sizeof(expr),"\"\\n\"");
+                        else if (iv=='\t') snprintf(expr,sizeof(expr),"\"\\t\"");
+                        else if (iv=='\r') snprintf(expr,sizeof(expr),"\"\\r\"");
+                        else if (iv=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
+                        else if (iv=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
+                        else if (iv>=32 && iv<=126) snprintf(expr,sizeof(expr),"\"%c\"", (char)iv);
+                        else snprintf(expr,sizeof(expr),"({ char _tc[8]; int _cv=%d; if(_cv=='\\n') snprintf(_tc,8,\"\\n\"); else if(_cv=='\\t') snprintf(_tc,8,\"\\t\"); else if(_cv=='\\r') snprintf(_tc,8,\"\\r\"); else if(_cv=='\\\\') snprintf(_tc,8,\"\\\\\"); else if(_cv=='\\\"') snprintf(_tc,8,\"\\\"\"); else { _tc[0]=(char)_cv; _tc[1]=0; } _ltng_as(_tc); })", iv);
+                    } else if (arg.type == TOKEN_CHAR) {
+                        /* token value for char literal is the char content (possibly escaped like n or \\) */
+                        if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"\\%c\"", arg.value[1]);
+                        else if (arg.value[0]=='\n') snprintf(expr,sizeof(expr),"\"\\n\"");
+                        else if (arg.value[0]=='\t') snprintf(expr,sizeof(expr),"\"\\t\"");
+                        else if (arg.value[0]=='\r') snprintf(expr,sizeof(expr),"\"\\r\"");
+                        else if (arg.value[0]=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
+                        else if (arg.value[0]=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
-                    } else if (arg.type == TOKEN_INT_LIT) snprintf(expr,sizeof(expr),"\"%c\"", (unsigned char)atoi(arg.value));
-                    else if (arg.type == TOKEN_CHAR) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
-                    else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
+                    } else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
                 }
             }
             if (!handled) {
@@ -5393,16 +5460,17 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 if (compiled[0] == '\0') snprintf(compiled, sizeof(compiled), "0");
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
-                    if (ctype == TYPE_INT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    if (ctype == TYPE_INT || ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"(long long)(%s)", compiled);
                     else snprintf(expr,sizeof(expr),"(long long)atoll(%s)", compiled);
                 } else if (strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0) {
                     expr_type = TYPE_FLOAT;
-                    if (ctype == TYPE_FLOAT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    if (ctype == TYPE_FLOAT) snprintf(expr,sizeof(expr),"(double)(%s)", compiled);
+                    else if (ctype == TYPE_INT || ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"(double)(%s)", compiled);
                     else snprintf(expr,sizeof(expr),"(double)atof(%s)", compiled);
                 } else if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
                     expr_type = TYPE_BOOL;
                     if (ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"%s", compiled);
-                    else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0)?\"true\":\"false\")", compiled, compiled, compiled);
+                    else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0&&strcmp(%s,\"f\")!=0)?\"true\":\"false\")", compiled, compiled, compiled, compiled);
                 } else if (strcmp(conv.value, "tochar") == 0 || strcmp(conv.value, "char") == 0) {
                     expr_type = TYPE_CHAR;
                     snprintf(expr,sizeof(expr),"%s", compiled);
@@ -5707,7 +5775,8 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
     Token value;
 
     int is_type_conv_call = (next.type == TOKEN_IDENT && is_type_conversion(next.value) &&
-                             lexer_peek(lexer).type == TOKEN_LPAREN);
+                             lexer->current + 1 < lexer->count &&
+                             lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN);
 
     /* const requires a value assignment: const x = <value>
        Type-only declarations like 'const x = int' are not supported. */
@@ -6535,19 +6604,52 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     }
                 } else if (strcmp(conv.value, "tostring") == 0 || strcmp(conv.value, "string") == 0) {
                     expr_type = TYPE_STRING;
-                    if (arg.type == TOKEN_STRING) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
-                    else if (arg.type == TOKEN_CHAR) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
-                    else if (arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
+                    if (arg.type == TOKEN_STRING || arg.type == TOKEN_CHAR) {
+                        int p = 0;
+                        expr[p++] = '"';
+                        for (const char *sp = arg.value; *sp && p < (int)sizeof(expr)-3; sp++) {
+                            unsigned char c = (unsigned char)*sp;
+                            if (c=='\\') { expr[p++]='\\'; expr[p++]='\\'; }
+                            else if (c=='"') { expr[p++]='\\'; expr[p++]='"'; }
+                            else if (c=='\n') { expr[p++]='\\'; expr[p++]='n'; }
+                            else if (c=='\t') { expr[p++]='\\'; expr[p++]='t'; }
+                            else if (c=='\r') { expr[p++]='\\'; expr[p++]='r'; }
+                            else expr[p++] = c;
+                        }
+                        expr[p++] = '"'; expr[p] = '\0';
+                    } else if (arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
                     else if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) snprintf(expr,sizeof(expr),"\"%s\"", (strcmp(arg.value,"true")==0||strcmp(arg.value,"t")==0)?"true":"false");
                     else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) snprintf(expr,sizeof(expr),"%s", symbol_table_get_cname(table,m)); else snprintf(expr,sizeof(expr),"\"\""); }
                 } else { /* tochar/char */
                     expr_type = TYPE_CHAR;
                     if (arg.type == TOKEN_STRING) {
-                        if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"%c%c\"", arg.value[0], arg.value[1]);
+                        unsigned char ch = (unsigned char)(arg.value[0]?arg.value[0]:0);
+                        if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"\\%c\"", arg.value[1]);
+                        else if (ch=='\n') snprintf(expr,sizeof(expr),"\"\\n\"");
+                        else if (ch=='\t') snprintf(expr,sizeof(expr),"\"\\t\"");
+                        else if (ch=='\r') snprintf(expr,sizeof(expr),"\"\\r\"");
+                        else if (ch=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
+                        else if (ch=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
+                        else snprintf(expr,sizeof(expr),"\"%c\"", ch);
+                    } else if (arg.type == TOKEN_INT_LIT) {
+                        int iv = (int)atoi(arg.value);
+                        if (iv=='\n') snprintf(expr,sizeof(expr),"\"\\n\"");
+                        else if (iv=='\t') snprintf(expr,sizeof(expr),"\"\\t\"");
+                        else if (iv=='\r') snprintf(expr,sizeof(expr),"\"\\r\"");
+                        else if (iv=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
+                        else if (iv=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
+                        else if (iv>=32 && iv<=126) snprintf(expr,sizeof(expr),"\"%c\"", (char)iv);
+                        else snprintf(expr,sizeof(expr),"({ char _tc[8]; int _cv=%d; if(_cv=='\\n') snprintf(_tc,8,\"\\n\"); else if(_cv=='\\t') snprintf(_tc,8,\"\\t\"); else if(_cv=='\\r') snprintf(_tc,8,\"\\r\"); else if(_cv=='\\\\') snprintf(_tc,8,\"\\\\\"); else if(_cv=='\\\"') snprintf(_tc,8,\"\\\"\"); else { _tc[0]=(char)_cv; _tc[1]=0; } _ltng_as(_tc); })", iv);
+                    } else if (arg.type == TOKEN_CHAR) {
+                        /* token value for char literal is the char content (possibly escaped like n or \\) */
+                        if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"\\%c\"", arg.value[1]);
+                        else if (arg.value[0]=='\n') snprintf(expr,sizeof(expr),"\"\\n\"");
+                        else if (arg.value[0]=='\t') snprintf(expr,sizeof(expr),"\"\\t\"");
+                        else if (arg.value[0]=='\r') snprintf(expr,sizeof(expr),"\"\\r\"");
+                        else if (arg.value[0]=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
+                        else if (arg.value[0]=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
                         else snprintf(expr,sizeof(expr),"\"%c\"", arg.value[0]?arg.value[0]:'\0');
-                    } else if (arg.type == TOKEN_INT_LIT) snprintf(expr,sizeof(expr),"\"%c\"", (unsigned char)atoi(arg.value));
-                    else if (arg.type == TOKEN_CHAR) snprintf(expr,sizeof(expr),"\"%s\"", arg.value);
-                    else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
+                    } else { char m[MAX_IDENTIFIER_LEN]; mangle_name(arg.value,m,MAX_IDENTIFIER_LEN); if(symbol_table_has(table,m)) { const char *cn=symbol_table_get_cname(table,m); snprintf(expr,sizeof(expr),"(_ltng_is_num_str(%s)?((char[]){(char)atoi(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0}))",cn,cn,cn,cn);} else snprintf(expr,sizeof(expr),"\"\""); }
                 }
             }
             if (!handled) {
@@ -6558,16 +6660,17 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                 if (compiled[0] == '\0') snprintf(compiled, sizeof(compiled), "0");
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
-                    if (ctype == TYPE_INT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    if (ctype == TYPE_INT || ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"(long long)(%s)", compiled);
                     else snprintf(expr,sizeof(expr),"(long long)atoll(%s)", compiled);
                 } else if (strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0) {
                     expr_type = TYPE_FLOAT;
-                    if (ctype == TYPE_FLOAT) snprintf(expr,sizeof(expr),"%s", compiled);
+                    if (ctype == TYPE_FLOAT) snprintf(expr,sizeof(expr),"(double)(%s)", compiled);
+                    else if (ctype == TYPE_INT || ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"(double)(%s)", compiled);
                     else snprintf(expr,sizeof(expr),"(double)atof(%s)", compiled);
                 } else if (strcmp(conv.value, "tobool") == 0 || strcmp(conv.value, "bool") == 0) {
                     expr_type = TYPE_BOOL;
                     if (ctype == TYPE_BOOL) snprintf(expr,sizeof(expr),"%s", compiled);
-                    else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0)?\"true\":\"false\")", compiled, compiled, compiled);
+                    else snprintf(expr,sizeof(expr),"(((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0&&strcmp(%s,\"f\")!=0)?\"true\":\"false\")", compiled, compiled, compiled, compiled);
                 } else if (strcmp(conv.value, "tochar") == 0 || strcmp(conv.value, "char") == 0) {
                     expr_type = TYPE_CHAR;
                     snprintf(expr,sizeof(expr),"%s", compiled);
