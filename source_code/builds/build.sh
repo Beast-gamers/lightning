@@ -177,22 +177,24 @@ extract_and_run() {
     arch="$1"; shift
     marker="__LTNG_BIN_${arch}__"
     if ! grep -q "$marker" "$SELF" 2>/dev/null; then
-        return 1
+        return 127
     fi
     awk -v m="$marker" '
         $0==m {found=1; next}
         found && $0==("__END_" m) {exit}
         found {print}
-    ' "$SELF" | base64 -d > "$TMPBIN" 2>/dev/null || return 1
+    ' "$SELF" | base64 -d > "$TMPBIN" 2>/dev/null || return 127
     chmod +x "$TMPBIN" 2>/dev/null || true
     "$TMPBIN" "$@"
     return $?
 }
 '''
-tail = r'''extract_and_run "$ARCH" "$@" && exit $?
+tail = r'''extract_and_run "$ARCH" "$@"; rc=$?
+if [ "$rc" -ne 127 ]; then exit "$rc"; fi
 for a in x86_64 amd64 aarch64 arm64 i686 x86 armv7l riscv64; do
     [ "$a" = "$ARCH" ] && continue
-    extract_and_run "$a" "$@" 2>/dev/null && exit $?
+    extract_and_run "$a" "$@"; rc=$?
+    if [ "$rc" -ne 127 ]; then exit "$rc"; fi
 done
 echo "Error: No compatible binary found for architecture $ARCH" >&2
 exit 1
