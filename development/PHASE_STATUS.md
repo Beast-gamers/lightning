@@ -56,7 +56,7 @@
 
 ## Phase 1 — Type system
 
-**Status:** Partially implemented (Step 2 conversions/aliases stabilized; Step 3 division/modulo and overflow semantics completed per plan; further Phase 1 work required)
+**Status:** Partially implemented (Step 2 conversions/aliases stabilized; Step 3 division/modulo and overflow semantics completed per plan; **Step 4 in progress**; further Phase 1 work required)
 
 ### Implemented (so far)
 - Made `detect_type` distinguish float literals/values as `TYPE_FLOAT` (instead of merging to int) and improved type name reporting (`float`, `char`) in covered paths.
@@ -70,14 +70,21 @@
   - Runtime div/mod-by-zero detection throws `DivisionError: Division by zero` / `DivisionError: Modulo by zero` with traceback in covered contexts/forms, including assignments/`let`/`set` numeric expressions, `write(...)` numeric expressions, conditions, returns, call arguments, and for-loop step division. Implemented via generated-runtime helpers/macros (`_ltng_div0_*`, `_LTNG_DIV_*`, `_LTNG_NZDIV_*`/`_LTNG_NZMOD_*`), parser-side divisor checks for simple numeric operands in collected expressions, and codegen guards/rewrites.
   - Division/modulo semantics: `int/int` truncates toward zero; mixed `int`/`float` division yields `float`; modulo supported in integer numeric paths (and guarded float-mod path where applicable).
   - Overflow behavior defined and characterized: integer arithmetic uses emitted C integer operations with `long long`/64-bit parsing (`atoll`) in updated integer variable/read paths and no explicit overflow trapping (signed overflow follows underlying C/platform behavior in practice, e.g. 64-bit wraparound in characterization tests); float arithmetic uses C `double`. Added characterization/runtime tests: `development/tests/runtime/phase1_div_zero_{arg,condition,return,runtime,write}.*`, `phase1_mod_zero_runtime.*`, `phase1_overflow_semantics.*` (and updated traceback positions for earlier runtime div/mod tests to operator/divisor locations).
+- **Step 4 (in progress):** distinct `int`/`float` semantics improvements across key paths.
+  - Expression/add typing: preserve typed C arithmetic for locked/static numeric operands while retaining runtime `_ltng_add_sn` (numeric-or-concat) dispatch for untyped/dynamic values (fixed `phase5_defaults` string-concat regression).
+  - Return typing: simple `return <var>` preserves `int`/`float`/`bool` type for locked locals (improves inference/caller typing in covered cases).
+  - `typeof`: `try_parse_typeof` now supports general expression arguments (e.g. arithmetic/comparison/call/property expressions) in addition to prior simple forms.
+  - Object property access typing: expression result/type inference for `obj.field` now uses concrete field type (`int`/`float`/`bool`/`string`), fixing incorrect `typeof`/numeric typing for float and string fields in covered cases.
+  - Added/extended `development/tests/runtime/phase1_step4_int_float.*` (typed arithmetic/promotion/comparisons/conversions/set/typed local return, `typeof` on expressions/typed calls, object field typing).
 - Improved return/expression typing for conversions and direct/indirect/named/self-referential function calls (fixed regressions causing incorrect string typing and internal compile failures in affected cases) and improved comparison normalization for numeric conversion helpers.
 - Added support for explicit type declarations `let x = float` and `let x = char` (default initialization, distinct type tracking).
 - Added/updated Phase 1 tests (runtime/semantic negative), including Step 2 conversion coverage and negative cases (e.g. `development/tests/runtime/phase1_conversions*.ltng`, `development/tests/semantic/phase1_*conversion*.ltng`, and updated corpus expectations where required).
 
 ### Test results
 - Last fully verified full suite (before Step 3 increments): **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, native compile+execute validation).
-- Step 3 completion: added/updated runtime and semantic Phase 1 coverage for division/modulo/overflow (`development/tests/runtime/phase1_div_zero_{arg,condition,return,runtime,write}.*`, `development/tests/runtime/phase1_mod_zero_runtime.*`, `development/tests/runtime/phase1_overflow_semantics.*`; updated stderr traces for earlier runtime div/mod tests). Targeted verification: **all Phase 1 runtime + Phase 1 semantic negative tests pass (22/22)** with the updated compiler (native compile+execute / `--check` as applicable). Full-suite re-verification is pending (expected increase from added tests).
-- Phase 1/Step 2 runtime and semantic checks (including conversion/alias contexts and negative cases) continue to pass in targeted checks. Ad-hoc probes covered additional contexts (defaults, named args, array ops/indexing, loops/switch expressions, comparisons, `typeof`, interpolation, nesting, runtime/dynamic inputs); coverage is broad but not exhaustive for every permutation.
+- Step 3 completion: added/updated runtime and semantic Phase 1 coverage for division/modulo/overflow (`development/tests/runtime/phase1_div_zero_{arg,condition,return,runtime,write}.*`, `development/tests/runtime/phase1_mod_zero_runtime.*`, `development/tests/runtime/phase1_overflow_semantics.*`; updated stderr traces for earlier runtime div/mod tests). Targeted verification: **all Phase 1 runtime + Phase 1 semantic negative tests pass (22/22)** with the updated compiler (native compile+execute / `--check` as applicable).
+- Step 4 (latest increments): targeted verification **43/43 OK** (all Phase 1 runtime incl. `phase1_step4_int_float`, all Phase 1 semantic negatives, `phase3_arrays`, `phase4_*`, `phase5_defaults`, `phase5_named_args`, `phase5_return_types`, `phase5_closures`, `phase5_variadic`, `phase5_overload`, `runtime_smoke`, `e2e_smoke`; native compile+execute / `--check` as applicable). Full-suite re-verification is pending.
+- Phase 1/Step 2 runtime and semantic checks continue to pass in targeted checks. Ad-hoc probes covered additional contexts (defaults, named args, array ops/indexing, loops/switch expressions, comparisons, `typeof`, interpolation, nesting, runtime/dynamic inputs); coverage is broad but not exhaustive for every permutation.
 
 ### Breaking/behavior changes (documented)
 - `typeof(...)` reports `float` for float-typed values/literals in covered cases (instead of previous merged `int` behavior).
@@ -90,11 +97,12 @@
 - `development/code/tc_arithmetic.ltng`, `development/code/test_tofunc3.*`, `development/code/test_typeconv.*` (as updated for conversion semantics)
 - `development/tests/runtime/phase1_*.ltng` (+ `.expected`)
 - `development/tests/semantic/phase1_*_neg.ltng`
-- Rebuilt compiler artifacts (latest): `source_code/builds/bin/ltng*`, `source_code/builds/linux/compiler/dist/ltng_universal` (`401e625`)
+- Rebuilt compiler artifacts (partial/latest): `source_code/builds/bin/ltng` (native) updated in recent Step 3/4 increments; `source_code/builds/bin/ltng*` (other arch/universal) and `source_code/builds/linux/compiler/dist/ltng_universal` may be stale pending sync.
 - `CHANGELOG.md`, `PHASE_STATUS.md`, `development/TESTING.md`, `development/limitations.md`
 
 ### Remaining for Phase 1
 - Complete and verify: distinct `int`/`float` semantics across **all** expression/codegen/runtime paths, full type inference coverage, consistent numeric promotion rules, comprehensive type compatibility checking, and complete return-type validation.
+- Step 4 gaps to continue: typed/untyped/defaulted params and argument propagation, all return forms/inference (incl. dynamic/untyped values), assignments in all contexts, comparisons/conditions broadly, array/object element typing/propagation (array element values/`typeof` remain type-imprecise under current storage model), interpolation/formatting/printing edge cases, and remaining `typeof`/inference gaps.
 - Continue hardening Step 3 coverage as needed: runtime div/mod-by-zero guards cover common/simple divisor forms across major contexts but may miss some complex/nested divisor subexpressions or unusual emitted-expression forms; overflow policy is defined/characterized but not trapped.
 - Continue expanding required positive/negative/boundary/interaction tests (precision, boundary values, invalid/runtime conversion behavior as applicable, mixed expressions, null behavior, and broader interaction/permutation cases) and record memory checks where available. Known observed edge: non-constant conversion expressions used as `switch case` labels may emit invalid C in some forms (conversions in `switch` expressions and constant case labels tested).
 
