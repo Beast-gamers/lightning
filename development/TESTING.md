@@ -14,7 +14,7 @@ The test runner:
 3. Runs regression, negative, and categorized tests (including `development/tests/*` and the existing corpus/regression cases), compiling to `/tmp/opencode/ltng_tests/*` and executing produced native binaries.
 4. Reports `PASS/FAIL/SKIP` counts and exits non-zero on failure.
 
-Latest full suite result (current state): **PASS=156 FAIL=0 SKIP=0**.
+Latest full suite result (current state): **PASS=161 FAIL=0 SKIP=0**.
 
 ## Test categories
 

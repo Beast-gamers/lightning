@@ -23,6 +23,7 @@ All notable changes to the Lightning project in this development effort are docu
 
 ### Added
 - Phase 4 exception handling: `try`/`catch`/`finally`/`throw` with optional catch variable, custom error types (`throw CustomError("message")`), `error(type, message)`, bare rethrow inside `catch`, exception propagation through nested functions, and uncaught-exception reporting with a stack trace to stderr and exit status `1`.
+- Phase 1 Step 2 follow-up runtime/semantic coverage for conversions and aliases in additional contexts (e.g. `development/tests/runtime/phase1_conversions_step2.*`, `development/tests/semantic/phase1_conversion_{alias,condition,array,nested}_neg.ltng`), with related corpus expectation updates where required.
 - Catch objects expose `type`, `message`, `trace`, `line`, `column`, `function`, `value`, and `obj`; catch variables are block-scoped and nested catches may reuse names.
 - Call-site-aware stack traces: generated functions carry hidden call-site line/column arguments, and traces report the throw location plus each caller's call site.
 - `finally` cleanup semantics for normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides a pending return/exception, and a new exception thrown in `finally` replaces a pending one.
@@ -57,10 +58,14 @@ All notable changes to the Lightning project in this development effort are docu
 - Fixed object-literal `set` assignments to emit update semantics (not redeclarations) compatible with block-scope inline declaration behavior.
 - Corrected declaration/reference handling for block-scoped and shadowed variables in key parse/codegen paths.
 - Corrected array `slice(start, end)` runtime semantics to use 1-based start and 1-based exclusive end (with negative-index support), aligning behavior with documented examples.
+- Phase 1 Step 2 conversion stabilization: consistent `tobool` handling for `"t"/"f"/"true"/"false"/"0"/""` (including runtime/complex/interpolation paths), corrected bool↔int/float conversion emission, corrected `tostring`/`string` of bool-typed/compiled results to `"true"/"false"`, fixed C string escaping in conversion/expression emission, recognized `const` alias conversion-call initializers (`int/float/string/bool/char(...)`), and fixed bool-ternary comparison normalization for runtime bool expressions vs `0/1`/bool literals.
 - Improved sole-call RHS type inference and numeric codegen for inferred int/float function results (including calls with expression arguments), fixing incorrect string typing/invalid generated C in affected cases.
 - Fixed chained immediate-call typing for sole `set` assignments to numeric-locked variables and added bounds/complexity guards for deep chained-call expression building (with compile-time rejection beyond internal limits).
 - Fixed indirect/dynamic function-call emission in numeric-expression contexts and in-scope named function self-reference resolution for first-class function values.
 - Addressed several compiler-source warnings in feasible paths (unused functions/parameters/variables, missing switch/default handling in key cases, label/declaration formatting issue, embedded-NUL format issue, const-correctness in helper path, and increased output/path buffer sizing in `main.c`); format-truncation warnings remain in complex expression/codegen formatting paths.
+
+### Changed
+- Rebuilt and synced multi-arch compiler binaries and universal/dist wrappers after Step 2 stabilization fixes (`source_code/builds/bin/ltng*`, `source_code/builds/linux/compiler/dist/ltng_universal`). Latest full native suite: **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`).
 
 ### Compatibility / Breaking changes
 - `typeof` results are more precise for float values in covered cases (e.g. `3.14` now reports `float` instead of `int`). Existing programs/tests relying on previous merged reporting may need updates.

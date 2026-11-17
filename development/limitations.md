@@ -60,12 +60,12 @@ These limitations were identified in the initial audit and remain relevant acros
 - Compile-time detection/rejection of literal division/modulo by zero (int and float literal forms).
 - Improved numeric promotion in key mixed expressions, comparison normalization for numeric conversion helpers, and return/call/indirect-call expression typing fixes (including self-reference/body-parsing cases) to prevent incorrect string typing/internal compile failures.
 - Support for explicit type declarations `let x = float` and `let x = char`.
-- Additional Phase 1 runtime/semantic negative tests added; latest full suite passes (**156 PASS, 0 FAIL, 0 SKIP**).
+- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**161 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context (e.g. non-constant conversion expressions used as `switch case` labels showed a codegen limitation in an ad-hoc probe).
 
 ### Remaining limitations
 - **Incomplete distinct int/float semantics:** not fully consistent across all expression, assignment, comparison, codegen, and runtime paths.
 - **Incomplete type inference:** full and consistent inference across all language constructs/contexts is not complete.
-- **Explicit conversion coverage incomplete:** `tofloat`/`tochar` (and conversion behavior generally) are not fully implemented/verified in **all** contexts (including remaining interpolation/evaluation/edge forms).
+- **Conversion coverage improved but not exhaustive:** `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases are supported and tested in many contexts, but exhaustive coverage/verification across every permutation, runtime-invalid input case, and edge context is not complete.
 - **Numeric promotion rules incomplete:** consistent promotion/coercion rules are not fully defined/implemented across all operations.
 - **Type compatibility checking incomplete:** comprehensive compatibility and enforcement across all assignment, operation, parameter, and return contexts is not complete.
 - **Return-type validation not fully complete:** improved in covered cases, but comprehensive return-type validation/annotations and edge-case enforcement remain incomplete.
