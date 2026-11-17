@@ -2178,18 +2178,22 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
 
                     /* Helper: check if inner is a simple quoted string literal */
                     int is_simple_str_lit = 0;
+                    int lit_start = 0, lit_end = 0; /* indices of content inside quotes */
                     if (ipos >= 2 && inner[0] == '"') {
                         int end_quote = -1;
                         for (int i = 1; i < ipos; i++) {
                             if (inner[i] == '\\' && i + 1 < ipos) i++;
                             else if (inner[i] == '"') { end_quote = i; break; }
                         }
-                        if (end_quote == ipos - 1) is_simple_str_lit = 1;
+                        if (end_quote == ipos - 1) { is_simple_str_lit = 1; lit_start = 1; lit_end = ipos - 1; }
+                    } else if (ipos >= 4 && inner[0] == '\\' && inner[1] == '"' && inner[ipos-2] == '\\' && inner[ipos-1] == '"') {
+                        /* escaped-quote literal form: \"...\" */
+                        is_simple_str_lit = 1; lit_start = 2; lit_end = ipos - 2;
                     }
                     /* Validate numeric string literals for toint/tofloat */
                     if (is_simple_str_lit && (strcmp(tok.value, "toint") == 0 || strcmp(tok.value, "tofloat") == 0)) {
-                        const char *sv = inner + 1;
-                        int slen = ipos - 2;
+                        const char *sv = inner + lit_start;
+                        int slen = lit_end - lit_start;
                         /* allow optional sign, digits, optional .digits */
                         int ok = 0;
                         if (slen > 0) {
