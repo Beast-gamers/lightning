@@ -20,11 +20,12 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 ## 2. Current baseline (as of this plan)
 
 - Phase 0–4 complete; Phase 5 in progress (separate track). Phase 1 is **partially implemented**.
-- Last fully verified full suite before recent Step 3 increments: **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`). Step 3 increments added runtime div/mod tests; full-suite re-verification is pending for the latest slices.
-- Informal progress already landed:
+- Last fully verified full suite before Step 3 increments: **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`). Step 3/4 increments added/updated tests; latest targeted verification: **43/43 OK** (Phase 1 runtime+semantic negatives, `phase3_arrays`, `phase4_*`, selected `phase5_*`, `runtime_smoke`, `e2e_smoke`); full-suite re-verification is pending.
+- Progress landed:
   - **Step 1 (early type-system work):** distinct `float` detection/reporting in key paths, `typeof` improvements, float expression handling/output in covered cases, numeric compatibility in key assignments (`int <-> float`), `char <-> string` compatibility in relevant cases, explicit `let x = float` / `let x = char` declarations, compile-time rejection of literal div/mod by zero and obvious invalid literal numeric strings for `toint`/`tofloat` in validated contexts, initial Phase 1 runtime/negative tests.
   - **Step 2 (conversions/aliases stabilization):** `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases `int/float/string/bool/char` handling across many contexts; `tobool` string semantics consistency; bool↔numeric/string emission fixes; C string escaping fixes; `const` alias conversion-call initializers; bool-ternary comparison normalization; broader conversion runtime/negative coverage.
-  - **Step 3 (numeric semantics, in progress):** runtime div/mod-by-zero now throws `DivisionError`/modulo error with traceback in covered numeric expression/codegen paths (`let`/`set` and `write(...)` simple forms), added runtime tests (`phase1_div_zero_runtime`, `phase1_mod_zero_runtime`, `phase1_div_zero_write`). Coverage is not yet comprehensive.
+  - **Step 3 (numeric semantics, completed):** compile-time literal div/mod-by-zero rejection retained; runtime div/mod-by-zero throws `DivisionError`/`DivisionError: Modulo by zero` with traceback in covered contexts/forms (including `let`/`set`, `write`, conditions, returns, call arguments, and for-loop step division for simple/common divisor forms) via runtime helpers/macros, parser-side divisor checks, and codegen guards/rewrites; integer parsing/reads updated to 64-bit (`atoll`/`long long`) in covered paths; overflow behavior defined/characterized (C `long long`/`double`, no explicit overflow trapping).
+  - **Step 4 (distinct `int`/`float` semantics, in progress):** preserved typed arithmetic for locked/static numeric operands while keeping runtime dynamic `+`/concat for untyped/dynamic values (fixed `phase5_defaults` regression); improved simple-return typing/inference for locked `int`/`float`/`bool` locals; `typeof` supports general expression arguments; fixed object property-access type inference/result typing in expressions; added/extended `development/tests/runtime/phase1_step4_int_float.*`. Multi-arch/universal and dist binaries not yet resynced for latest source changes.
 
 ### Key constraints (must respect)
 - Preserve existing syntax/features and backward compatibility wherever possible; document intentional behavior changes.
@@ -110,7 +111,7 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 **Tests:** `typeof` correctness, arithmetic/comparison semantics per type, storage/round-trip formatting, assignment/update behavior, mixed declarations, regression suite.
 
-**Status:** partially done (key paths improved).
+**Status:** in progress. Landed so far: typed numeric arithmetic preserved for locked/static operands with runtime dynamic `+`/concat retained for untyped/dynamic values; simple `return <var>` typing/inference improved for locked `int`/`float`/`bool` locals; `typeof` handles general expression arguments; object property access uses concrete field types in expression typing/inference; `development/tests/runtime/phase1_step4_int_float.*` added/extended. Remaining: full-path audit/fixes (params/args, all returns/inference incl. dynamic values, assignments/contexts, comparisons/conditions broadly, array/object element typing/propagation — array elements currently type-imprecise, interpolation/formatting/printing, other `typeof`/inference gaps), broader positive/negative/boundary/interaction/precision coverage, and full-suite validation.
 
 ---
 
