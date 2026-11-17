@@ -2619,16 +2619,18 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 if (strcmp(osc->fields[oi].name, mname.value) == 0) { ftype = osc->fields[oi].type; break; }
                             }
                         }
-                        if (ftype == TYPE_INT || ftype == TYPE_BOOL || ftype == TYPE_STRING) {
-                            if (ftype == TYPE_BOOL)
-                                pos += snprintf(out + pos, out_size - pos, "(%s[0]=='t'?1:0)", fv);
-                            else if (ftype == TYPE_STRING)
-                                pos += snprintf(out + pos, out_size - pos, "%s", fv);
-                            else
-                                pos += snprintf(out + pos, out_size - pos, "atoll(%s)", fv);
+                        if (ftype == TYPE_BOOL) {
+                            pos += snprintf(out + pos, out_size - pos, "(%s[0]=='t'?1:0)", fv);
+                            if (!type_locked) result_type = TYPE_BOOL;
+                        } else if (ftype == TYPE_STRING) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", fv);
+                            if (!type_locked) result_type = TYPE_STRING;
+                        } else if (ftype == TYPE_INT) {
+                            pos += snprintf(out + pos, out_size - pos, "atoll(%s)", fv);
+                            if (!type_locked) result_type = TYPE_INT;
                         } else if (ftype == TYPE_FLOAT) {
                             pos += snprintf(out + pos, out_size - pos, "atof(%s)", fv);
-                            if (!type_locked) result_type = TYPE_STRING;
+                            if (!type_locked) result_type = TYPE_FLOAT;
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "%s", fv);
                             if (!type_locked) result_type = TYPE_STRING;

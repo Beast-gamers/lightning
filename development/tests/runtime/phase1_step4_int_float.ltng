@@ -55,3 +55,11 @@ let cmpv = iv < fv
 write(typeof(cmpv))
 function getti() -> int { return 2 }
 write(typeof(getti()))
+
+let rec = {oa = 1, ob = 2.5, oc = "hi"}
+write(typeof(rec.oa))
+write(typeof(rec.ob))
+write(typeof(rec.oc))
+let obsum = rec.ob + 0.5
+write(obsum)
+write(typeof(obsum))
