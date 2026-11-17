@@ -1,0 +1,205 @@
+# Phase 1 Implementation Plan — Type System
+
+## 1. Scope and objectives
+
+Phase 1 (per `development/promt.md`) requires implementing and stabilizing:
+
+- Distinct `int` and `float` types
+- `string`, `char`, `bool`, `null`, `array`, and `object` types
+- Type inference
+- Explicit conversions
+- Numeric promotion
+- Type compatibility checking
+- Return-type validation
+- Overflow and division semantics
+
+Required validation focus: precision, boundary values, invalid conversions, mixed expressions, and null behavior.
+
+**Completion bar (Phase 1):** implementation works; existing features still work; positive/negative/boundary/interaction tests pass; regression tests pass; memory checks pass where available; native executables behave correctly; docs updated; no known critical/high-severity defects remain.
+
+## 2. Current baseline (as of this plan)
+
+- Phase 0–4 complete; Phase 5 in progress (separate track). Phase 1 is **partially implemented**.
+- Last fully verified full suite before recent Step 3 increments: **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`). Step 3 increments added runtime div/mod tests; full-suite re-verification is pending for the latest slices.
+- Informal progress already landed:
+  - **Step 1 (early type-system work):** distinct `float` detection/reporting in key paths, `typeof` improvements, float expression handling/output in covered cases, numeric compatibility in key assignments (`int <-> float`), `char <-> string` compatibility in relevant cases, explicit `let x = float` / `let x = char` declarations, compile-time rejection of literal div/mod by zero and obvious invalid literal numeric strings for `toint`/`tofloat` in validated contexts, initial Phase 1 runtime/negative tests.
+  - **Step 2 (conversions/aliases stabilization):** `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases `int/float/string/bool/char` handling across many contexts; `tobool` string semantics consistency; bool↔numeric/string emission fixes; C string escaping fixes; `const` alias conversion-call initializers; bool-ternary comparison normalization; broader conversion runtime/negative coverage.
+  - **Step 3 (numeric semantics, in progress):** runtime div/mod-by-zero now throws `DivisionError`/modulo error with traceback in covered numeric expression/codegen paths (`let`/`set` and `write(...)` simple forms), added runtime tests (`phase1_div_zero_runtime`, `phase1_mod_zero_runtime`, `phase1_div_zero_write`). Coverage is not yet comprehensive.
+
+### Key constraints (must respect)
+- Preserve existing syntax/features and backward compatibility wherever possible; document intentional behavior changes.
+- Compiler pipeline remains integrated (parse + semantic checks in parser in many paths); no unnecessary architecture rewrite.
+- Runtime values are largely string-buffer based in generated C (`char[256]` patterns, helper-based operations) — full native type semantics must be implemented within/around this model pragmatically without destabilizing existing behavior.
+- `bolt` is the user-facing interface; compiler requires `LTNG_BOLT`/bolt invocation rules as established.
+- Every fix must include regression coverage and be validated with native executable execution.
+
+## 3. Implementation steps
+
+> Steps are ordered to reduce risk and enable incremental verification. Some sub-tasks can overlap, but each step should reach a stable, tested checkpoint before moving on.
+
+### Step 1 — Type-model audit and semantics definition (foundation) ✅/baseline
+**Goal:** Establish a precise, code-verified understanding of current type representation and define target semantics for Phase 1.
+
+**Tasks**
+- Inventory type representations in `ltng.h`, `parser.c`, `codegen.c`, runtime helpers, and symbol table/type-tracking fields.
+- Document current behavior vs required behavior for: literals, variables, expressions, assignments, parameters/args, returns, conditions, arrays/objects/null interactions, `typeof`, conversions.
+- Define (and document) intended semantics for:
+  - `int` vs `float` storage/operations/formatting/comparison
+  - numeric promotion and mixed-type operations
+  - division/modulo (int/int, float involvement, by zero: compile-time and runtime)
+  - overflow behavior (practical policy consistent with runtime model/C backend; document explicitly)
+  - `null` compatibility and equality/assignment rules
+  - conversion validity/failure behavior (compile-time where provable, runtime otherwise)
+- Produce a gap matrix to drive Steps 2–8.
+
+**Deliverables:** audit notes (can live in `PHASE_STATUS.md`/plan updates), clarified semantics decisions, prioritized fix list.
+**Exit criteria:** semantics decisions written down; no implementation ambiguity blocking next steps.
+
+**Status:** largely done implicitly via prior audit/fixes; keep decisions explicit as work proceeds.
+
+---
+
+### Step 2 — Explicit conversions and aliases hardening ✅ (stabilized, keep verifying)
+**Goal:** Make `toint`, `tofloat`, `tostring`, `tobool`, `tochar` and aliases (`int/float/string/bool/char`) correct and consistent in all supported contexts.
+
+**Tasks**
+- Ensure recognition, typing, and emission are correct in: declarations/initializers (`let`/`const`/typed forms as supported), `set`, function args/defaults/named args, returns, conditions/loops/switch expressions, comparisons, arithmetic/mixed expressions, array literals/indexing/ops, `typeof`, interpolation/formatting, nested/complex expressions, and call-result contexts.
+- Normalize conversion semantics:
+  - `tobool`: consistent truthiness/string parsing (`"t"`,`"f"`,`"true"`,`"false"`,`"0"`,`""`, numeric forms) across compile-time and runtime paths.
+  - `tostring`: canonical string forms (incl. bool `"true"/"false"`, float formatting consistency).
+  - `toint`/`tofloat`: valid/invalid parsing, whitespace/sign/decimal handling, compile-time rejection for provably invalid literals, defined runtime-invalid behavior.
+  - `tochar`: length/range/value rules (define and enforce).
+- Fix escaping/formatting/codegen correctness for converted values and string-producing expressions.
+
+**Tests:** positive, negative, boundary, and interaction tests for every conversion in multiple contexts (including nesting and runtime-variable inputs).
+
+**Status:** broadly stabilized; continue adding permutation/edge coverage as gaps are found.
+
+---
+
+### Step 3 — Numeric semantics: division/modulo and overflow (in progress)
+**Goal:** Define and implement safe, consistent division/modulo and overflow behavior.
+
+**Tasks**
+- **Division/modulo by zero**
+  - Compile-time: reject provable literal/constant-zero cases (int and float) with clear diagnostics. *(mostly done; extend constant-tracking coverage where feasible)*
+  - Runtime: ensure runtime-variable and computed-zero cases are detected and reported consistently (throw `DivisionError`/`Modulo by zero` or defined runtime error) across **all** expression/statement contexts (assignments, `write`, conditions, returns, args, array ops, loops, interpolations, nested/complex expressions), not just covered let/set/write forms.
+  - Replace/guard unsafe raw C `/` `%` emission paths comprehensively (improve rewrite strategy or parser/emission model to avoid missed inner/nested ops).
+- **Division semantics**
+  - Define int/int behavior (truncation vs float result?) and int/float/mixed behavior; implement consistently with promotion rules and existing code expectations (document any intentional change).
+  - Modulo semantics for numeric types (including float/mod behavior if supported) — define and enforce.
+- **Overflow behavior**
+  - Choose practical, documented policy (e.g. C integer wrap/UB avoidance strategy, checked arithmetic where feasible, or defined range/behavior) consistent with runtime representation; implement/guard in emitted/runtime paths as applicable.
+  - Add boundary tests (min/max, near-boundary operations) for chosen policy.
+
+**Tests:** compile-time and runtime div/mod-by-zero (all contexts), mixed-type division/modulo, precision-sensitive cases, overflow/boundary arithmetic, regression for existing math behavior.
+
+**Status:** in progress (runtime guards added in covered paths). Needs full-context coverage and overflow policy/implementation.
+
+---
+
+### Step 4 — Distinct `int`/`float` semantics across all paths
+**Goal:** Make `int` and `float` first-class, consistently distinguished end-to-end.
+
+**Tasks**
+- Audit and fix type determination/storage in: lexer literal handling assumptions, `detect_type`, symbol table/type fields, variable declarations/assignments, expression typing (`collect_expression`/equivalent paths), conditions/comparisons, function params/args/returns, array elements/ops, object fields, `typeof`, interpolation/printing/formatting.
+- Ensure correct C emission and runtime helper usage per type (int formatting/parsing vs float formatting/parsing, `atoi/atoll/atof/strtod` usage, comparisons, arithmetic).
+- Remove unintended int↔float collapsing/merging while preserving intentional compatibility and documented behavior.
+- Validate `char`/`bool`/`string`/`null`/`array`/`object` typing remains correct and distinct where required.
+
+**Tests:** `typeof` correctness, arithmetic/comparison semantics per type, storage/round-trip formatting, assignment/update behavior, mixed declarations, regression suite.
+
+**Status:** partially done (key paths improved).
+
+---
+
+### Step 5 — Type inference and numeric promotion
+**Goal:** Implement full, consistent inference and promotion rules.
+
+**Tasks**
+- Define and implement inference for: literals, variables, unary/binary ops, comparisons/logical ops, calls (including sole-call and indirect/first-class call results where available), conversions, array/object access results, ternary/conditional expressions, and complex/nested expressions.
+- Implement numeric promotion rules consistently (e.g. `int op float -> float` where applicable; comparison/coercion rules) across all operators and contexts.
+- Handle unknown/dynamic cases conservatively with documented behavior (avoid incorrect typing that causes invalid C or silent misbehavior).
+- Ensure promotion/inference interacts correctly with conversions and return typing.
+
+**Tests:** mixed expressions, chained/nested expressions, promotion matrices, inference in declarations/assignments/returns/args/conditions, edge numeric values.
+
+**Status:** partially done (key mixed arithmetic/call cases improved).
+
+---
+
+### Step 6 — Type compatibility checking and assignment/call enforcement
+**Goal:** Enforce comprehensive, consistent compatibility rules.
+
+**Tasks**
+- Define compatibility matrix for assignments/`set`, parameter binding, argument passing (positional/named/defaults/variadics as applicable), array element operations, return values, and operations requiring specific types.
+- Enforce in all contexts with clear compile-time diagnostics before C compilation (reject faulty/unsupported implicit conversions except explicitly allowed ones).
+- Reconcile with existing lock/dtype behavior, `null` behavior, `char <-> string` and numeric compatibility decisions; preserve backward compatibility where intended.
+- Audit string-concat vs numeric-add heuristics and ensure type-driven behavior is predictable.
+
+**Tests:** invalid/valid assignments, mixed-type operations, null interactions, function arg/param mismatches, array/object type cases, negative compile-time checks.
+
+**Status:** partially done.
+
+---
+
+### Step 7 — Return-type validation
+**Goal:** Complete and enforce return-type correctness.
+
+**Tasks**
+- Validate consistency of all return paths in a function (including conditionals/loops/try/catch/finally contexts as applicable): consistent types, compatibility with declared/annotated return type (`-> type`) where present, and correct behavior for implicit/unknown returns.
+- Ensure missing returns, `void`/value mismatches, and conflicting return types are diagnosed clearly at compile time where possible.
+- Align return inference with call-site typing and expression typing (including conversions, anonymous/indirect calls, and propagated values under current runtime model).
+- Maintain compatibility with existing pass-through/string-buffer runtime behavior where required.
+
+**Tests:** single/multi-return functions, branch coverage, annotated returns, void/value mismatches, inferred-return call sites, recursion/indirect returns, negative cases.
+
+**Status:** partially done (improvements and annotations in covered cases; comprehensive validation incomplete).
+
+---
+
+### Step 8 — Comprehensive test coverage, hardening, and regression closure
+**Goal:** Satisfy Phase 1 validation requirements and stabilize.
+
+**Tasks**
+- Expand **positive** tests: all types, conversions in all contexts, inference/promotion matrices, valid mixed expressions, distinct int/float behavior.
+- Expand **negative** tests: invalid conversions, incompatible assignments/args/returns, runtime div/mod-by-zero cases, unsupported operations/type mismatches (ensure rejection before C compilation where required).
+- Add **boundary/precision** tests: integer/float limits relevant to chosen semantics, floating precision/formatting edge cases, near-overflow behavior, empty/edge string-char cases.
+- Add **interaction** tests: conversions + promotion + comparisons + control flow + functions/returns + arrays/objects/null in combinations.
+- **Null behavior** matrix tests across operations, assignments, conversions, comparisons, and formatting.
+- Run full native suite (`bash development/tests/run_tests.sh`), fix root causes of any failures/regressions, and add permanent regression tests for discovered bugs.
+- Memory checks where available (sanitizers/valgrind) for compiler/runtime behavior touched by Phase 1; record results and environment limitations.
+- Rebuild/sync multi-arch and universal/dist compiler artifacts when source changes stabilize; verify hashes/dist consistency as applicable.
+
+**Tests:** all of the above; full regression/native executable validation.
+
+**Exit criteria:** Phase 1 completion requirements met; `PHASE_STATUS.md`, `TESTING.md`, `CHANGELOG.md`, `limitations.md` updated with verified results.
+
+**Status:** ongoing.
+
+## 4. Suggested execution order (next slices)
+
+1. **Step 3 completion:** broaden runtime div/mod-by-zero guards to all expression/statement contexts and harden rewrite/coverage; define & implement overflow policy/tests.
+2. **Step 4 + Step 5:** drive consistent int/float semantics, inference, and promotion end-to-end (fix by context/path with targeted tests).
+3. **Step 6 + Step 7:** close compatibility and return-validation gaps with comprehensive diagnostics.
+4. **Step 8:** exhaustive Phase 1 test matrix, memory checks (where available), full-suite green, artifact rebuild/sync, documentation finalization.
+
+## 5. Risk notes
+
+- **Runtime-model constraints:** string-buffer/rotating-buffer representation limits “true” native semantics; changes must be carefully scoped and compatibility-tested.
+- **Expression/codegen fragility:** complex string-based expression collection/emission can regress easily; prefer targeted, well-tested fixes and avoid broad unsafe rewrites.
+- **Behavioral changes:** stricter typing/checking or corrected semantics may break legacy reliance on heuristic behavior; document and minimize intentional breakage.
+- **Performance/code size:** runtime safety checks/helpers may affect generated C; keep implementations simple and correct first.
+
+## 6. Tracking checklist
+
+- [x] Step 1: audit/semantics baseline (initial)
+- [x] Step 2: conversion/alias stabilization (broad; ongoing verification)
+- [~] Step 3: division/modulo semantics (runtime guards in covered paths done; full coverage + overflow pending)
+- [ ] Step 4: distinct `int`/`float` semantics across all paths
+- [ ] Step 5: full type inference and numeric promotion
+- [ ] Step 6: comprehensive type compatibility checking
+- [ ] Step 7: complete return-type validation
+- [ ] Step 8: full Phase 1 test/validation/memory/doc closure and artifact sync
+
+_Update this file and `development/PHASE_STATUS.md` at each verified checkpoint._
