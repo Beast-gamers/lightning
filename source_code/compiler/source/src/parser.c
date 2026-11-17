@@ -3284,7 +3284,21 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 }
                 break;
             }
-            default: break;
+            case TOKEN_COMMA:
+                if (!stop_on_comma) {
+                    error_state_add(parser_errors, tok.line, tok.col,
+                        "Unexpected ',' in expression");
+                }
+                break;
+            default:
+                /* Unexpected token in expression context: report instead of silently dropping. */
+                if (tok.type != TOKEN_EOF && tok.type != TOKEN_NEWLINE) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg), "Unexpected token '%s' in expression",
+                        tok.value[0] ? tok.value : "?");
+                    error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                }
+                break;
         }
         if (pos >= out_size - 1) break;
     }
