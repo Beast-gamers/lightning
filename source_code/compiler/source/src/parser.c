@@ -1396,6 +1396,10 @@ static VarType infer_function_return_type(const char *fname);
 /* Return 1 when a call to the named function is known to produce a string
    value (explicit `-> string` annotation, or inferred from its returns). */
 static int function_returns_string(const char *fname);
+static VarType collect_expression(Lexer *lexer, SymbolTable *table,
+                                  char *out, int out_size,
+                                  int stop_on_rparen, int stop_on_comma,
+                                  int *out_sl, int *out_sc, int *out_el, int *out_ec);
 
 static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
     /* The caller has already consumed the opening '['. Parse the remaining
@@ -1468,29 +1472,62 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
             continue;
         }
 
-        /* Element value. It may be a literal or an identifier. */
-        lexer_next(lexer);
+        /* Element value: scalar expression or simple literal/identifier. */
         char val[MAX_STRING_LEN] = "";
-        if (t.type == TOKEN_CHAR) {
-            snprintf(val, sizeof(val), "'%s'", t.value);
-        } else if (t.type == TOKEN_IDENT && !is_bool_value(t.value) && !is_type_keyword(t.value)) {
-            char m[MAX_IDENTIFIER_LEN];
-            mangle_name(t.value, m, sizeof(m));
-            if (symbol_table_has(table, m) || symbol_table_has(table, t.value)) {
-                const char *cname = symbol_table_has(table, m) ? symbol_table_get_cname(table, m) : symbol_table_get_cname(table, t.value);
-                val[0] = '\x01';
-                strncpy(val + 1, cname, sizeof(val) - 2);
-                val[sizeof(val) - 1] = '\0';
+        Token t1 = lexer_peek(lexer);
+        Token t2 = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : t1;
+        int simple_single = 0;
+        if ((t1.type == TOKEN_STRING || t1.type == TOKEN_CHAR || t1.type == TOKEN_INT_LIT || t1.type == TOKEN_FLOAT_LIT) &&
+            (t2.type == TOKEN_COMMA || t2.type == TOKEN_RBRACKET || t2.type == TOKEN_NEWLINE)) {
+            simple_single = 1;
+        } else if (t1.type == TOKEN_IDENT && (t2.type == TOKEN_COMMA || t2.type == TOKEN_RBRACKET || t2.type == TOKEN_NEWLINE)) {
+            simple_single = 1;
+        }
+        if (simple_single) {
+            lexer_next(lexer);
+            if (t1.type == TOKEN_CHAR) {
+                snprintf(val, sizeof(val), "'%s'", t1.value);
+            } else if (t1.type == TOKEN_IDENT && !is_bool_value(t1.value) && !is_type_keyword(t1.value)) {
+                char m[MAX_IDENTIFIER_LEN];
+                mangle_name(t1.value, m, sizeof(m));
+                if (symbol_table_has(table, m) || symbol_table_has(table, t1.value)) {
+                    const char *cname = symbol_table_has(table, m) ? symbol_table_get_cname(table, m) : symbol_table_get_cname(table, t1.value);
+                    val[0] = '\x01';
+                    strncpy(val + 1, cname, sizeof(val) - 2);
+                    val[sizeof(val) - 1] = '\0';
+                } else {
+                    snprintf(val, sizeof(val), "%s", t1.value);
+                }
+            } else if (t1.type == TOKEN_IDENT && is_bool_value(t1.value)) {
+                if (strcmp(t1.value, "true") == 0 || strcmp(t1.value, "t") == 0)
+                    snprintf(val, sizeof(val), "true");
+                else
+                    snprintf(val, sizeof(val), "false");
             } else {
-                snprintf(val, sizeof(val), "%s", t.value);
+                snprintf(val, sizeof(val), "%s", t1.value);
             }
-        } else if (t.type == TOKEN_IDENT && is_bool_value(t.value)) {
-            if (strcmp(t.value, "true") == 0 || strcmp(t.value, "t") == 0)
-                snprintf(val, sizeof(val), "true");
-            else
-                snprintf(val, sizeof(val), "false");
         } else {
-            snprintf(val, sizeof(val), "%s", t.value);
+            /* Parse as expression element (supports conversion calls, arithmetic, calls, etc.) */
+            char expr[MAX_STRING_LEN];
+            VarType etype = collect_expression(lexer, table, expr, sizeof(expr), 1, 1, NULL, NULL, NULL, NULL);
+            if (expr[0] == '"') {
+                /* C string literal result: store raw content (codegen will quote/escape) */
+                size_t elen = strlen(expr);
+                if (elen >= 2 && expr[elen-1] == '"') {
+                    expr[elen-1] = '\0';
+                    snprintf(val, sizeof(val), "%s", expr + 1);
+                } else {
+                    val[0] = '\x01'; strncpy(val + 1, expr, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+                }
+            } else if (etype == TYPE_STRING || etype == TYPE_OBJECT || etype == TYPE_ARRAY) {
+                val[0] = '\x01'; strncpy(val + 1, expr, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+            } else {
+                /* numeric/bool expression: convert to string at runtime */
+                char wrapped[MAX_STRING_LEN];
+                if (etype == TYPE_FLOAT) snprintf(wrapped, sizeof(wrapped), "_ltng_ad((double)(%s))", expr);
+                else snprintf(wrapped, sizeof(wrapped), "_ltng_ad((double)(long long)(%s))", expr);
+                val[0] = '\x01'; strncpy(val + 1, wrapped, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+            }
         }
         int vlen = (int)strlen(val);
         if (vpos + vlen + 1 < (int)sizeof(values) - 1) {
@@ -3464,75 +3501,83 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                             resolved[rlen++] = tok->value[ci];
                         }
                     } else {
-                        /* Check for type conversion calls inside interpolation:
-                           $[toint("10")], $[tostring("x")], $[tobool("t")]
-                           all return string results */
-                        if (strncmp(vname, "toint(", 6) == 0 && vname[strlen(vname) - 1] == ')') {
+                        /* Interpolation expressions: try safe constant folding for conversion calls,
+                           otherwise preserve $[...] for runtime evaluation by codegen. */
+                        int folded = 0;
+                        const char *conv_name = NULL; int prefix = 0;
+                        if (strncmp(vname, "toint(", 6) == 0) { conv_name = "toint"; prefix = 6; }
+                        else if (strncmp(vname, "tofloat(", 8) == 0) { conv_name = "tofloat"; prefix = 8; }
+                        else if (strncmp(vname, "tostring(", 9) == 0) { conv_name = "tostring"; prefix = 9; }
+                        else if (strncmp(vname, "tobool(", 7) == 0) { conv_name = "tobool"; prefix = 7; }
+                        else if (strncmp(vname, "tochar(", 7) == 0) { conv_name = "tochar"; prefix = 7; }
+                        if (conv_name && vname[vlen - 1] == ')') {
                             char inner[MAX_STRING_LEN];
-                            int ilen = (int)strlen(vname) - 7; /* strip "toint(" and ")" */
-                            memcpy(inner, vname + 6, ilen);
-                            inner[ilen] = '\0';
-                            /* Trim whitespace */
-                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
-                            inner[ilen] = '\0';
-                            if (ilen >= 2 && inner[0] == '"' && inner[ilen-1] == '"') {
-                                /* String literal - strip quotes */
-                                char clean[MAX_STRING_LEN];
-                                int cpos = 0;
-                                for (int i = 1; i < ilen - 1 && cpos < MAX_STRING_LEN - 1; i++) {
-                                    if (inner[i] == '\\' && i + 1 < ilen - 1) {
-                                        clean[cpos++] = inner[i];
-                                        clean[cpos++] = inner[++i];
-                                    } else {
-                                        clean[cpos++] = inner[i];
-                                    }
+                            int ilen = vlen - prefix - 1; if (ilen < 0) ilen = 0;
+                            if (ilen >= MAX_STRING_LEN) ilen = MAX_STRING_LEN - 1;
+                            memcpy(inner, vname + prefix, ilen); inner[ilen] = '\0';
+                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--; inner[ilen] = '\0';
+                            int is_str_lit = (ilen >= 2 && inner[0] == '"' && inner[ilen-1] == '"');
+                            int is_num_lit = 0, has_dot = 0;
+                            if (!is_str_lit && ilen > 0) {
+                                const char *p = inner; if (*p=='+'||*p=='-') p++;
+                                int d=0,v=1; for(;*p;p++){ if(isdigit((unsigned char)*p)) d=1; else if(*p=='.'&&!has_dot) has_dot=1; else {v=0;break;} } if(d&&v) is_num_lit=1;
+                            }
+                            int is_bool_lit = (!is_str_lit && !is_num_lit && (strcmp(inner,"true")==0||strcmp(inner,"false")==0||strcmp(inner,"t")==0||strcmp(inner,"f")==0));
+                            if (strcmp(conv_name, "toint") == 0) {
+                                if (is_str_lit) {
+                                    /* value of numeric string literal as string */
+                                    for (int i=1;i<ilen-1 && rlen<MAX_STRING_LEN-1;i++) resolved[rlen++]=inner[i];
+                                    resolved[rlen]='\0'; folded=1;
+                                } else if (is_num_lit) {
+                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", inner); folded=1;
                                 }
-                                clean[cpos] = '\0';
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"%s\"", clean);
-                            } else {
-                                /* Variable or number - pass through as string */
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"%s\"", inner);
-                            }
-                        } else if (strncmp(vname, "tostring(", 9) == 0 && vname[strlen(vname) - 1] == ')') {
-                            char inner[MAX_STRING_LEN];
-                            int ilen = (int)strlen(vname) - 10; /* strip "tostring(" and ")" */
-                            memcpy(inner, vname + 9, ilen);
-                            inner[ilen] = '\0';
-                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
-                            inner[ilen] = '\0';
-                            if (ilen == 4 && memcmp(inner, "true", 4) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
-                            } else if (ilen == 5 && memcmp(inner, "false", 5) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"false\"");
-                            } else {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"%s\"", inner);
-                            }
-                        } else if (strncmp(vname, "tobool(", 7) == 0 && vname[strlen(vname) - 1] == ')') {
-                            char inner[MAX_STRING_LEN];
-                            int ilen = (int)strlen(vname) - 8; /* strip "tobool(" and ")" */
-                            memcpy(inner, vname + 7, ilen);
-                            inner[ilen] = '\0';
-                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
-                            inner[ilen] = '\0';
-                            if (ilen == 1 && inner[0] == '0') {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"false\"");
-                            } else if (ilen >= 1 && inner[0] >= '1' && inner[0] <= '9') {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
-                            } else if (ilen >= 2 && inner[0] == '"') {
-                                if (ilen == 2 || (ilen == 3 && inner[1] == '0') ||
-                                    (ilen == 7 && memcmp(inner + 1, "false", 5) == 0)) {
-                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"false\"");
-                                } else {
-                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
+                            } else if (strcmp(conv_name, "tofloat") == 0) {
+                                if (is_str_lit) {
+                                    char sval[MAX_STRING_LEN]; int cpos=0;
+                                    for (int i=1;i<ilen-1 && cpos<MAX_STRING_LEN-1;i++){ if(inner[i]=='\\' && i+1<ilen-1) sval[cpos++]=inner[++i]; else sval[cpos++]=inner[i]; }
+                                    sval[cpos]='\0';
+                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%g", atof(sval)); folded=1;
+                                } else if (is_num_lit) {
+                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%g", atof(inner)); folded=1;
                                 }
-                            } else {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "\"true\"");
+                            } else if (strcmp(conv_name, "tostring") == 0) {
+                                if (is_str_lit) {
+                                    for (int i=1;i<ilen-1 && rlen<MAX_STRING_LEN-1;i++) resolved[rlen++]=inner[i];
+                                    resolved[rlen]='\0'; folded=1;
+                                } else if (ilen==4 && memcmp(inner,"true",4)==0) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true"); folded=1; }
+                                else if (ilen==5 && memcmp(inner,"false",5)==0) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false"); folded=1; }
+                                else if (ilen==1 && inner[0]=='t') { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true"); folded=1; }
+                                else if (ilen==1 && inner[0]=='f') { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false"); folded=1; }
+                                else if (is_num_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", inner); folded=1; }
+                            } else if (strcmp(conv_name, "tobool") == 0) {
+                                if (is_num_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", (atof(inner)!=0.0)?"true":"false"); folded=1; }
+                                else if (is_bool_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", (inner[0]=='t')?"true":"false"); folded=1; }
+                                else if (is_str_lit) {
+                                    if (ilen==2 || (ilen==3 && inner[1]=='0') || (ilen==7 && memcmp(inner+1,"false",5)==0))
+                                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false");
+                                    else rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true");
+                                    folded=1;
+                                }
+                            } else if (strcmp(conv_name, "tochar") == 0) {
+                                if (is_str_lit) {
+                                    char ch = (ilen>=3)?inner[1]:'\0';
+                                    if (ch=='\\' && ilen>=4) { if (rlen < MAX_STRING_LEN-2){ resolved[rlen++]=inner[1]; resolved[rlen++]=inner[2]; resolved[rlen]='\0'; } }
+                                    else { if (rlen < MAX_STRING_LEN-1){ resolved[rlen++]=ch; resolved[rlen]='\0'; } }
+                                    folded=1;
+                                } else if (is_num_lit && !has_dot) {
+                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%c", (unsigned char)atoi(inner)); folded=1;
+                                }
                             }
-                        } else {
-                            /* General expression - parse and use result */
+                        }
+                        if (!folded) {
+                            /* Validate/parse expression, but preserve original $[...] for runtime evaluation */
                             char check[MAX_STRING_LEN];
                             (void)parse_expression_from_string(vname, table, check, sizeof(check));
-                            rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", check);
+                            int voff = (int)(vstart - 2 - tok->value);
+                            int vtotal = (int)(sp - (vstart - 2) + 1);
+                            for (int ci = voff; ci < voff + vtotal && rlen < MAX_STRING_LEN - 1; ci++) {
+                                resolved[rlen++] = tok->value[ci];
+                            }
                         }
                     }
                 }
