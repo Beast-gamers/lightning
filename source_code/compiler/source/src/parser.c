@@ -2088,6 +2088,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     int has_string_concat = 0;
     int has_string_mult = 0;
     int array_access_used = 0;
+    int has_dynamic_numeric = 0; /* unlocked numeric/unknown operands needing runtime add semantics */
     int sl=0, sc=0, el=0, ec=0, have_span=0;
     int pending_divmod = 0; /* 1 if last emitted operator was / or % in numeric context */
     int pending_divmod_is_mod = 0;
@@ -2704,6 +2705,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atoll(%s)", cname);
                                 if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
                                 else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                if (!symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
                                 pending_divmod = 0;
                                 break; }
                             case TYPE_FLOAT: {
@@ -2711,6 +2713,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                 if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D"), _opnd, pending_divmod_line, pending_divmod_col);
                                 else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
                                 if (!type_locked) { if (result_type == TYPE_INT) result_type = TYPE_FLOAT; }
+                                if (!symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
                                 pending_divmod = 0;
                                 break; }
                             case TYPE_CHAR:
@@ -2729,6 +2732,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                             case TYPE_NULL:
                             default:
                                 pos += snprintf(out + pos, out_size - pos, "%s", cname);
+                                has_dynamic_numeric = 1;
                                 pending_divmod = 0;
                                 break;
                             case TYPE_ARRAY:
@@ -3244,9 +3248,11 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     }
     out[pos] = '\0';
     sanitize_mod_atof(out, out_size);
-    /* Replace atof(X)+atof(Y) / chained add patterns with runtime string/number add.
-       When a replacement happens, result_type becomes STRING (_ltng_add_sn returns char*). */
-    if (!has_string_concat && !has_string_mult && result_type != TYPE_STRING) {
+    /* Convert atof/atof add patterns to runtime _ltng_add_sn for string-producing
+       or dynamic/untyped numeric expressions (where + may mean concat at runtime).
+       Keep pure statically-typed numeric arithmetic to preserve int/float semantics. */
+    if (!has_string_concat && !has_string_mult &&
+        (result_type == TYPE_STRING || has_dynamic_numeric)) {
         while (optimize_add_concat(out, out_size, pos)) {
             result_type = TYPE_STRING;
         }
@@ -8878,17 +8884,23 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 expr[sizeof(expr) - 1] = '\0';
                 VarType vtype2 = TYPE_STRING;
                 if (symbol_table_has(table, m)) vtype2 = symbol_table_get(table, m);
-                /* Preserve legacy pass-through behavior (values are string buffers at runtime),
-                   but detect object returns for inference/schema propagation. */
+                /* Preserve legacy pass-through for dynamic/string/object values, but keep
+                   typed numeric/bool returns for known (locked) variables. */
                 if (vtype2 == TYPE_OBJECT) {
                     etype = TYPE_OBJECT;
+                } else if ((vtype2 == TYPE_INT || vtype2 == TYPE_FLOAT || vtype2 == TYPE_BOOL) &&
+                           symbol_table_get_locked(table, m)) {
+                    etype = vtype2;
+                    if (vtype2 == TYPE_INT) snprintf(expr, sizeof(expr), "atoll(%s)", cname);
+                    else if (vtype2 == TYPE_FLOAT) snprintf(expr, sizeof(expr), "atof(%s)", cname);
+                    else snprintf(expr, sizeof(expr), "(%s[0]=='t'?1:0)", cname);
                 } else {
                     etype = TYPE_STRING;
                 }
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
                 node->is_expr = 1;
-                node->is_variable = 1;
+                node->is_variable = (etype == TYPE_OBJECT || etype == TYPE_STRING) ? 1 : 0;
                 if (etype == TYPE_OBJECT) record_return_obj_schema(cname);
                 emit(node);
                 return;

@@ -1,0 +1,51 @@
+let iv = 7
+let jv = 2
+let fv = 3.5
+let gv = 1.5
+
+write(typeof(iv))
+write(typeof(fv))
+
+let a = iv + jv
+write(a)
+write(typeof(a))
+
+let b = iv + fv
+write(b)
+write(typeof(b))
+
+let c = fv + gv
+write(c)
+write(typeof(c))
+
+let d = iv / jv
+write(d)
+write(typeof(d))
+
+let e = fv / jv
+write(e)
+write(typeof(e))
+
+if (iv == 7.0) { write("i_eq_f") } else { write("i_neq_f") }
+if (fv > 3) { write("f_gt_i") } else { write("no") }
+if (fv == 3.5) { write("f_eq") } else { write("no") }
+
+let ci = toint("9")
+let cfv = tofloat("9.5")
+write(typeof(ci))
+write(typeof(cfv))
+let mix = ci + cfv
+write(mix)
+write(typeof(mix))
+
+set iv = 2.5
+write(iv)
+write(typeof(iv))
+
+function retf() {
+  let x = 4.5
+  return x
+}
+let rf = retf()
+write(typeof(rf))
+write(rf)
