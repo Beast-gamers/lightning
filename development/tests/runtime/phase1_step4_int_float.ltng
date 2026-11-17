@@ -49,3 +49,9 @@ function retf() {
 let rf = retf()
 write(typeof(rf))
 write(rf)
+
+write(typeof(iv + fv))
+let cmpv = iv < fv
+write(typeof(cmpv))
+function getti() -> int { return 2 }
+write(typeof(getti()))

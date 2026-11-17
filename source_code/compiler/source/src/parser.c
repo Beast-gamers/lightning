@@ -3839,88 +3839,89 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
     }
 
     /* Simple single-token argument followed by ) */
-    Token close = lexer_next(lexer);
-    if (close.type != TOKEN_RPAREN) {
-        error_state_add(parser_errors, arg.line, arg.col,
-            "Expected ')' after typeof argument");
-        lexer->current = saved_pos;
-        return 0;
-    }
-
-    VarType vtype;
-    if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) {
-        vtype = TYPE_BOOL;
-    } else if (arg.type == TOKEN_IDENT && is_ltng_reserved(arg.value)) {
-        result->type = TOKEN_STRING;
-        strncpy(result->value, "reserved", MAX_STRING_LEN - 1);
-        result->value[MAX_STRING_LEN - 1] = '\0';
-        result->line = typeof_tok.line;
-        result->col = typeof_tok.col;
-        return 1;
-    } else if (arg.type == TOKEN_WRITE || arg.type == TOKEN_READ ||
-               arg.type == TOKEN_LET || arg.type == TOKEN_CONST ||
-               arg.type == TOKEN_SET) {
-        result->type = TOKEN_STRING;
-        strncpy(result->value, "reserved", MAX_STRING_LEN - 1);
-        result->value[MAX_STRING_LEN - 1] = '\0';
-        result->line = typeof_tok.line;
-        result->col = typeof_tok.col;
-        return 1;
-    } else if (arg.type == TOKEN_IDENT || token_is_name(arg)) {
-        char mangled[MAX_IDENTIFIER_LEN];
-        mangle_name(arg.value, mangled, MAX_IDENTIFIER_LEN);
-        if (!symbol_table_has(table, mangled)) {
+    Token close = lexer_peek(lexer);
+    if (close.type == TOKEN_RPAREN) {
+        lexer_next(lexer); /* consume ) */
+        VarType vtype;
+        if (arg.type == TOKEN_IDENT && is_bool_value(arg.value)) {
+            vtype = TYPE_BOOL;
+        } else if (arg.type == TOKEN_IDENT && is_ltng_reserved(arg.value)) {
+            result->type = TOKEN_STRING;
+            strncpy(result->value, "reserved", MAX_STRING_LEN - 1);
+            result->value[MAX_STRING_LEN - 1] = '\0';
+            result->line = typeof_tok.line;
+            result->col = typeof_tok.col;
+            return 1;
+        } else if (arg.type == TOKEN_WRITE || arg.type == TOKEN_READ ||
+                   arg.type == TOKEN_LET || arg.type == TOKEN_CONST ||
+                   arg.type == TOKEN_SET) {
+            result->type = TOKEN_STRING;
+            strncpy(result->value, "reserved", MAX_STRING_LEN - 1);
+            result->value[MAX_STRING_LEN - 1] = '\0';
+            result->line = typeof_tok.line;
+            result->col = typeof_tok.col;
+            return 1;
+        } else if (arg.type == TOKEN_IDENT || token_is_name(arg)) {
+            char mangled[MAX_IDENTIFIER_LEN];
+            mangle_name(arg.value, mangled, MAX_IDENTIFIER_LEN);
+            if (!symbol_table_has(table, mangled)) {
+                error_state_add(parser_errors, arg.line, arg.col,
+                    "Variable not declared");
+                lexer->current = saved_pos;
+                return 0;
+            }
+            vtype = symbol_table_get(table, mangled);
+        } else if (arg.type == TOKEN_STRING) {
+            vtype = TYPE_STRING;
+        } else if (arg.type == TOKEN_INT_LIT) {
+            vtype = TYPE_INT;
+        } else if (arg.type == TOKEN_FLOAT_LIT) {
+            vtype = TYPE_FLOAT;
+        } else if (arg.type == TOKEN_CHAR) {
+            vtype = TYPE_STRING;
+        } else if (is_bool_value(arg.value)) {
+            vtype = TYPE_BOOL;
+        } else {
             error_state_add(parser_errors, arg.line, arg.col,
-                "Variable not declared");
+                "Expected variable or value inside typeof()");
             lexer->current = saved_pos;
             return 0;
         }
-        vtype = symbol_table_get(table, mangled);
-    } else if (arg.type == TOKEN_STRING) {
-        vtype = TYPE_STRING;
-    } else if (arg.type == TOKEN_INT_LIT) {
-        vtype = TYPE_INT;
-    } else if (arg.type == TOKEN_FLOAT_LIT) {
-        vtype = TYPE_FLOAT;
-    } else if (arg.type == TOKEN_CHAR) {
-        vtype = TYPE_STRING;
-    } else if (is_bool_value(arg.value)) {
-        vtype = TYPE_BOOL;
-    } else if (arg.type == TOKEN_IDENT && is_type_conversion(arg.value) &&
-               lexer_peek(lexer).type == TOKEN_LPAREN) {
-        /* Type conversion call inside typeof: typeof(int(...)), typeof(string(...)),
-           typeof(bool(...)) - all return strings */
-        lexer_next(lexer); /* consume ( */
-        int depth = 1;
-        while (lexer->current < lexer->count && depth > 0) {
-            Token itok = lexer_peek(lexer);
-            if (itok.type == TOKEN_LPAREN) depth++;
-            else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
-            else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
-            lexer_next(lexer);
-        }
-        if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
-            lexer_next(lexer); /* consume ) */
-        }
+
         result->type = TOKEN_STRING;
-        strncpy(result->value, "string", MAX_STRING_LEN - 1);
+        strncpy(result->value, var_type_name(vtype), MAX_STRING_LEN - 1);
         result->value[MAX_STRING_LEN - 1] = '\0';
         result->line = typeof_tok.line;
         result->col = typeof_tok.col;
         return 1;
-    } else {
-        error_state_add(parser_errors, arg.line, arg.col,
-            "Expected variable or value inside typeof()");
-        lexer->current = saved_pos;
-        return 0;
     }
 
-    result->type = TOKEN_STRING;
-    strncpy(result->value, var_type_name(vtype), MAX_STRING_LEN - 1);
-    result->value[MAX_STRING_LEN - 1] = '\0';
-    result->line = typeof_tok.line;
-    result->col = typeof_tok.col;
-    return 1;
+    /* General expression argument: typeof(expr) */
+    {
+        int expr_saved = saved_pos + 2; /* position after typeof and ( */
+        lexer->current = expr_saved;
+        int err_before = parser_errors ? parser_errors->count : 0;
+        char exprbuf[MAX_STRING_LEN];
+        VarType etype = collect_expression(lexer, table, exprbuf, sizeof(exprbuf), 1, 0, NULL, NULL, NULL, NULL);
+        Token rclose = lexer_peek(lexer);
+        if (rclose.type == TOKEN_RPAREN) {
+            lexer_next(lexer); /* consume ) */
+            /* Discard errors introduced by speculative typeof arg parse */
+            if (parser_errors && parser_errors->count > err_before) parser_errors->count = err_before;
+            result->type = TOKEN_STRING;
+            strncpy(result->value, var_type_name(etype), MAX_STRING_LEN - 1);
+            result->value[MAX_STRING_LEN - 1] = '\0';
+            result->line = typeof_tok.line;
+            result->col = typeof_tok.col;
+            return 1;
+        }
+        if (parser_errors && parser_errors->count > err_before) parser_errors->count = err_before;
+    }
+
+    error_state_add(parser_errors, arg.line, arg.col,
+        "Expected ')' after typeof argument");
+    lexer->current = saved_pos;
+    return 0;
 }
 
 static void parse_write(Lexer *lexer, SymbolTable *table) {
