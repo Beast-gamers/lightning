@@ -54,7 +54,7 @@
 
 ## Phase 1 — Type system
 
-**Status:** Partially implemented (Step 2 conversions/aliases stabilized; further Phase 1 work required)
+**Status:** Partially implemented (Step 2 conversions/aliases stabilized; Step 3 runtime div/mod semantics in progress; further Phase 1 work required)
 
 ### Implemented (so far)
 - Made `detect_type` distinguish float literals/values as `TYPE_FLOAT` (instead of merging to int) and improved type name reporting (`float`, `char`) in covered paths.
@@ -63,12 +63,14 @@
 - Extended conversion-function recognition/handling for `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases `int`/`float`/`string`/`bool`/`char` across many expression, assignment, call/arg, return, condition/loop, comparison, interpolation/`typeof`, array, and nested/complex contexts; added stricter compile-time validation for obvious invalid literal numeric conversions in `toint`/`tofloat` (and aliases) in validated contexts.
 - Step 2 stabilization fixes (follow-up, pushed `f4f9c44`): consistent `tobool` string semantics for `"t"/"f"/"true"/"false"/"0"/""` (including runtime/interpolation/complex paths), corrected bool↔int/float conversion emission, corrected `tostring`/`string` of bool-typed/compiled results to `"true"/"false"`, fixed C string escaping in conversion/expression emission, recognized `const` alias conversion-call initializers (`int/float/string/bool/char(...)`), and fixed bool-ternary comparison normalization (e.g. runtime `bool(var) == false` cases).
 - Added compile-time detection/rejection for literal division/modulo by zero (int and float literal forms).
+- Step 3 (in progress): added runtime division/modulo-by-zero handling for covered numeric expression paths (codegen/runtime helpers and safe div/mod macros in let/set expression emission for simple cases), throwing `DivisionError: Division by zero` / `DivisionError: Modulo by zero` with traceback instead of raw C undefined behavior/crash semantics in covered runtime-variable cases. Added runtime tests `development/tests/runtime/phase1_div_zero_runtime.*` and `phase1_mod_zero_runtime.*`.
 - Improved return/expression typing for conversions and direct/indirect/named/self-referential function calls (fixed regressions causing incorrect string typing and internal compile failures in affected cases) and improved comparison normalization for numeric conversion helpers.
 - Added support for explicit type declarations `let x = float` and `let x = char` (default initialization, distinct type tracking).
 - Added/updated Phase 1 tests (runtime/semantic negative), including Step 2 conversion coverage and negative cases (e.g. `development/tests/runtime/phase1_conversions*.ltng`, `development/tests/semantic/phase1_*conversion*.ltng`, and updated corpus expectations where required).
 
 ### Test results
-- Latest full suite: **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, native compile+execute validation).
+- Last fully verified suite (before Step 3 increment): **PASS=161 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, native compile+execute validation).
+- Step 3 increment (this change): added runtime div/mod-by-zero tests (`development/tests/runtime/phase1_div_zero_runtime.*`, `phase1_mod_zero_runtime.*`); targeted Phase 1/runtime checks and existing literal div-zero negative checks pass with the updated compiler. Full-suite re-verification for this increment is pending.
 - Phase 1/Step 2 runtime and semantic checks (including conversion/alias contexts and negative cases) pass as part of the suite. Ad-hoc thorough probes covered additional contexts (defaults, named args, array ops/indexing, loops/switch expressions, comparisons, `typeof`, interpolation, nesting, runtime/dynamic inputs); coverage is broad but not exhaustive for every permutation.
 
 ### Breaking/behavior changes (documented)

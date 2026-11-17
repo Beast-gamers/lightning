@@ -486,6 +486,74 @@ static int is_var_captured_by_nested(ASTNode *fn, ASTNode *all_fns, const char *
     return 0;
 }
 
+
+static int cg_find_top_binop(const char *expr, char op, int *out_pos) {
+    int depth = 0, in_str = 0, in_chr = 0, esc = 0;
+    int last = -1;
+    for (int i = 0; expr[i]; i++) {
+        char c = expr[i];
+        if (in_str) { if (esc) esc = 0; else if (c == '\\') esc = 1; else if (c == '"') in_str = 0; continue; }
+        if (in_chr) { if (esc) esc = 0; else if (c == '\\') esc = 1; else if (c == '\'') in_chr = 0; continue; }
+        if (c == '"') { in_str = 1; continue; }
+        if (c == '\'') { in_chr = 1; continue; }
+        if (c == '(' || c == '[' || c == '{') { depth++; continue; }
+        if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; continue; }
+        if (depth == 0 && c == op) {
+            /* avoid matching // comments (not expected) and ensure it's the operator */
+            last = i;
+        }
+    }
+    if (last >= 0) { *out_pos = last; return 1; }
+    return 0;
+}
+
+static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_float, int line, int col) {
+    /* Try to find a top-level / or % and wrap with safe macro. Returns 1 if rewritten. */
+    int pos = -1; char op = 0;
+    /* prefer rightmost? for a/b/c left-assoc, rewriting whole as macro is wrong if we pick middle; 
+       but easier: handle only simple single-op expressions at top level after stripping outer parens */
+    const char *e = expr;
+    /* strip leading/trailing spaces and one layer of outer parens if they wrap whole expr */
+    char tmp[4096]; strncpy(tmp, e, sizeof(tmp)-1); tmp[sizeof(tmp)-1]=0;
+    /* trim */
+    char *t = tmp; while (*t==' '||*t=='\t'||*t=='\n'||*t=='\r') t++;
+    size_t L = strlen(t); while (L>0 && (t[L-1]==' '||t[L-1]=='\t'||t[L-1]=='\n'||t[L-1]=='\r')) { t[--L]=0; }
+    if (L>=2 && t[0]=='(' && t[L-1]==')') {
+        int d=0,in_s=0,in_c=0,esc=0,ok=1;
+        for (size_t i=0;i<L;i++){ char c=t[i];
+            if(in_s){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='"')in_s=0; continue; }
+            if(in_c){ if(esc)esc=0; else if(c=='\\')esc=1; else if(c=='\'')in_c=0; continue; }
+            if(c=='"'){in_s=1;continue;} if(c=='\''){in_c=1;continue;}
+            if(c=='(')d++; else if(c==')'){d--; if(d==0 && i+1<L){ok=0;break;}}
+        }
+        if(ok && d==0){ t[L-1]=0; t++; }
+    }
+    int pdiv=-1, pmod=-1;
+    cg_find_top_binop(t, '/', &pdiv);
+    cg_find_top_binop(t, '%', &pmod);
+    if (pdiv < 0 && pmod < 0) return 0;
+    if (pmod > pdiv) { pos = pmod; op = '%'; } else { pos = pdiv; op = '/'; }
+    /* ensure not part of something else - crude but ok */
+    char lhs[2048], rhs[2048];
+    int lp = pos; if (lp >= (int)sizeof(lhs)) lp = sizeof(lhs)-1;
+    memcpy(lhs, t, lp); lhs[lp]=0;
+    strncpy(rhs, t+pos+1, sizeof(rhs)-1); rhs[sizeof(rhs)-1]=0;
+    /* trim lhs/rhs */
+    char *a=lhs; while(*a==' '||*a=='\t') a++; size_t la=strlen(a); while(la>0&&(a[la-1]==' '||a[la-1]=='\t')) a[--la]=0;
+    char *b=rhs; while(*b==' '||*b=='\t') b++; size_t lb=strlen(b); while(lb>0&&(b[lb-1]==' '||b[lb-1]=='\t')) b[--lb]=0;
+    if (!*a || !*b) return 0;
+    /* avoid rewriting if lhs/rhs still contain top-level / % ? for a/b/c, splitting at rightmost gives wrong grouping for macros (macros need rhs as divisor expr). 
+       But _LTNG_DIV_LL(A,B,...) computes A/B with B checked; for left-assoc a/b/c == (a/b)/c, rightmost top-level / in "a/b/c" is the second one -> lhs "a/b", rhs "c" which is correct. Good. */
+    if (is_float) {
+        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_D(%s,%s,%d,%d)", a,b,line,col);
+        else snprintf(out,outsz,"_LTNG_FMOD_D(%s,%s,%d,%d)", a,b,line,col);
+    } else {
+        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_LL(%s,%s,%d,%d)", a,b,line,col);
+        else snprintf(out,outsz,"_LTNG_MOD_LL(%s,%s,%d,%d)", a,b,line,col);
+    }
+    return 1;
+}
+
 static void codegen_assign(FILE *out, ASTNode *node, int indent) {
     int declare_here = 1;
     if (codegen_table && symbol_table_has_local(codegen_table, node->name)) {
@@ -604,8 +672,13 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             if (node->var_type == TYPE_FLOAT) {
                 if (_is_call_res)
                     fprintf(out, "{ double _e = atof(%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
-                else
-                    fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                else {
+                    char _rex[4096];
+                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                    else
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                }
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
             } else if (node->var_type == TYPE_BOOL) {
@@ -616,8 +689,13 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             } else {
                 if (_is_call_res)
                     fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
-                else
-                    fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                else {
+                    char _rex[4096];
+                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
+                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", _rex, node->name);
+                    else
+                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                }
             }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
@@ -853,8 +931,13 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
             if (node->var_type == TYPE_FLOAT) {
                 if (_is_call_res)
                     fprintf(out, "{ double _e = atof(%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
-                else
-                    fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                else {
+                    char _rex[4096];
+                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                    else
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                }
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
             } else if (node->var_type == TYPE_BOOL) {
@@ -865,8 +948,13 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
             } else {
                 if (_is_call_res)
                     fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
-                else
-                    fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                else {
+                    char _rex[4096];
+                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
+                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", _rex, node->name);
+                    else
+                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                }
             }
         }
     } else if ((node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR) && has_interpolation(node->value)) {
@@ -1766,6 +1854,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "#include <stdint.h>\n");
     fprintf(out, "#include <ctype.h>\n");
     fprintf(out, "#include <setjmp.h>\n");
+    fprintf(out, "#include <math.h>\n");
     fprintf(out, "static const char *_ltng_src_file = \"");
     write_c_string_raw(out, (errors && errors->filename) ? errors->filename : "<input>");
     fprintf(out, "\";\n");
@@ -1898,6 +1987,14 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_from_double(char *buf, double v){ snprintf(buf,256,\"%%g\",v); return buf; }\n");
     fprintf(out, "static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit(*p)) h=1; else if(*p=='.'){} else return 0; } return h; }\n");
     fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char buf[32][256]; static int _ltng_asn_idx=0; _ltng_asn_idx=(_ltng_asn_idx+1)%%32; char *r=buf[_ltng_asn_idx]; r[0]=0; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a),nb=atof(b); snprintf(r,256,\"%%g\",na+nb); } else { snprintf(r,256,\"%%s%%s\",a,b); } return r; }\n");
+    fprintf(out, "static long long _ltng_div0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Division by zero\", line, col); return 0; }\n");
+    fprintf(out, "static long long _ltng_mod0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Modulo by zero\", line, col); return 0; }\n");
+    fprintf(out, "static double _ltng_div0_d(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Division by zero\", line, col); return 0.0; }\n");
+    fprintf(out, "static double _ltng_mod0_d(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Modulo by zero\", line, col); return 0.0; }\n");
+    fprintf(out, "#define _LTNG_DIV_LL(A,B,L,C) ({ long long _b=(long long)(B); _b==0?_ltng_div0_ll((L),(C)):((long long)(A)/_b); })\n");
+    fprintf(out, "#define _LTNG_MOD_LL(A,B,L,C) ({ long long _b=(long long)(B); _b==0?_ltng_mod0_ll((L),(C)):((long long)(A)%%_b); })\n");
+    fprintf(out, "#define _LTNG_DIV_D(A,B,L,C) ({ double _b=(double)(B); _b==0.0?_ltng_div0_d((L),(C)):((double)(A)/_b); })\n");
+    fprintf(out, "#define _LTNG_FMOD_D(A,B,L,C) ({ double _b=(double)(B); _b==0.0?_ltng_mod0_d((L),(C)):fmod((double)(A),_b); })\n");
     fprintf(out, "static char *_ltng_ptr_to_str(void *p){ static char b[32][32]; static int i; i=(i+1)%%32; snprintf(b[i], sizeof(b[i]), \"%%llu\", (unsigned long long)(uintptr_t)p); return b[i]; }\n");
     fprintf(out, "static void *_ltng_str_to_ptr(const char *s){ if(!s||!*s) return NULL; return (void*)(uintptr_t)strtoull(s, NULL, 10); }\n");
     fprintf(out, "\n");
