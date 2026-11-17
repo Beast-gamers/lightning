@@ -1,0 +1,3 @@
+function bad() -> int {
+    return "hello"
+}

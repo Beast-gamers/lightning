@@ -1,0 +1,8 @@
+let n
+write(typeof(n))
+let x = tofloat("1.5")
+write(x + 1)
+write(1 + x)
+let s = tostring(12)
+write(s)
+write(typeof(s))

@@ -1,0 +1,26 @@
+# conversions in expressions, conditions, args, interpolation
+write(tofloat(3))
+write(tofloat("3.5"))
+write(tochar(65))
+write(tochar("hello"))
+write(typeof(tofloat(3)))
+write(typeof(tochar(65)))
+write(typeof(toint("5")))
+write(typeof(tostring(1)))
+write(typeof(tobool("t")))
+
+# interpolation
+let n = 66
+write("x=$[tofloat(2)] y=$[tochar(n)]")
+
+# conditions
+if (tofloat("1.0") == 1.0) { write("ok1") } else { write("bad1") }
+if (toint("5") == 5) { write("ok2") } else { write("bad2") }
+
+# args and returns
+function idf(x) -> float { return tofloat(x) }
+function idi(x) -> int { return toint(x) }
+function idc(x) -> char { return tochar(x) }
+write(idf("2.5"))
+write(idi("7"))
+write(idc(67))
