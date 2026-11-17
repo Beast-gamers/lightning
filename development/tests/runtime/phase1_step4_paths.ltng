@@ -1,0 +1,35 @@
+function getint() -> int { return 5 }
+function getfloat() -> float { return 2.5 }
+function coerce_int(x) -> int { return x }
+function coerce_float(x) -> float { return x }
+
+write(typeof(getint()))
+write(typeof(getint() + 1))
+write(typeof(getint() + 1.5))
+write(typeof(getfloat() * 2))
+write(coerce_int(3.9))
+write(typeof(coerce_int(3.9)))
+write(coerce_float(3))
+write(typeof(coerce_float(3)))
+
+let arr = [10, 20, 30]
+write(arr.length)
+write(typeof(arr.length))
+let n = arr.length
+write(typeof(n))
+write(n + 2)
+
+let a = 5
+set a *= 2.5
+write(a)
+write(typeof(a))
+let b = 9
+set b /= 2.0
+write(b)
+write(typeof(b))
+
+let x = -3
+let y = -3.5
+write(typeof(-x))
+write(typeof(-y))
+write(typeof(x + y))

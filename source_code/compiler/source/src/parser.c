@@ -3851,6 +3851,7 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
     if (arg.type == TOKEN_IDENT && lexer_peek(lexer).type == TOKEN_LPAREN) {
         /* Check if this is a known function */
         if (find_function_ast_by_name(arg.value)) {
+            int call_saved = lexer->current; /* before consuming ( */
             lexer_next(lexer); /* consume ( */
             int depth = 1;
             while (lexer->current < lexer->count && depth > 0) {
@@ -3863,20 +3864,20 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
                 lexer_next(lexer); /* consume inner ) */
             }
-            Token close = lexer_next(lexer); /* consume outer ) */
-            if (close.type != TOKEN_RPAREN) {
-                error_state_add(parser_errors, arg.line, arg.col,
-                    "Expected ')' after typeof argument");
-                lexer->current = saved_pos;
-                return 0;
+            Token close = lexer_peek(lexer);
+            if (close.type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume outer ) */
+                VarType ftype = infer_function_return_type(arg.value);
+                result->type = TOKEN_STRING;
+                strncpy(result->value, var_type_name(ftype), MAX_STRING_LEN - 1);
+                result->value[MAX_STRING_LEN - 1] = '\0';
+                result->line = typeof_tok.line;
+                result->col = typeof_tok.col;
+                return 1;
             }
-            VarType ftype = infer_function_return_type(arg.value);
-            result->type = TOKEN_STRING;
-            strncpy(result->value, var_type_name(ftype), MAX_STRING_LEN - 1);
-            result->value[MAX_STRING_LEN - 1] = '\0';
-            result->line = typeof_tok.line;
-            result->col = typeof_tok.col;
-            return 1;
+            /* Not a sole call argument (e.g. typeof(func() + 1)); let general
+               expression parsing handle it. */
+            lexer->current = call_saved;
         }
     }
 
@@ -9747,6 +9748,19 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                         return;
                     }
                     lexer_next(lexer); /* consume ) */
+                    /* Update inferred array element type */
+                    {
+                        VarType cur_et = symbol_table_get_array_elem_type(table, rm);
+                        VarType new_et = arg_type;
+                        if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
+                            new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
+                            new_et = TYPE_NULL;
+                        if (cur_et == TYPE_NULL || new_et == TYPE_NULL) cur_et = TYPE_NULL;
+                        else if (cur_et == new_et) { /* same */ }
+                        else if ((cur_et == TYPE_INT && new_et == TYPE_FLOAT) || (cur_et == TYPE_FLOAT && new_et == TYPE_INT)) cur_et = TYPE_FLOAT;
+                        else cur_et = TYPE_NULL;
+                        symbol_table_set_array_elem_type(table, rm, cur_et);
+                    }
                     ASTNode *node = create_node(NODE_ARRAY_PUSH, rm, arg_expr);
                     node->var_type = arg_type;
                     node->is_expr = 1;
@@ -9772,6 +9786,19 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                         return;
                     }
                     lexer_next(lexer); /* consume ) */
+                    /* Update inferred array element type */
+                    {
+                        VarType cur_et = symbol_table_get_array_elem_type(table, rm);
+                        VarType new_et = arg_type;
+                        if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
+                            new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
+                            new_et = TYPE_NULL;
+                        if (cur_et == TYPE_NULL || new_et == TYPE_NULL) cur_et = TYPE_NULL;
+                        else if (cur_et == new_et) { /* same */ }
+                        else if ((cur_et == TYPE_INT && new_et == TYPE_FLOAT) || (cur_et == TYPE_FLOAT && new_et == TYPE_INT)) cur_et = TYPE_FLOAT;
+                        else cur_et = TYPE_NULL;
+                        symbol_table_set_array_elem_type(table, rm, cur_et);
+                    }
                     ASTNode *node = create_node(NODE_ARRAY_INSERT, rm, idx_expr);
                     strncpy(node->array_index, arg_expr, MAX_STRING_LEN - 1);
                     node->array_index[MAX_STRING_LEN - 1] = '\0';
