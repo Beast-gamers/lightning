@@ -340,9 +340,9 @@ int main(int argc, char *argv[]) {
 
     char cmd[4096];
     if (debug) {
-        snprintf(cmd, sizeof(cmd), "%s -static -o \"%s\" \"%s\" 2>&1", cc_cmd, output_name, tmp_c);
+        snprintf(cmd, sizeof(cmd), "%s -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
     } else {
-        snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\" 2>&1", cc_cmd, output_name, tmp_c);
+        snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
     }
 
     if (debug) log_stage("cc", "invoking C compiler");

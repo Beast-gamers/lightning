@@ -891,39 +891,8 @@ static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok);
 
 
 static void sanitize_mod_atof(char *out, int out_size) {
-    /* Cast atof(...) to (long long) when used with % to avoid double%int in C. */
-    if (!strstr(out, "%")) return;
-    char buf[4096];
-    int bi = 0, i = 0, len = (int)strlen(out);
-    while (i < len && bi < (int)sizeof(buf) - 8) {
-        if (i + 5 <= len && out[i]=='a' && out[i+1]=='t' && out[i+2]=='o' && out[i+3]=='f' && out[i+4]=='(') {
-            /* extract full atof(...) */
-            char seg[512]; int si = 0;
-            seg[si++] = out[i++]; seg[si++] = out[i++]; seg[si++] = out[i++]; seg[si++] = out[i++]; seg[si++] = out[i++];
-            int depth = 1;
-            while (i < len && depth > 0 && si < 500) {
-                if (out[i] == '(') depth++;
-                else if (out[i] == ')') depth--;
-                seg[si++] = out[i++];
-                if (depth == 0) break;
-            }
-            seg[si] = 0;
-            int wrap = 0;
-            /* check if next non-space is % */
-            int j = i; while (j < len && (out[j]==' '||out[j]=='\t')) j++;
-            if (j < len && out[j] == '%') wrap = 1;
-            /* check if previous non-space in buf is % */
-            int k = bi - 1; while (k >= 0 && (buf[k]==' '||buf[k]=='\t')) k--;
-            if (k >= 0 && buf[k] == '%') wrap = 1;
-            if (wrap) bi += snprintf(buf + bi, sizeof(buf) - bi, "((long long)%s)", seg);
-            else bi += snprintf(buf + bi, sizeof(buf) - bi, "%s", seg);
-            continue;
-        }
-        buf[bi++] = out[i++];
-    }
-    buf[bi] = 0;
-    strncpy(out, buf, out_size - 1);
-    out[out_size - 1] = 0;
+    /* No-op: modulo/division rewriting and runtime macros handle operand typing. */
+    (void)out; (void)out_size;
 }
 
 static int part_is_stringy(const char *part);

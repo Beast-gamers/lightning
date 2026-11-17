@@ -1,0 +1,9 @@
+let a = 5.5
+write(a % 2)
+let b = 5.0
+write(b % 2.0)
+let c = 10.0
+let d = 3.0
+write(c % d)
+let e = 7
+write(e % 3)

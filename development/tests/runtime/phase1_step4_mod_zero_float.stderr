@@ -1,0 +1,2 @@
+DivisionError: Modulo by zero
+  at main (phase1_step4_mod_zero_float.ltng:3:12)
