@@ -200,6 +200,7 @@ typedef struct ASTNode {
     int *array_dims;         /* dynamically allocated size of each dimension */
     int array_elem_count;    /* total number of elements */
     char array_index[MAX_STRING_LEN]; /* for array element set: C index expression */
+    VarType array_elem_type; /* inferred homogeneous element type for array literals/vars (TYPE_NULL = unknown/mixed) */
     struct ASTNode *index1;  /* first index expression */
     struct ASTNode *index2;  /* second index expression */
     struct ASTNode *index3;  /* third index expression */
@@ -213,6 +214,7 @@ typedef struct {
     int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
     int array_dim_count;  /* number of array dimensions (0 if not an array) */
     int *array_dims;      /* dynamically allocated size of each array dimension */
+    VarType array_elem_type; /* inferred homogeneous element type (TYPE_NULL = unknown/mixed) */
     int is_func_ref;     /* variable holds a known function reference (cname) */
     char func_ref_cname[MAX_IDENTIFIER_LEN];
     int func_ref_param_count;
@@ -316,6 +318,8 @@ void symbol_table_set_array_dims(SymbolTable *table, const char *name,
                                  int dim_count, const int *dims);
 int symbol_table_get_array_dims(SymbolTable *table, const char *name,
                                 int **dims, int *dim_count);
+void symbol_table_set_array_elem_type(SymbolTable *table, const char *name, VarType elem_type);
+VarType symbol_table_get_array_elem_type(SymbolTable *table, const char *name);
 
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
 const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);

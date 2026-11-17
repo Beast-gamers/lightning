@@ -238,6 +238,7 @@ static ASTNode *create_node(NodeType type, const char *name, const char *value) 
     strncpy(node->value, value ? value : "", MAX_STRING_LEN - 1);
     node->value[MAX_STRING_LEN - 1] = '\0';
     node->var_type = TYPE_STRING;
+    node->array_elem_type = TYPE_NULL;
     return node;
 }
 
@@ -454,6 +455,7 @@ static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType
     ve->is_locked = 0;
     ve->array_dim_count = 0;
     ve->array_dims = NULL;
+    ve->array_elem_type = TYPE_NULL;
     ve->is_func_ref = 0;
     ve->func_ref_cname[0] = '\0';
     ve->func_ref_param_count = -1;
@@ -671,6 +673,28 @@ int symbol_table_get_array_dims(SymbolTable *table, const char *name,
         }
     }
     return 0;
+}
+
+void symbol_table_set_array_elem_type(SymbolTable *table, const char *name, VarType elem_type) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                s->vars[i].array_elem_type = elem_type;
+                return;
+            }
+        }
+    }
+}
+
+VarType symbol_table_get_array_elem_type(SymbolTable *table, const char *name) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                return s->vars[i].array_elem_type;
+            }
+        }
+    }
+    return TYPE_NULL;
 }
 
 static void skip_to_newline(Lexer *lexer) {
@@ -1388,6 +1412,8 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
     int *max_elem_counts = calloc(cap_depth, sizeof(int));
     int *child_counts = calloc(cap_depth, sizeof(int));
     int *max_child_counts = calloc(cap_depth, sizeof(int));
+    VarType elem_type = TYPE_NULL; /* inferred homogeneous element type (TYPE_NULL=unknown/mixed) */
+    int elem_type_set = 0;
 
     while (lexer->current < lexer->count) {
         Token t = lexer_peek(lexer);
@@ -1442,6 +1468,7 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
 
         /* Element value: scalar expression or simple literal/identifier. */
         char val[MAX_STRING_LEN] = "";
+        VarType this_elem_type = TYPE_NULL;
         Token t1 = lexer_peek(lexer);
         Token t2 = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : t1;
         int simple_single = 0;
@@ -1455,6 +1482,16 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
             lexer_next(lexer);
             if (t1.type == TOKEN_CHAR) {
                 snprintf(val, sizeof(val), "'%s'", t1.value);
+                this_elem_type = TYPE_CHAR;
+            } else if (t1.type == TOKEN_INT_LIT) {
+                snprintf(val, sizeof(val), "%s", t1.value);
+                this_elem_type = TYPE_INT;
+            } else if (t1.type == TOKEN_FLOAT_LIT) {
+                snprintf(val, sizeof(val), "%s", t1.value);
+                this_elem_type = TYPE_FLOAT;
+            } else if (t1.type == TOKEN_STRING) {
+                snprintf(val, sizeof(val), "%s", t1.value);
+                this_elem_type = TYPE_STRING;
             } else if (t1.type == TOKEN_IDENT && !is_bool_value(t1.value) && !is_type_keyword(t1.value)) {
                 char m[MAX_IDENTIFIER_LEN];
                 mangle_name(t1.value, m, sizeof(m));
@@ -1466,13 +1503,17 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
                 } else {
                     snprintf(val, sizeof(val), "%s", t1.value);
                 }
+                /* variable reference element: runtime type unknown */
+                this_elem_type = TYPE_NULL;
             } else if (t1.type == TOKEN_IDENT && is_bool_value(t1.value)) {
                 if (strcmp(t1.value, "true") == 0 || strcmp(t1.value, "t") == 0)
                     snprintf(val, sizeof(val), "true");
                 else
                     snprintf(val, sizeof(val), "false");
+                this_elem_type = TYPE_BOOL;
             } else {
                 snprintf(val, sizeof(val), "%s", t1.value);
+                this_elem_type = TYPE_NULL;
             }
         } else {
             /* Parse as expression element (supports conversion calls, arithmetic, calls, etc.) */
@@ -1487,18 +1528,38 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
                 } else {
                     val[0] = '\x01'; strncpy(val + 1, expr, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
                 }
+                this_elem_type = TYPE_STRING;
             } else if (etype == TYPE_STRING || etype == TYPE_OBJECT || etype == TYPE_ARRAY || etype == TYPE_CHAR) {
                 val[0] = '\x01'; strncpy(val + 1, expr, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+                this_elem_type = TYPE_STRING;
             } else if (etype == TYPE_BOOL) {
                 char wrapped[MAX_STRING_LEN];
                 snprintf(wrapped, sizeof(wrapped), "((%s)?\"true\":\"false\")", expr);
                 val[0] = '\x01'; strncpy(val + 1, wrapped, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+                this_elem_type = TYPE_BOOL;
             } else {
                 /* numeric expression: convert to string at runtime */
                 char wrapped[MAX_STRING_LEN];
                 if (etype == TYPE_FLOAT) snprintf(wrapped, sizeof(wrapped), "_ltng_ad((double)(%s))", expr);
                 else snprintf(wrapped, sizeof(wrapped), "_ltng_ad((double)(long long)(%s))", expr);
                 val[0] = '\x01'; strncpy(val + 1, wrapped, sizeof(val) - 2); val[sizeof(val)-1] = '\0';
+                this_elem_type = (etype == TYPE_FLOAT) ? TYPE_FLOAT : TYPE_INT;
+            }
+        }
+        /* Merge element type for homogeneous numeric inference (Step 4). */
+        if (!elem_type_set) {
+            elem_type = this_elem_type;
+            elem_type_set = 1;
+        } else if (elem_type != TYPE_NULL) {
+            if (this_elem_type == TYPE_NULL) {
+                elem_type = TYPE_NULL;
+            } else if (elem_type == this_elem_type) {
+                /* same type */
+            } else if ((elem_type == TYPE_INT && this_elem_type == TYPE_FLOAT) ||
+                       (elem_type == TYPE_FLOAT && this_elem_type == TYPE_INT)) {
+                elem_type = TYPE_FLOAT;
+            } else {
+                elem_type = TYPE_NULL; /* mixed/incompatible */
             }
         }
         int vlen = (int)strlen(val);
@@ -1539,6 +1600,7 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
     node->array_dim_count = dim_count;
     node->array_dims = dims;
     node->array_elem_count = elem_count;
+    node->array_elem_type = elem_type_set ? elem_type : TYPE_NULL;
     strncpy(node->value, values, MAX_STRING_LEN - 1);
     node->value[MAX_STRING_LEN - 1] = '\0';
 
@@ -3087,11 +3149,20 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                         pos += snprintf(out + pos, out_size - pos,
                                             "; __idx = __idx * %d + __i%d", dims[d], d);
                                     }
+                                    VarType _aet = symbol_table_get_array_elem_type(table, mangled);
                                     pos += snprintf(out + pos, out_size - pos,
                                         "; _ltng_arr_get(%s, %s, __idx); })",
                                         arrname, lenname);
-                                    result_type = TYPE_STRING;
-                                    array_access_used = 1;
+                                    /* Preserve string access for compatibility (oob returns empty string),
+                                       but track element type for typeof/inference where safe. */
+                                    if (_aet == TYPE_INT || _aet == TYPE_FLOAT) {
+                                        /* keep as string expression; type info tracked in symbol table */
+                                        result_type = TYPE_STRING;
+                                        array_access_used = 1;
+                                    } else {
+                                        result_type = TYPE_STRING;
+                                        array_access_used = 1;
+                                    }
                                 }
                                 if (!have_dims) free(dims);
                             } else if (!index_error) {
@@ -5166,6 +5237,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         }
         symbol_table_add_locked(table, mangled, TYPE_ARRAY);
         symbol_table_set_array_dims(table, mangled, arr->array_dim_count, arr->array_dims);
+        symbol_table_set_array_elem_type(table, mangled, arr->array_elem_type);
         const char *cname = symbol_table_get_cname(table, mangled);
         ASTNode *node = create_node(NODE_LET, cname, arr->value);
         node->var_type = TYPE_ARRAY;
@@ -5175,6 +5247,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             node->array_dims[d] = arr->array_dims[d];
         }
         node->array_elem_count = arr->array_elem_count;
+        node->array_elem_type = arr->array_elem_type;
         node->is_expr = 0;
         emit(node);
         return;
@@ -5194,10 +5267,16 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     /* let b = a - plain alias/copy */
                     lexer_next(lexer); /* consume src ident */
                     const char *scname = symbol_table_get_cname(table, sm);
+                    int *src_dims = NULL; int src_dim_count = 0;
+                    if (symbol_table_get_array_dims(table, sm, &src_dims, &src_dim_count))
+                        symbol_table_set_array_dims(table, mangled, src_dim_count, src_dims);
                     symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                    if (src_dim_count > 0) symbol_table_set_array_dims(table, mangled, src_dim_count, src_dims);
+                    symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                     const char *dcname = symbol_table_get_cname(table, mangled);
                     ASTNode *node = create_node(NODE_LET, dcname, "");
                     node->var_type = TYPE_ARRAY;
+                    node->array_elem_type = symbol_table_get_array_elem_type(table, sm);
                     node->is_expr = 0;
                     emit(node);
                     /* Emit copy statement */
@@ -5228,10 +5307,16 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume ) */
                         const char *scname = symbol_table_get_cname(table, sm);
+                        int *src_dims2 = NULL; int src_dim_count2 = 0;
+                        if (symbol_table_get_array_dims(table, sm, &src_dims2, &src_dim_count2))
+                            symbol_table_set_array_dims(table, mangled, src_dim_count2, src_dims2);
                         symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        if (src_dim_count2 > 0) symbol_table_set_array_dims(table, mangled, src_dim_count2, src_dims2);
+                        symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                         const char *dcname = symbol_table_get_cname(table, mangled);
                         ASTNode *node = create_node(NODE_LET, dcname, "");
                         node->var_type = TYPE_ARRAY;
+                        node->array_elem_type = symbol_table_get_array_elem_type(table, sm);
                         node->is_expr = 0;
                         emit(node);
                         ASTNode *cp = create_node(NODE_ARRAY_COPY, dcname, (char *)scname);
@@ -5271,9 +5356,11 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         lexer_next(lexer); /* consume ) */
                         const char *scname = symbol_table_get_cname(table, sm);
                         symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                         const char *dcname = symbol_table_get_cname(table, mangled);
                         ASTNode *node = create_node(NODE_LET, dcname, "");
                         node->var_type = TYPE_ARRAY;
+                        node->array_elem_type = symbol_table_get_array_elem_type(table, sm);
                         node->is_expr = 0;
                         emit(node);
                         /* Build slice range string "start,end" */
@@ -5767,8 +5854,10 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         }
         symbol_table_add_locked(table, mangled, TYPE_ARRAY);
         symbol_table_set_array_dims(table, mangled, arr->array_dim_count, arr->array_dims);
+        symbol_table_set_array_elem_type(table, mangled, arr->array_elem_type);
         symbol_table_set_const(table, mangled, 1);
-        ASTNode *node = create_node(NODE_CONST, mangled, arr->value);
+        const char *_cac = symbol_table_get_cname(table, mangled);
+        ASTNode *node = create_node(NODE_CONST, _cac, arr->value);
         node->var_type = TYPE_ARRAY;
         node->array_dim_count = arr->array_dim_count;
         node->array_dims = malloc(arr->array_dim_count * sizeof(int));
@@ -5776,6 +5865,7 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
             node->array_dims[d] = arr->array_dims[d];
         }
         node->array_elem_count = arr->array_elem_count;
+        node->array_elem_type = arr->array_elem_type;
         node->is_expr = 0;
         emit(node);
         return;
@@ -6126,6 +6216,20 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         /* Parse RHS expression */
         char rhs_expr[MAX_STRING_LEN];
         VarType rhs_type = collect_expression(lexer, table, rhs_expr, MAX_STRING_LEN, 0, 0, NULL, NULL, NULL, NULL);
+        /* Update inferred array element type on element assignment (Step 4). */
+        {
+            VarType cur_et = symbol_table_get_array_elem_type(table, mangled);
+            VarType new_et = rhs_type;
+            if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
+                new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING) {
+                new_et = TYPE_NULL;
+            }
+            if (cur_et == TYPE_NULL || new_et == TYPE_NULL) cur_et = TYPE_NULL;
+            else if (cur_et == new_et) { /* same */ }
+            else if ((cur_et == TYPE_INT && new_et == TYPE_FLOAT) || (cur_et == TYPE_FLOAT && new_et == TYPE_INT)) cur_et = TYPE_FLOAT;
+            else cur_et = TYPE_NULL;
+            symbol_table_set_array_elem_type(table, mangled, cur_et);
+        }
 
         /* Get array dimensions */
         int dim_count = 0;
@@ -6226,8 +6330,10 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             if (!check_set_type_immutable(table, mangled, TYPE_ARRAY, set_tok.line, set_tok.col, lexer))
                 return;
             symbol_table_set_array_dims(table, mangled, arr->array_dim_count, arr->array_dims);
+            symbol_table_set_array_elem_type(table, mangled, arr->array_elem_type);
             ASTNode *node = create_node(NODE_SET, cname, arr->value);
             node->var_type = TYPE_ARRAY;
+            node->array_elem_type = arr->array_elem_type;
             node->array_dim_count = arr->array_dim_count;
             node->array_dims = malloc(arr->array_dim_count * sizeof(int));
             for (int d = 0; d < arr->array_dim_count; d++) node->array_dims[d] = arr->array_dims[d];
@@ -6246,6 +6352,10 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                     /* set a = b */
                     lexer_next(lexer); /* consume src ident */
                     const char *scname = symbol_table_get_cname(table, sm);
+                    int *sd = NULL; int sdc = 0;
+                    if (symbol_table_get_array_dims(table, sm, &sd, &sdc))
+                        symbol_table_set_array_dims(table, mangled, sdc, sd);
+                    symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                     /* Emit copy into existing array variable (dst). */
                     ASTNode *cp = create_node(NODE_ARRAY_COPY, (char *)cname, (char *)scname);
                     cp->is_expr = 1;
@@ -6274,6 +6384,10 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume ) */
                         const char *scname = symbol_table_get_cname(table, sm);
+                        int *sd2 = NULL; int sdc2 = 0;
+                        if (symbol_table_get_array_dims(table, sm, &sd2, &sdc2))
+                            symbol_table_set_array_dims(table, mangled, sdc2, sd2);
+                        symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                         ASTNode *cp = create_node(NODE_ARRAY_COPY, (char *)cname, (char *)scname);
                         cp->is_expr = 1;
                         emit(cp);
@@ -6310,6 +6424,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume ) */
                         const char *scname = symbol_table_get_cname(table, sm);
+                        symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                         char slrange[MAX_STRING_LEN];
                         snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
                         ASTNode *sl = create_node(NODE_ARRAY_SLICE, (char *)cname, (char *)scname);
