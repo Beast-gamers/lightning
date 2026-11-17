@@ -52,27 +52,30 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ## Phase 1 — Type system
 
-**Status:** Partially implemented (core improvements landed; further work required)
+**Status:** Partially implemented (significant progress; further work required)
 
 ### Implemented so far (relevant context)
-- Distinct `float` detection/reporting in key paths; `typeof` improved for covered float cases.
-- Improved type name reporting for `float`/`char` in key paths.
-- Initial recognition/handling for `tofloat`/`tochar` in some contexts; support for `let x = float` and `let x = char`.
-- Numeric compatibility adjustments in key assignment checks (`int <-> float`, `char <-> string` compatibility retained in relevant cases).
+- Distinct `float` detection/reporting and type-name improvements in key paths; improved float expression/type tracking and float expression output in covered cases.
+- Expanded conversion support/handling for `toint`/`tofloat`/`tostring`/`tobool`/`tochar` in more contexts (expressions, comparisons, interpolation/`typeof` mapping, argument/return paths covered by tests), with stricter compile-time rejection of obvious invalid literal numeric strings for `toint`/`tofloat` in validated contexts.
+- Compile-time detection/rejection of literal division/modulo by zero (int and float literal forms).
+- Improved numeric promotion in key mixed expressions, comparison normalization for numeric conversion helpers, and return/call/indirect-call expression typing fixes (including self-reference/body-parsing cases) to prevent incorrect string typing/internal compile failures.
+- Support for explicit type declarations `let x = float` and `let x = char`.
+- Additional Phase 1 runtime/semantic negative tests added; latest full suite passes (**156 PASS, 0 FAIL, 0 SKIP**).
 
 ### Remaining limitations
 - **Incomplete distinct int/float semantics:** not fully consistent across all expression, assignment, comparison, codegen, and runtime paths.
 - **Incomplete type inference:** full and consistent inference across all language constructs/contexts is not complete.
-- **Explicit conversion coverage incomplete:** `tofloat`/`tochar` (and conversion behavior generally) not fully implemented/verified in all contexts (including interpolation/evaluation and all expression forms).
+- **Explicit conversion coverage incomplete:** `tofloat`/`tochar` (and conversion behavior generally) are not fully implemented/verified in **all** contexts (including remaining interpolation/evaluation/edge forms).
 - **Numeric promotion rules incomplete:** consistent promotion/coercion rules are not fully defined/implemented across all operations.
 - **Type compatibility checking incomplete:** comprehensive compatibility and enforcement across all assignment, operation, parameter, and return contexts is not complete.
-- **Return-type validation limited:** basic inconsistent-return detection is implemented (e.g. string literal vs numeric), but richer return-type checking/annotations are not yet implemented.
-- **Numeric semantics gaps:** overflow behavior, division semantics, precision behavior, and boundary handling are not fully specified/verified.
-- **Insufficient negative/boundary/interaction coverage:** required comprehensive tests for invalid conversions, mixed expressions, precision/boundary values, null behavior interactions, and memory checks (where available) are not complete.
+- **Return-type validation not fully complete:** improved in covered cases, but comprehensive return-type validation/annotations and edge-case enforcement remain incomplete.
+- **Numeric semantics gaps:** **overflow behavior** and **division/modulo semantics** beyond compile-time literal checks (e.g. runtime variable division/modulo by zero behavior and related safety/diagnostics) are not fully specified/verified; precision and boundary handling require broader validation.
+- **Insufficient negative/boundary/interaction coverage:** required comprehensive tests for precision, boundary values, invalid conversions, mixed expressions, null behavior interactions, and memory checks (where available) are not complete.
 - **Runtime-model constraints:** underlying string-buffer/runtime representation limits how fully native numeric/type semantics can be realized without broader redesign.
 
 ### Intentional/documented behavior changes (compatibility impact)
 - `typeof(...)` reports `float` for covered float cases (instead of previous merged `int` behavior), which can affect programs/tests relying on older reporting.
+- Some previously-accepted faulty inputs are now rejected at compile time before C compilation (e.g. literal `x / 0`, `x % 0`, and obvious invalid literal numeric strings passed to `toint`/`tofloat` in validated contexts).
 
 ---
 

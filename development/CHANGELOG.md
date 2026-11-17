@@ -36,7 +36,7 @@ All notable changes to the Lightning project in this development effort are docu
 - `PHASE_STATUS.md`: phase-by-phase implementation and verification tracking.
 - `tests/run_tests.sh`: reproducible test runner (builds compiler, runs categorized + corpus + negative tests, executes native binaries).
 - Initial Phase 0 test infrastructure directories and smoke tests under `tests/` (lexer/parser/semantic/runtime/codegen/e2e/native/regression/adversarial).
-- `tests/runtime/phase1_types_smoke.ltng`: smoke coverage for distinct type reporting and basic conversions.
+- Phase 1 tests: `development/tests/runtime/phase1_types_smoke.ltng`, `development/tests/runtime/phase1_conversions.ltng` (+ `.expected`), `development/tests/runtime/phase1_numeric_promotion.ltng` (+ `.expected`), `development/tests/runtime/phase1_mixed_null.ltng` (+ `.expected`), and semantic negatives for invalid conversions, return mismatch, and literal div/mod-by-zero.
 - Initial support for `tofloat(...)` and `tochar(...)` conversion-function recognition and partial handling in expression/type contexts.
 - Support for explicit type declarations `let x = float` and `let x = char` (with default initialization).
 - `limitations.md`: consolidated limitations/gaps for Phases 0–3.

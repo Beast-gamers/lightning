@@ -1,9 +1,15 @@
 # Lightning Phase Status
 
+## Current state (latest verification)
+
+- Full native test suite: **PASS=156 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, compile+execute native binaries; includes existing corpus/regression, category/smoke, Phase 1/2/3/4/5 tests, and negative checks).
+- Compiler/build interface: `bolt` is the user-facing interface; direct compiler invocation requires `LTNG_BOLT` (`Error: lightning compiler must be invoked through bolt`). `bolt --version` returns `1.0.0`; `bolt --emit-c` supported.
+- Multi-arch compiler binaries and universal wrapper rebuilt and synced: `source_code/builds/bin/ltng*` and `source_code/builds/linux/compiler/dist/ltng_universal` (latest rebuild verified; universal/dist hashes match; alias binaries match).
+
 ## Baseline (pre-Phase 0)
 
 - Repository audited; `DEVELOPMENT_AUDIT.md` created.
-- Baseline test run via `tests/run_tests.sh`: **93 PASS, 0 FAIL, 0 SKIP** (existing `code/` regression corpus + negative checks, with `test_errors2.ltng` treated as valid comment-only program).
+- Baseline test run: **93 PASS, 0 FAIL, 0 SKIP** (existing regression corpus + negative checks, with `test_errors2.ltng` treated as valid comment-only program).
 
 ## Phase 0 — Testing infrastructure
 
@@ -11,15 +17,16 @@
 
 ### Implemented
 - Created `tests/` structure: `lexer/`, `parser/`, `semantic/`, `runtime/`, `codegen/`, `e2e/`, `native/`, `regression/`, `adversarial/`, `helpers/`.
-- Added `tests/run_tests.sh` reproducible test runner (builds compiler, copies to `/tmp/opencode/ltng`, runs category tests + existing `code/` regression corpus + negative checks, compiles and executes native binaries, compares `.expected` outputs, supports `--check`/`--emit-c` modes).
+- Added `development/tests/run_tests.sh` reproducible test runner (builds compiler, copies to `/tmp/opencode/ltng`, runs category tests + existing corpus/regression + negative checks, compiles and executes native binaries, compares `.expected` outputs, supports `--check`/`--emit-c` modes).
 - Created `TESTING.md` documenting test categories, how to run, conventions, and native-executable validation.
 - Added initial category smoke tests: `tests/lexer/lexer_smoke.ltng`, `tests/parser/parser_smoke.ltng`, `tests/semantic/semantic_smoke.ltng`, `tests/runtime/runtime_smoke.ltng`, `tests/codegen/codegen_smoke.ltng` (emit-C), `tests/e2e/e2e_smoke.ltng`, `tests/native/native_smoke.ltng`, `tests/regression/regression_placeholder.ltng`.
 
 ### Test results
-- **PASS=101 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`)
+- Baseline infrastructure milestone: **PASS=101 FAIL=0 SKIP=0** (`bash tests/run_tests.sh` at that stage)
   - Category smokes: 8 passing (including emit-C check)
   - Existing corpus positive/runtime cases: 77 passing (with expected-output comparisons where present)
   - Existing negative/error cases: 16 passing (expected compile/check failures)
+- Latest full suite: **PASS=156 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`)
 
 ### Changed files
 - `DEVELOPMENT_AUDIT.md` (new)
@@ -46,35 +53,43 @@
 
 ## Phase 1 — Type system
 
-**Status:** Partially implemented (core improvements landed; further work required)
+**Status:** Partially implemented (significant progress; further work required)
 
 ### Implemented (so far)
-- Made `detect_type` distinguish float literals/values as `TYPE_FLOAT` (instead of merging to int).
-- Updated type name reporting (`var_type_name`, `type_name_str`) to return distinct `float` and `char` type names.
-- Improved expression handling to recognize float literals/variables as float in type tracking and promote numeric results to float in key cases.
-- Added numeric compatibility in assignment type checks (`int <-> float`) and `char <-> string` compatibility to preserve backward-compatible behavior while enabling distinct type tracking.
-- Extended conversion-function recognition to include `tofloat` and `tochar` (in addition to existing `toint`/`tostring`/`tobool`) and added initial parser/expression handling for them; updated `typeof(tofloat(...))`/`typeof(tochar(...))` mapping in key paths.
+- Made `detect_type` distinguish float literals/values as `TYPE_FLOAT` (instead of merging to int) and improved type name reporting (`float`, `char`) in covered paths.
+- Improved expression/type handling for float literals/variables, numeric promotion in key mixed arithmetic cases, and codegen output for float-typed expressions.
+- Added numeric compatibility in key assignment checks (`int <-> float`) and retained `char <-> string` compatibility in relevant cases to preserve backward-compatible behavior.
+- Extended conversion-function recognition/handling for `toint`/`tofloat`/`tostring`/`tobool`/`tochar` in more contexts (including expression, comparison, interpolation/`typeof` mapping, argument/return paths covered by tests) and added stricter compile-time validation for obvious invalid literal numeric conversions in `toint`/`tofloat` (e.g. `"abc"`, `""`, `"xyz"`).
+- Added compile-time detection/rejection for literal division/modulo by zero (int and float literal forms).
+- Improved return/expression typing for conversions and direct/indirect/named/self-referential function calls (fixed regressions causing incorrect string typing and internal compile failures in affected cases) and improved comparison normalization for numeric conversion helpers.
 - Added support for explicit type declarations `let x = float` and `let x = char` (default initialization, distinct type tracking).
-- Added `tests/runtime/phase1_types_smoke.ltng` for basic distinct-type/typeof/conversion behavior.
+- Added/updated Phase 1 tests:
+  - Runtime: `development/tests/runtime/phase1_types_smoke.ltng`, `development/tests/runtime/phase1_conversions.ltng` (+ `.expected`), `development/tests/runtime/phase1_numeric_promotion.ltng` (+ `.expected`), `development/tests/runtime/phase1_mixed_null.ltng` (+ `.expected`)
+  - Semantic/negative: `development/tests/semantic/phase1_invalid_conversion_neg.ltng`, `development/tests/semantic/phase1_invalid_conversion_float_neg.ltng`, `development/tests/semantic/phase1_return_mismatch_neg.ltng`, `development/tests/semantic/phase1_div_zero_neg.ltng`, `development/tests/semantic/phase1_mod_zero_neg.ltng`, `development/tests/semantic/phase1_div_zero_float_neg.ltng`
+- Updated existing tests/fixtures as needed (e.g. `development/code/tc_arithmetic.ltng` no longer relies on compile-time-invalid literal division by zero; `code/t_null_set_type_change.expected` updated for distinct float typeof behavior).
 
 ### Test results
-- Full suite after changes: **PASS=101 FAIL=0 SKIP=0** (`bash tests/run_tests.sh`)
-- New smoke test: `tests/runtime/phase1_types_smoke.ltng` passes.
+- Latest full suite: **PASS=156 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, native compile+execute validation).
+- Phase 1 smoke/regression tests above pass as part of the suite.
 
 ### Breaking/behavior changes (documented)
-- `typeof(...)` now reports `float` for float-typed values/literals in covered cases (instead of merged `int`).
-- Updated existing expected output: `code/t_null_set_type_change.expected` changed final typeof from `int` to `float` for `3.14`.
+- `typeof(...)` reports `float` for float-typed values/literals in covered cases (instead of previous merged `int` behavior).
+- Some previously-accepted faulty inputs are now rejected at compile time before C compilation (e.g. literal `x / 0`, `x % 0`, and obvious invalid literal numeric strings passed to `toint`/`tofloat` in validated contexts).
 
-### Changed files
-- `source_code/compiler/src/parser.c`
-- `code/t_null_set_type_change.expected`
-- `tests/runtime/phase1_types_smoke.ltng`
-- `CHANGELOG.md`
-- `PHASE_STATUS.md`
+### Changed files (recent Phase 1 work, non-exhaustive)
+- `source_code/compiler/source/src/parser.c`
+- `source_code/compiler/source/src/codegen.c`
+- `development/tests/run_tests.sh`
+- `development/code/tc_arithmetic.ltng`
+- `development/tests/runtime/phase1_*.ltng` (+ `.expected`)
+- `development/tests/semantic/phase1_*_neg.ltng`
+- Rebuilt compiler artifacts: `source_code/builds/bin/ltng*`, `source_code/builds/linux/compiler/dist/ltng_universal`
+- `CHANGELOG.md`, `PHASE_STATUS.md`
 
 ### Remaining for Phase 1
-- Complete and verify: distinct int/float semantics across all expression/codegen paths, full type inference, explicit conversions coverage (`tofloat`/`tochar` in all contexts including interpolation/evaluation paths), numeric promotion rules, comprehensive type compatibility checking, return-type validation, overflow and division semantics.
-- Add required positive/negative/boundary/interaction tests (precision, boundary values, invalid conversions, mixed expressions, null behavior) and memory checks where available.
+- Complete and verify: distinct `int`/`float` semantics across **all** expression/codegen/runtime paths, full type inference coverage, explicit conversion coverage (`tofloat`/`tochar` and conversion behavior generally) in **all** contexts (including remaining interpolation/evaluation/edge forms), consistent numeric promotion rules, comprehensive type compatibility checking, and complete return-type validation.
+- Implement/verify numeric semantics not yet fully covered: **overflow behavior** and **division semantics** beyond compile-time literal checks (e.g. runtime variable division/modulo by zero behavior and related safety/diagnostics as appropriate for the language/runtime model).
+- Expand required positive/negative/boundary/interaction tests (precision, boundary values, invalid conversions, mixed expressions, null behavior, and broader interaction cases) and record memory checks where available.
 
 ## Phase 2 — Semantic analysis and scopes
 

@@ -4,31 +4,33 @@
 
 Testing infrastructure for the Lightning compiler/runtime. The goal is reproducible validation across compiler stages and native executable behavior.
 
-- Compiler source: `source_code/compiler/src/*`
-- Build: `cd source_code/compiler && make` (produces `source_code/compiler/ltng`)
-- Test runner: `bash tests/run_tests.sh`
+- Compiler source: `source_code/compiler/source/src/*`
+- Build: `cd source_code/compiler && make` (produces compiler binaries under `source_code/builds/bin/`)
+- Test runner: `bash development/tests/run_tests.sh` (run from repo root)
 
 The test runner:
-1. Builds the compiler from source.
-2. Copies the compiler binary to `/tmp/opencode/ltng` and makes it executable (workaround for environments where workspace binaries may not be directly executable).
-3. Runs regression, negative, and categorized tests, compiling to `/tmp/opencode/ltng_tests/*` and executing produced native binaries.
+1. Builds the compiler from source (`source_code/compiler`).
+2. Copies the built compiler binary to `/tmp/opencode/ltng` and makes it executable (workaround for environments where workspace binaries may not be directly executable).
+3. Runs regression, negative, and categorized tests (including `development/tests/*` and the existing corpus/regression cases), compiling to `/tmp/opencode/ltng_tests/*` and executing produced native binaries.
 4. Reports `PASS/FAIL/SKIP` counts and exits non-zero on failure.
+
+Latest full suite result (current state): **PASS=156 FAIL=0 SKIP=0**.
 
 ## Test categories
 
-Directories under `tests/`:
+Directories under `development/tests/`:
 
-- `tests/lexer/`: lexer/tokenization-focused cases (valid tokenization behavior, lexical errors where applicable).
-- `tests/parser/`: parser/AST/syntax acceptance and rejection cases.
-- `tests/semantic/`: semantic analysis checks (declarations, scopes, type/const rules, undefined names, etc.), primarily via `--check`.
-- `tests/runtime/`: runtime behavior of compiled programs.
-- `tests/codegen/`: code-generation checks (e.g. `--emit-c` produces C, selected structural/runtime equivalence checks).
-- `tests/e2e/`: end-to-end source-to-executable scenarios.
-- `tests/native/`: native executable execution/argument/exit-code behavior.
-- `tests/regression/`: permanent regression cases for fixed bugs and preserved behavior.
-- `tests/adversarial/`: fuzz-like, boundary, malformed, and interaction stress cases.
+- `development/tests/lexer/`: lexer/tokenization-focused cases.
+- `development/tests/parser/`: parser/AST/syntax acceptance and rejection cases.
+- `development/tests/semantic/`: semantic/front-end validation checks (declarations, scopes, type/const rules, invalid conversions, return/type errors, etc.), primarily via `--check`.
+- `development/tests/runtime/`: runtime behavior of compiled native programs (including Phase 1+ feature/regression tests and `.expected` comparisons).
+- `development/tests/codegen/`: code-generation checks (e.g. `--emit-c`).
+- `development/tests/e2e/`: end-to-end source-to-executable scenarios.
+- `development/tests/native/`: native executable execution/argument/exit-code behavior.
+- `development/tests/regression/`: permanent regression cases for fixed bugs and preserved behavior.
+- `development/tests/adversarial/`: fuzz-like, boundary, malformed, and interaction stress cases.
 
-> Note: Phase 0 establishes the infrastructure and baseline regression coverage using the existing `code/*.ltng` corpus plus negative checks. Category-specific suites should be expanded continuously as features are implemented/fixed.
+The runner also executes existing corpus/regression cases (e.g. `development/code/*.ltng`) and negative checks as part of the full suite. Category-specific suites continue to expand as features are implemented/fixed.
 
 ## How to run
 
