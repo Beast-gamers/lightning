@@ -680,7 +680,13 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                         fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
                 }
             } else if (strchr(node->value, '.') && !_is_call_res) {
-                fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                {
+                    char _rex[4096];
+                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                    else
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                }
             } else if (node->var_type == TYPE_BOOL) {
                 if (_is_call_res)
                     fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
@@ -807,9 +813,17 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
         } else if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
             pad(out, indent);
             if (node->var_type == TYPE_FLOAT) {
-                fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
+                char _rex[4096];
+                if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                    fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", _rex);
+                else
+                    fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
             } else {
-                fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
+                char _rex[4096];
+                if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
+                    fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", _rex);
+                else
+                    fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
             }
         } else if (node->var_type == TYPE_BOOL) {
             pad(out, indent);
@@ -939,7 +953,13 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                         fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
                 }
             } else if (strchr(node->value, '.') && !_is_call_res) {
-                fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                {
+                    char _rex[4096];
+                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                    else
+                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                }
             } else if (node->var_type == TYPE_BOOL) {
                 if (_is_call_res)
                     fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
