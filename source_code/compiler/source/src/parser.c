@@ -23,6 +23,7 @@ typedef struct {
     int top_level;                   /* signature discovered by the top-level prescan */
     char param_names[MAX_FUNC_PARAMS][MAX_IDENTIFIER_LEN];
     int has_default[MAX_FUNC_PARAMS];
+    VarType def_type[MAX_FUNC_PARAMS]; /* inferred type of default expression */
     int def_start[MAX_FUNC_PARAMS];  /* token range of the default expression */
     int def_end[MAX_FUNC_PARAMS];
 } FuncInfo;
@@ -3958,6 +3959,42 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             /* Not a sole call argument (e.g. typeof(func() + 1)); let general
                expression parsing handle it. */
             lexer->current = call_saved;
+        }
+    }
+
+    /* Array element access: typeof(arr[i]) / typeof(arr[i][j]) */
+    if (arg.type == TOKEN_IDENT && lexer_peek(lexer).type == TOKEN_LBRACKET) {
+        char mangled_arr[MAX_IDENTIFIER_LEN];
+        mangle_name(arg.value, mangled_arr, sizeof(mangled_arr));
+        if (symbol_table_has(table, mangled_arr) && symbol_table_get(table, mangled_arr) == TYPE_ARRAY) {
+            int idx_saved = lexer->current;
+            int ok = 1;
+            while (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+                lexer_next(lexer); /* [ */
+                int depth = 1;
+                while (lexer->current < lexer->count && depth > 0) {
+                    Token itok = lexer_peek(lexer);
+                    if (itok.type == TOKEN_LBRACKET) depth++;
+                    else if (itok.type == TOKEN_RBRACKET) { depth--; if (depth == 0) break; }
+                    else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) { ok = 0; break; }
+                    lexer_next(lexer);
+                }
+                if (!ok || lexer_peek(lexer).type != TOKEN_RBRACKET) { ok = 0; break; }
+                lexer_next(lexer); /* ] */
+            }
+            Token rclose = lexer_peek(lexer);
+            if (ok && rclose.type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume ) */
+                VarType aet = symbol_table_get_array_elem_type(table, mangled_arr);
+                if (aet == TYPE_NULL) aet = TYPE_STRING;
+                result->type = TOKEN_STRING;
+                strncpy(result->value, var_type_name(aet), MAX_STRING_LEN - 1);
+                result->value[MAX_STRING_LEN - 1] = '\0';
+                result->line = typeof_tok.line;
+                result->col = typeof_tok.col;
+                return 1;
+            }
+            lexer->current = idx_saved;
         }
     }
 
@@ -9037,6 +9074,25 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
             }
             /* fall through to full expression parsing */
         }
+        /* sole bool literal */
+        if (next.type == TOKEN_IDENT && is_bool_value(next.value)) {
+            int saved = lexer->current;
+            Token btok = lexer_next(lexer);
+            Token after = lexer_peek(lexer);
+            lexer->current = saved;
+            if (after.type == TOKEN_NEWLINE || after.type == TOKEN_EOF || after.type == TOKEN_RBRACE) {
+                lexer_next(lexer);
+                snprintf(expr, sizeof(expr), "%s", (strcmp(btok.value, "true") == 0 || strcmp(btok.value, "t") == 0) ? "1" : "0");
+                etype = TYPE_BOOL;
+                ASTNode *node = create_node(NODE_RETURN, "", expr);
+                node->line = kw.line; node->col = kw.col;
+                node->var_type = etype;
+                node->is_expr = 1;
+                emit(node);
+                return;
+            }
+            /* fall through to full expression parsing */
+        }
         /* sole variable - pass through while preserving its type when known */
         if (next.type == TOKEN_IDENT && !is_bool_value(next.value) && !is_type_keyword(next.value) && !is_function_name_scoped(table, next.value)) {
             int saved = lexer->current;
@@ -9053,7 +9109,8 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 VarType vtype2 = TYPE_STRING;
                 if (symbol_table_has(table, m)) vtype2 = symbol_table_get(table, m);
                 /* Preserve legacy pass-through for dynamic/string/object values, but keep
-                   typed numeric/bool returns for known (locked) variables. */
+                   typed numeric/bool returns for known (locked) variables. For parameters
+                   with default values of known types, prefer that type for inference/return. */
                 if (vtype2 == TYPE_OBJECT) {
                     etype = TYPE_OBJECT;
                 } else if ((vtype2 == TYPE_INT || vtype2 == TYPE_FLOAT || vtype2 == TYPE_BOOL) &&
@@ -9063,7 +9120,27 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                     else if (vtype2 == TYPE_FLOAT) snprintf(expr, sizeof(expr), "atof(%s)", cname);
                     else snprintf(expr, sizeof(expr), "(%s[0]=='t'?1:0)", cname);
                 } else {
-                    etype = TYPE_STRING;
+                    /* Try param default type */
+                    VarType pdt = TYPE_NULL;
+                    if (g_enclosing_cname[0]) {
+                        FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
+                        if (efi) {
+                            for (int pi = 0; pi < efi->param_count && pi < MAX_FUNC_PARAMS; pi++) {
+                                if (strcmp(efi->param_names[pi], id.value) == 0) {
+                                    if (efi->has_default[pi]) pdt = efi->def_type[pi];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (pdt == TYPE_INT || pdt == TYPE_FLOAT || pdt == TYPE_BOOL) {
+                        etype = pdt;
+                        if (pdt == TYPE_INT) snprintf(expr, sizeof(expr), "atoll(%s)", cname);
+                        else if (pdt == TYPE_FLOAT) snprintf(expr, sizeof(expr), "atof(%s)", cname);
+                        else snprintf(expr, sizeof(expr), "(%s[0]=='t'?1:0)", cname);
+                    } else {
+                        etype = TYPE_STRING;
+                    }
                 }
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
@@ -9081,11 +9158,15 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
               lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
               (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0, NULL, NULL, 0)) {
-                etype = TYPE_STRING;
+            char sole_call_cname[MAX_IDENTIFIER_LEN] = "";
+            VarType sole_call_type = TYPE_STRING;
+            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0, &sole_call_type, sole_call_cname, sizeof(sole_call_cname))) {
+                etype = sole_call_type;
+                if (etype == TYPE_NULL || etype == TYPE_VOID) etype = TYPE_STRING;
                 ASTNode *node = create_node(NODE_RETURN, "", expr);
                 node->var_type = etype;
                 node->is_expr = 1;
+                node->fs_sc = 1; /* marker: value is a bare call returning char* buffer */
                 emit(node);
                 return;
             }
@@ -9451,12 +9532,22 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
                     strncpy(fi->param_names[pi], pp->for_var, MAX_IDENTIFIER_LEN - 1);
                     fi->param_names[pi][MAX_IDENTIFIER_LEN - 1] = '\0';
                     fi->has_default[pi] = pp->has_default;
+                    fi->def_type[pi] = pp->has_default ? pp->var_type : TYPE_NULL;
+                    fi->def_type[pi] = pp->has_default ? pp->var_type : TYPE_NULL;
                     pi++;
                 }
             }
             fi->required_count = req;
             fi->is_variadic = variadic;
             fi->defined = 1;
+            /* copy default types from param AST nodes */
+            {
+                int pti = 0;
+                for (ASTNode *pp = params; pp && pti < MAX_FUNC_PARAMS; pp = pp->next, pti++) {
+                    if (pp->has_default) fi->def_type[pti] = pp->var_type;
+                    else fi->def_type[pti] = TYPE_NULL;
+                }
+            }
         }
     }
     if (!is_anon && table) symbol_table_add_func(table, name.value, cname, pcount);

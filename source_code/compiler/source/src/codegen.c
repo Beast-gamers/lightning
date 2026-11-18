@@ -1503,6 +1503,10 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
     pad(out, indent); fprintf(out, "}\n");
 }
 
+static int _expr_is_call_buf(const char *v) {
+    return v && (strstr(v, "_ltng_retbuf") || strstr(v, "__ltng_call_indirect"));
+}
+
 static void emit_return_value(FILE *out, ASTNode *node, const char *target, int indent) {
     if (node->value[0] == '\0' && node->is_expr == 0) {
         pad(out, indent); fprintf(out, "%s[0] = '\\0';\n", target);
@@ -1511,9 +1515,10 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
     /* Enforce annotated function return type coercion (int/float) for distinct semantics. */
     if (g_codegen_current_fn && g_codegen_current_fn->has_return_type) {
         VarType want = g_codegen_current_fn->return_type;
+        int bare_call = (node->fs_sc == 1);
         if (want == TYPE_INT) {
             pad(out, indent);
-            if (node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
+            if (bare_call || node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
                 node->var_type == TYPE_OBJECT || node->var_type == TYPE_NULL ||
                 strstr(node->value, "_ltng_add_sn") == node->value) {
                 fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n",
@@ -1531,7 +1536,7 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
             return;
         } else if (want == TYPE_FLOAT) {
             pad(out, indent);
-            if (node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
+            if (bare_call || node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
                 node->var_type == TYPE_OBJECT || node->var_type == TYPE_NULL ||
                 strstr(node->value, "_ltng_add_sn") == node->value) {
                 fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n",
@@ -1543,6 +1548,7 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
             return;
         }
     }
+    int bare_call = (node->fs_sc == 1);
     if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
         node->var_type == TYPE_NULL ||
         strstr(node->value, "_ltng_add_sn") == node->value) {
@@ -1551,15 +1557,24 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
             target, node->value[0] ? node->value : "\"\"");
     } else if (node->var_type == TYPE_FLOAT) {
         pad(out, indent);
-        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n",
-            target, node->value[0] ? node->value : "0");
+        if (bare_call) {
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n",
+                target, node->value[0] ? node->value : "\"0\"");
+        } else {
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n",
+                target, node->value[0] ? node->value : "0");
+        }
     } else if (node->var_type == TYPE_BOOL) {
         pad(out, indent);
         fprintf(out, "_ltng_ds_set(&%s, (%s) ? \"true\" : \"false\");\n",
             target, node->value[0] ? node->value : "0");
     } else {
         pad(out, indent);
-        if (strchr(node->value, '.')) {
+        /* Function calls return string buffers (char*); parse when typed as numeric. */
+        if (bare_call) {
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n",
+                target, node->value[0] ? node->value : "\"0\"");
+        } else if (strchr(node->value, '.')) {
             fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n",
                 target, node->value[0] ? node->value : "0");
         } else {
