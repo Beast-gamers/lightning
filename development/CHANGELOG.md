@@ -21,6 +21,13 @@ All notable changes to the Lightning project in this development effort are docu
 
 ## [Unreleased]
 
+### Fixed
+- Fixed runtime/generated-code string truncation by replacing fixed-size emitted buffers with dynamic string storage/helpers (`_ltng_ds_*`, dynamic concat/repeat, dynamic formatting and rotating dynamic return/slot buffers) for variables, parameters, returns, reads, interpolated/assignment emission, and related covered paths. Validated against the reported large concatenated/repeated string case (534-char stored/compared value).
+- Fixed indirect-call dispatcher to copy and mutate a local target buffer instead of mutating the caller's closure/function value, preventing captured-closure corruption on repeated dynamic calls.
+- Fixed generated `read` handling to preserve prior EOF behavior for typed numeric reads (no spurious invalid-input failure on EOF) while supporting dynamic-length input.
+- Fixed float modulo/comparison normalization in emitted numeric expressions (e.g. covered `x % 2 == 0` cases) and parser lowering to use dynamic string repeat/concat helpers.
+- Made compiler diagnostics and scope storage partially dynamic: `ErrorState` now uses growable error/message/source-line storage, and `Scope` variable storage grows dynamically (reducing fixed-capacity failures in these paths). Many compiler-internal fixed limits/buffers remain (token/AST/identifier/expression/output capacities).
+
 ### Added
 - Phase 4 exception handling: `try`/`catch`/`finally`/`throw` with optional catch variable, custom error types (`throw CustomError("message")`), `error(type, message)`, bare rethrow inside `catch`, exception propagation through nested functions, and uncaught-exception reporting with a stack trace to stderr and exit status `1`.
 - Phase 1 Step 2 follow-up runtime/semantic coverage for conversions and aliases in additional contexts (e.g. `development/tests/runtime/phase1_conversions_step2.*`, `development/tests/semantic/phase1_conversion_{alias,condition,array,nested}_neg.ltng`), with related corpus expectation updates where required.

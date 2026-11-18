@@ -426,6 +426,7 @@ void scope_init(Scope *scope, Scope *parent, int disallow_decl) {
 static int g_scope_var_uid = 0;
 
 static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType type, int unique_cname) {
+    if (!table || !name) return;
     for (int i = 0; i < table->count; i++) {
         if (strcmp(table->vars[i].name, name) == 0) {
             table->vars[i].type = type;
@@ -435,13 +436,18 @@ static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType
             return;
         }
     }
-    if (table->count >= MAX_VARS) {
-        if (parser_errors) {
-            error_state_add(parser_errors, 0, 0, "Too many variables");
+    if (table->count >= table->vars_cap) {
+        int nc = table->vars_cap ? table->vars_cap * 2 : 32;
+        VarEntry *nv = (VarEntry *)realloc(table->vars, nc * sizeof(VarEntry));
+        if (!nv) {
+            if (parser_errors) error_state_add(parser_errors, 0, 0, "Out of memory adding variable");
+            return;
         }
-        return;
+        table->vars = nv;
+        table->vars_cap = nc;
     }
     VarEntry *ve = &table->vars[table->count];
+    memset(ve, 0, sizeof(*ve));
     strncpy(ve->name, name, MAX_IDENTIFIER_LEN - 1);
     ve->name[MAX_IDENTIFIER_LEN - 1] = '\0';
     if (unique_cname) {
@@ -895,13 +901,13 @@ static void transform_string_multiply(char *expr, int size) {
     }
     if (left_is_num && (right[0] == '"' || (right[0] == '\'' && strlen(right) >= 3))) {
         /* number * "string" */
-        snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", right, left);
+        snprintf(result, 2047, "_ltng_repeat_dyn(%s,(long long)(%s))", right, left);
     } else if (right_is_num && (left[0] == '"' || (left[0] == '\'' && strlen(left) >= 3))) {
         /* "string" * number */
-        snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", left, right);
+        snprintf(result, 2047, "_ltng_repeat_dyn(%s,(long long)(%s))", left, right);
     } else {
         /* variable cases: assume left is string, right is count */
-        snprintf(result, 2047, "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", left, count_expr);
+        snprintf(result, 2047, "_ltng_repeat_dyn(%s,(long long)(%s))", left, count_expr);
     }
     strncpy(expr, result, size - 1);
     expr[size - 1] = 0;
@@ -1087,7 +1093,7 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                     int lhs_s = part_is_stringy(lhs);
                     int rhs_s = part_is_stringy(rhs);
                     if (lhs_s && rhs_s)
-                        snprintf(st, sizeof(st), "({ char _ltc[512]; snprintf(_ltc,512,\"%%s%%s\", %s, %s); _ltc; })", lhs, rhs);
+                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs, rhs);
                     else
                         snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs, rhs);
                 }
@@ -1157,7 +1163,7 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                 snprintf(countbuf, sizeof(countbuf), "atoll(%s)", right);
             }
             char rep[8192];
-            snprintf(rep, sizeof(rep), "({ char _ltm[512]; _ltng_repeat(_ltm,512,%s,(long long)(%s)); _ltm; })", str_operand, countbuf);
+            snprintf(rep, sizeof(rep), "_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf);
             char nb[8192];
             snprintf(nb, sizeof(nb), "%.*s%s%s", bs, work, rep, work + be + 1);
             strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
@@ -1856,8 +1862,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                 /* But if it's actually a numeric-conversion helper vs numeric literal/value, compare numerically */
                 {
                     char lt[4096], rt[4096]; strncpy(lt,left,sizeof(lt)-1); lt[sizeof(lt)-1]=0; strncpy(rt,right,sizeof(rt)-1); rt[sizeof(rt)-1]=0; trim_c_expr(lt); trim_c_expr(rt);
-                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("))!=NULL;
-                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("))!=NULL;
+                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("))!=NULL;
+                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("))!=NULL;
                     const char *lq2=lt; while(*lq2==' '||*lq2=='\t') lq2++; const char *rq2=rt; while(*rq2==' '||*rq2=='\t') rq2++;
                     int lnl = (*lq2=='-'||*lq2=='+'||isdigit((unsigned char)*lq2));
                     int rnl = (*rq2=='-'||*rq2=='+'||isdigit((unsigned char)*rq2));
@@ -1903,8 +1909,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                     if (ln) snprintf(lq, sizeof(lq), "\"%s\"", lp); else { strncpy(lq, left, sizeof(lq)-1); lq[sizeof(lq)-1]=0; }
                     if (rn) snprintf(rq, sizeof(rq), "\"%s\"", rp); else { strncpy(rq, right, sizeof(rq)-1); rq[sizeof(rq)-1]=0; }
                     {
-                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("))!=NULL;
-                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("))!=NULL;
+                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("))!=NULL;
+                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("))!=NULL;
                         if ((lnumh && (rnumh || rn)) || (rnumh && (lnumh || ln))) {
                             snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
                         } else if (strcmp(ops[i], "==") == 0)
@@ -1997,7 +2003,9 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                                       (fnlen==5 && strncmp(fn,"atoll",5)==0) ||
                                       (fnlen==18 && strncmp(fn,"_ltng_from_double",18)==0) ||
                                       (fnlen==15 && strncmp(fn,"_ltng_from_int",15)==0) ||
-                                      (fnlen==9 && strncmp(fn,"_ltng_ad",9)==0)))
+                                      (fnlen==9 && strncmp(fn,"_ltng_ad",9)==0) ||
+                                      (fnlen==12 && strncmp(fn,"_LTNG_FMOD_D",12)==0) ||
+                                      (fnlen==11 && strncmp(fn,"_LTNG_DIV_D",11)==0)))
                                     lc = 1;
                             }
                         }
@@ -2013,7 +2021,9 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                                       (fnlen==5 && strncmp(fn,"atoll",5)==0) ||
                                       (fnlen==18 && strncmp(fn,"_ltng_from_double",18)==0) ||
                                       (fnlen==15 && strncmp(fn,"_ltng_from_int",15)==0) ||
-                                      (fnlen==9 && strncmp(fn,"_ltng_ad",9)==0)))
+                                      (fnlen==9 && strncmp(fn,"_ltng_ad",9)==0) ||
+                                      (fnlen==12 && strncmp(fn,"_LTNG_FMOD_D",12)==0) ||
+                                      (fnlen==11 && strncmp(fn,"_LTNG_DIV_D",11)==0)))
                                     rc = 1;
                             }
                         }
@@ -2124,6 +2134,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
     int pending_divmod = 0; /* 1 if last emitted operator was / or % in numeric context */
     int pending_divmod_is_mod = 0;
     int pending_divmod_line = 0, pending_divmod_col = 0;
+    int pending_mod_op_pos = -1; /* output position of % char for float-fmod rewrite */
 
     while (lexer->current < lexer->count) {
         Token tok = lexer_peek(lexer);
@@ -2195,13 +2206,26 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         "Division or modulo by zero");
                 }
                 if (pending_divmod) {
-                    pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
-                        (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")),
-                        tok.value, pending_divmod_line, pending_divmod_col);
+                    int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
+                    int _mop = pending_mod_op_pos;
+                    if (_is_fmod && (_mop < 0 || _mop >= pos || out[_mop] != '%')) {
+                        for (int _i = pos - 1; _i >= 0; _i--) { if (out[_i] == '%') { _mop = _i; break; } }
+                    }
+                    if (_is_fmod && _mop >= 0 && _mop < pos && out[_mop] == '%') {
+                        char _left[4096]; int _llen = _mop; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                        memcpy(_left, out, _llen); _left[_llen] = 0;
+                        pos = 0;
+                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col);
+                        if (!type_locked) result_type = TYPE_FLOAT;
+                    } else {
+                        pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
+                            (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")),
+                            tok.value, pending_divmod_line, pending_divmod_col);
+                    }
                 } else {
                     pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
                 }
-                pending_divmod = 0;
+                pending_divmod = 0; pending_mod_op_pos = -1;
                 break;
             case TOKEN_FLOAT_LIT:
                 if (pending_divmod && atof(tok.value) == 0.0) {
@@ -2209,14 +2233,23 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         "Division or modulo by zero");
                 }
                 if (pending_divmod) {
-                    pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
-                        pending_divmod_is_mod ? "_LTNG_NZMOD_D" : "_LTNG_NZDIV_D",
-                        tok.value, pending_divmod_line, pending_divmod_col);
+                    int _is_fmod = pending_divmod_is_mod;
+                    if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
+                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                        memcpy(_left, out, _llen); _left[_llen] = 0;
+                        pos = 0;
+                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col);
+                        if (!type_locked) result_type = TYPE_FLOAT;
+                    } else {
+                        pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
+                            pending_divmod_is_mod ? "_LTNG_NZMOD_D" : "_LTNG_NZDIV_D",
+                            tok.value, pending_divmod_line, pending_divmod_col);
+                    }
                 } else {
                     pos += snprintf(out + pos, out_size - pos, "%s", tok.value);
                 }
                 if (!type_locked) result_type = TYPE_FLOAT;
-                pending_divmod = 0;
+                pending_divmod = 0; pending_mod_op_pos = -1;
                 break;
             case TOKEN_STRING:
                 {
@@ -2247,7 +2280,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 int saved_pos = pos;
                 int _pd_save = pending_divmod, _pd_mod_save = pending_divmod_is_mod;
                 int _pd_l_save = pending_divmod_line, _pd_c_save = pending_divmod_col;
-                pending_divmod = 0; /* prevent leaking into sub-parsing; restore for final operand emission if needed */
+                int _pd_mop_save = pending_mod_op_pos;
+                pending_divmod = 0; pending_mod_op_pos = -1; /* prevent leaking into sub-parsing; restore for final operand emission if needed */
                 /* Type conversion functions: toint/tofloat/tostring/tobool/tochar and aliases */
                 if ((is_type_conversion(tok.value) ||
                      strcmp(tok.value, "int") == 0 || strcmp(tok.value, "float") == 0 ||
@@ -2713,6 +2747,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     ; /* C99: declaration after label */
                     pending_divmod = _pd_save; pending_divmod_is_mod = _pd_mod_save;
                     pending_divmod_line = _pd_l_save; pending_divmod_col = _pd_c_save;
+                    pending_mod_op_pos = _pd_mop_save;
                     char mangled[MAX_IDENTIFIER_LEN];
                     mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                     if (!symbol_table_has(table, mangled)) {
@@ -2736,37 +2771,64 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         } else switch (vtype) {
                             case TYPE_INT: {
                                 char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atoll(%s)", cname);
-                                if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
-                                else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                if (pending_divmod) {
+                                    int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
+                                    if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
+                                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                                        memcpy(_left, out, _llen); _left[_llen] = 0;
+                                        pos = 0;
+                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col);
+                                    } else {
+                                        pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
+                                    }
+                                } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
                                 if (!symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
-                                pending_divmod = 0;
+                                pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_FLOAT: {
                                 char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atof(%s)", cname);
-                                if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D"), _opnd, pending_divmod_line, pending_divmod_col);
-                                else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                if (pending_divmod) {
+                                    int _is_fmod = pending_divmod_is_mod;
+                                    if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
+                                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                                        memcpy(_left, out, _llen); _left[_llen] = 0;
+                                        pos = 0;
+                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col);
+                                    } else {
+                                        pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D"), _opnd, pending_divmod_line, pending_divmod_col);
+                                    }
+                                } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
                                 if (!type_locked) { if (result_type == TYPE_INT) result_type = TYPE_FLOAT; }
                                 if (!symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
-                                pending_divmod = 0;
+                                pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_CHAR:
                             case TYPE_STRING:
                             case TYPE_OBJECT:
                                 pos += snprintf(out + pos, out_size - pos, "%s", cname);
                                 if (!type_locked) result_type = TYPE_STRING;
-                                pending_divmod = 0;
+                                pending_divmod = 0; pending_mod_op_pos = -1;
                                 break;
                             case TYPE_BOOL: {
                                 char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "(%s[0]=='t'?1:0)", cname);
-                                if (pending_divmod) pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
-                                else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
-                                pending_divmod = 0;
+                                if (pending_divmod) {
+                                    int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
+                                    if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
+                                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                                        memcpy(_left, out, _llen); _left[_llen] = 0;
+                                        pos = 0;
+                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col);
+                                    } else {
+                                        pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
+                                    }
+                                } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
+                                pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_NULL:
                             default:
                                 pos += snprintf(out + pos, out_size - pos, "%s", cname);
                                 has_dynamic_numeric = 1;
-                                pending_divmod = 0;
+                                pending_divmod = 0; pending_mod_op_pos = -1;
                                 break;
                             case TYPE_ARRAY:
                                 /* Check for .length property and array method calls */
@@ -3212,11 +3274,15 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     }
                     pending_divmod = 0;
                 } else {
-                    pos += snprintf(out + pos, out_size - pos, "%s",
-                        tok.type == TOKEN_PLUS ? "+" :
-                        tok.type == TOKEN_MINUS ? "-" :
-                        tok.type == TOKEN_STAR ? "*" :
-                        tok.type == TOKEN_SLASH ? "/" : "%");
+                    {
+                        const char *_ops = tok.type == TOKEN_PLUS ? "+" :
+                            tok.type == TOKEN_MINUS ? "-" :
+                            tok.type == TOKEN_STAR ? "*" :
+                            tok.type == TOKEN_SLASH ? "/" : "%";
+                        if (tok.type == TOKEN_PERCENT) pending_mod_op_pos = pos;
+                        else pending_mod_op_pos = -1;
+                        pos += snprintf(out + pos, out_size - pos, "%s", _ops);
+                    }
                     arithmetic_used = 1;
                     if (tok.type == TOKEN_SLASH || tok.type == TOKEN_PERCENT) {
                         pending_divmod = 1;
@@ -3516,7 +3582,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 } else {
                     char step[2048];
                     if (all_stringy) {
-                        snprintf(step, sizeof(step), "({ char _ltc[512]; snprintf(_ltc,512,\"%%s%%s\", %s, %s); _ltc; })", add_result, cpart);
+                        snprintf(step, sizeof(step), "_ltng_concat_dyn(2, %s, %s)", add_result, cpart);
                     } else {
                         snprintf(step, sizeof(step), "_ltng_add_sn(%s, %s)", add_result, cpart);
                     }

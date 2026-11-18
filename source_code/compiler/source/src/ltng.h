@@ -243,8 +243,9 @@ typedef struct {
 } FuncBind;
 
 typedef struct Scope {
-    VarEntry vars[MAX_VARS];
+    VarEntry *vars;
     int count;
+    int vars_cap;
     int disallow_decl;       /* 1 = let/const not allowed (control blocks) */
     FuncBind funcs[MAX_FUNCBINDS];
     int func_count;
@@ -263,14 +264,16 @@ typedef struct {
 typedef struct {
     int line;
     int col;
-    char message[MAX_STRING_LEN];
+    char *message;
 } CompileError;
 
 typedef struct {
-    CompileError errors[MAX_ERRORS];
+    CompileError *errors;
     int count;
-    char *source_lines[MAX_SOURCE_LINES];
+    int errors_cap;
+    char **source_lines;
     int total_lines;
+    int source_lines_cap;
     char *filename;
     int check_only;
 } ErrorState;

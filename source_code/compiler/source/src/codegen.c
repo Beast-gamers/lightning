@@ -44,10 +44,10 @@ static void emit_obj_return_staging(FILE *out, ASTNode *fn, ASTNode *ret_node, i
         obj_resolve_field(stage_base, sc->fields[i].name, dst_f, sizeof(dst_f));
         int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
         pad(out, indent);
-        fprintf(out, "snprintf(%s, %d, \"%%s\", %s);\n", dst_f, bsz, src_f);
+        fprintf(out, "_ltng_ds_set(&%s, %s);\n", dst_f, src_f);
     }
     pad(out, indent);
-    fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", stage_base, ret_node->value);
+    fprintf(out, "_ltng_ds_set(&%s, %s);\n", stage_base, ret_node->value);
 }
 
 void codegen_set_log(CodegenLog *log) {
@@ -232,7 +232,7 @@ static int is_simple_var_or_keyword(const char *name, SymbolTable *table) {
 
 static void codegen_assign_interpolated(FILE *out, const char *varname, const char *str, int indent) {
     pad(out, indent);
-    fprintf(out, "snprintf(%s, 256, \"", varname);
+    fprintf(out, "_ltng_ds_setfmt(&%s, \"", varname);
     int arg_count = 0;
     const char *p;
     for (p = str; *p; ) {
@@ -613,34 +613,33 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         if (node->var_type == TYPE_OBJECT) {
         if (declare_here) {
             pad(out, indent);
-            fprintf(out, "char %s[256] = \"\";\n", node->name);
+            fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
         }
         ObjSchema *sc = obj_lookup(node->name);
         if (sc) {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", \"", node->name);
+            fprintf(out, "_ltng_ds_set(&%s, \"", node->name);
             { const char *v=sc->default_val; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
             fprintf(out, "\");\n");
             for (int i = 0; i < sc->count; i++) {
                 char fv[MAX_IDENTIFIER_LEN*2+8];
                 obj_resolve_field(node->name, sc->fields[i].name, fv, sizeof(fv));
                 if (declare_here) {
-                    int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
                     pad(out, indent);
-                    fprintf(out, "char %s[%d] = \"\";\n", fv, bsz);
+                    fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", fv);
                 }
                 pad(out, indent);
-                fprintf(out, "snprintf(%s, 256, \"%%s\", \"", fv);
+                fprintf(out, "_ltng_ds_set(&%s, \"", fv);
                 { const char *v=sc->fields[i].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
                 fprintf(out, "\");\n");
             }
         } else {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", \"\");\n", node->name);
+            fprintf(out, "_ltng_ds_set(&%s, \"\");\n", node->name);
         }
         if (node->is_expr && node->value[0]) {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
+            fprintf(out, "_ltng_ds_set(&%s, %s);\n", node->name, node->value);
         }
         return;
     }
@@ -704,8 +703,8 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
     if (node->is_expr) {
         if (declare_here) {
             pad(out, indent);
-            if (_is_captured) fprintf(out, "char *%s = (char*)calloc(1, 256);\n", node->name);
-            else fprintf(out, "char %s[256] = \"\";\n", node->name);
+            if (_is_captured) fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
+            else fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
         }
         int is_add_sn = strncmp(node->value, "_ltng_add_sn", 12) == 0;
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
@@ -714,70 +713,70 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             {
                 size_t _nlen = strlen(node->name);
                 int _nbuf = (_nlen >= 5 && strcmp(node->name + _nlen - 5, "__obj") == 0) ? 512 : 256;
-                fprintf(out, "snprintf(%s, %d, \"%%s\", %s);\n", node->name, _nbuf, node->value);
+                fprintf(out, "_ltng_ds_set(&%s, %s);\n", node->name, node->value);
             }
         } else {
             pad(out, indent);
             int _is_call_res = node->is_default || (strncmp(node->value, "({ char __ct", 12) == 0);
             if (node->var_type == TYPE_FLOAT) {
                 if (_is_call_res)
-                    fprintf(out, "{ double _e = atof(%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n", node->name, node->value);
                 else {
                     char _rex[4096];
                     if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
                 }
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 {
                     char _rex[4096];
                     if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
                 }
             } else if (node->var_type == TYPE_BOOL) {
                 if (_is_call_res)
-                    fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
+                    fprintf(out, "_ltng_ds_set(&%s, %s);\n", node->name, node->value);
                 else
-                    fprintf(out, "snprintf(%s, 256, \"%%s\", (%s) ? \"true\" : \"false\");\n", node->name, node->value);
+                    fprintf(out, "_ltng_ds_set(&%s, (%s) ? \"true\" : \"false\");\n", node->name, node->value);
             } else {
                 if (_is_call_res)
-                    fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n", node->name, node->value);
                 else {
                     char _rex[4096];
                     if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
-                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", _rex, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, _rex);
                     else
-                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, node->value);
                 }
             }
         }
     } else if (node->var_type == TYPE_STRING && has_interpolation(node->value)) {
         if (declare_here) {
             pad(out, indent);
-            if (_is_captured) fprintf(out, "char *%s = (char*)calloc(1, 256);\n", node->name);
-            else fprintf(out, "char %s[256] = \"\";\n", node->name);
+            if (_is_captured) fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
+            else fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
         }
         codegen_assign_interpolated(out, node->name, node->value, indent);
     } else if ((node->var_type == TYPE_CHAR || node->var_type == TYPE_STRING) &&
                node->value[0] == '\0') {
         if (declare_here) {
             pad(out, indent);
-            if (_is_captured) fprintf(out, "char *%s = (char*)calloc(1, 256);\n", node->name);
-            else fprintf(out, "char %s[256] = \"\";\n", node->name);
+            if (_is_captured) fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
+            else fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
         }
         pad(out, indent);
         fprintf(out, "%s[0] = '\\0';\n", node->name);
     } else {
         if (declare_here) {
             pad(out, indent);
-            if (_is_captured) fprintf(out, "char *%s = (char*)calloc(1, 256);\n", node->name);
-            else fprintf(out, "char %s[256] = \"\";\n", node->name);
+            if (_is_captured) fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
+            else fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", node->name);
         }
         pad(out, indent);
-        fprintf(out, "snprintf(%s, 256, \"", node->name);
+        fprintf(out, "_ltng_ds_set(&%s, \"", node->name);
         if (node->var_type == TYPE_BOOL) {
             const char *bv = node->value;
             if (strcmp(bv, "1") == 0) write_c_string(out, "true");
@@ -913,17 +912,17 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
 
 static void codegen_read(FILE *out, ASTNode *node, int indent) {
     pad(out, indent);
+    fprintf(out, "{ char *_rb=NULL; size_t _rc=0; ssize_t _rn=getline(&_rb,&_rc,stdin); if(_rn>=0){ while(_rn>0 && (_rb[_rn-1]=='\\n' || _rb[_rn-1]=='\\r')) _rb[--_rn]='\\0'; ");
     if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; if(!_ltng_is_num_str(_rb)){ fprintf(stderr, \"Error: expected integer input for '%s'\\n\", %s); exit(1); } snprintf(%s, 256, \"%%lld\", (long long)atoll(_rb)); %s[255]='\\0'; } }\n",
-            node->name, node->name, node->name, node->name, node->name);
-    } else if (node->var_type == TYPE_BOOL) {
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; snprintf(%s, 256, \"%%s\", (strcmp(_rb,\"true\")==0||strcmp(_rb,\"t\")==0)?\"true\":\"false\"); %s[255]='\\0'; } }\n",
-            node->name, node->name, node->name);
-    } else {
-        /* TYPE_STRING, TYPE_CHAR: store raw input */
-        fprintf(out, "{ char _rb[256]; if (fgets(_rb, sizeof(_rb), stdin)) { size_t _l=strlen(_rb); if (_l && _rb[_l-1]=='\\n') _rb[_l-1]='\\0'; strncpy(%s, _rb, 255); %s[255]='\\0'; } }\n",
+        fprintf(out, "if(!_ltng_is_num_str(_rb)){ fprintf(stderr,\"Error: expected integer input for '%s'\\\\n\",_rb); free(_rb); exit(1);} _ltng_ds_setfmt(&%s,\"%%lld\",(long long)atoll(_rb)); ",
             node->name, node->name);
+    } else if (node->var_type == TYPE_BOOL) {
+        fprintf(out, "_ltng_ds_set(&%s,(strcmp(_rb,\"true\")==0||strcmp(_rb,\"t\")==0)?\"true\":\"false\"); ",
+            node->name);
+    } else {
+        fprintf(out, "_ltng_ds_set(&%s,_rb); ", node->name);
     }
+    fprintf(out, "} if(_rb) free(_rb); }\n");
 }
 
 static void codegen_set(FILE *out, ASTNode *node, int indent) {
@@ -965,20 +964,20 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
         ObjSchema *sc = obj_lookup(node->name);
         if (sc) {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", \"", node->name);
+            fprintf(out, "_ltng_ds_set(&%s, \"", node->name);
             { const char *v=sc->default_val; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
             fprintf(out, "\");\n");
             for (int i = 0; i < sc->count; i++) {
                 char fv[MAX_IDENTIFIER_LEN*2+8];
                 obj_resolve_field(node->name, sc->fields[i].name, fv, sizeof(fv));
                 pad(out, indent);
-                fprintf(out, "snprintf(%s, 256, \"%%s\", \"", fv);
+                fprintf(out, "_ltng_ds_set(&%s, \"", fv);
                 { const char *v=sc->fields[i].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
                 fprintf(out, "\");\n");
             }
         } else {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", \"\");\n", node->name);
+            fprintf(out, "_ltng_ds_set(&%s, \"\");\n", node->name);
         }
         return;
     }
@@ -987,43 +986,43 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
-            fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n",
+            fprintf(out, "_ltng_ds_set(&%s, %s);\n",
                 node->name, node->value);
         } else {
             pad(out, indent);
             int _is_call_res = node->is_default || (strncmp(node->value, "({ char __ct", 12) == 0);
             if (node->var_type == TYPE_FLOAT) {
                 if (_is_call_res)
-                    fprintf(out, "{ double _e = atof(%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n", node->name, node->value);
                 else {
                     char _rex[4096];
                     if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
                 }
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 {
                     char _rex[4096];
                     if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", _rex, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
-                        fprintf(out, "{ double _e = (%s); snprintf(%s, 256, \"%%g\", _e); }\n", node->value, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
                 }
             } else if (node->var_type == TYPE_BOOL) {
                 if (_is_call_res)
-                    fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n", node->name, node->value);
+                    fprintf(out, "_ltng_ds_set(&%s, %s);\n", node->name, node->value);
                 else
-                    fprintf(out, "snprintf(%s, 256, \"%%s\", (%s) ? \"true\" : \"false\");\n", node->name, node->value);
+                    fprintf(out, "_ltng_ds_set(&%s, (%s) ? \"true\" : \"false\");\n", node->name, node->value);
             } else {
                 if (_is_call_res)
-                    fprintf(out, "{ long long _e = (long long)atoll(%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n", node->name, node->value);
                 else {
                     char _rex[4096];
                     if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
-                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", _rex, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, _rex);
                     else
-                        fprintf(out, "{ long long _e = (%s); snprintf(%s, 256, \"%%lld\", _e); }\n", node->value, node->name);
+                        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, node->value);
                 }
             }
         }
@@ -1031,7 +1030,7 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
         codegen_assign_interpolated(out, node->name, node->value, indent);
     } else {
         pad(out, indent);
-        fprintf(out, "snprintf(%s, 256, \"", node->name);
+        fprintf(out, "_ltng_ds_set(&%s, \"", node->name);
         if (node->var_type == TYPE_FLOAT) {
             char buf[64];
             snprintf(buf, sizeof(buf), "%g", atof(node->value));
@@ -1111,9 +1110,9 @@ static void emit_call_expr(FILE *out, ASTNode *call) {
         fprintf(out, "({ int __rn = 0; int __rc = 0; char **__rv = _ltng_arr_new(%d);",
             restn > 0 ? restn : 1);
         for (ASTNode *a = call->rest_args; a; a = a->next) {
-            fputs(" { char __av[256]; snprintf(__av, sizeof(__av), \"%s\", ", out);
+            fputs(" { char *__av = _ltng_ds_fmt(\"%s\", ", out);
             emit_arg_expr(out, a);
-            fputs("); _ltng_arr_push(&__rv, &__rn, &__rc, __av); }", out);
+            fputs("); _ltng_arr_push(&__rv, &__rn, &__rc, __av); free(__av); }", out);
         }
         fprintf(out, " char *__rr = %s(_ltng_retbuf(), %d, %d", call->name, cline, ccol);
         emit_arg_list(out, call->args);
@@ -1215,11 +1214,11 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
         static int fe_id = 0;
         int id = fe_id++;
         pad(out, indent + 1);
-        fprintf(out, "char %s[256] = \"\";\n", var);
+        fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", var);
         pad(out, indent + 1);
         fprintf(out, "for (int __fe_i%d = 0; __fe_i%d < %s_len; __fe_i%d++) {\n", id, id, start, id);
         pad(out, indent + 2);
-        fprintf(out, "snprintf(%s, 256, \"%%s\", %s_data[__fe_i%d] ? %s_data[__fe_i%d] : \"\");\n",
+        fprintf(out, "_ltng_ds_set(&%s, %s_data[__fe_i%d] ? %s_data[__fe_i%d] : \"\");\n",
             var, start, id, start, id);
         if (node->body) emit_block(out, node->body, table, indent + 2);
         pad(out, indent + 1);
@@ -1230,9 +1229,9 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
         return;
     }
     pad(out, indent + 1);
-    fprintf(out, "char %s[256] = \"0\";\n", var);
+    fprintf(out, "char *%s = _ltng_ds_new(\"0\");\n", var);
     pad(out, indent + 1);
-    fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(%s));\n", var, start);
+    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", var, start);
     pad(out, indent + 1);
     fprintf(out, "for (; ");
     /* Division and subtraction step downward; others step upward */
@@ -1243,15 +1242,15 @@ static void codegen_for(FILE *out, ASTNode *node, SymbolTable *table, int indent
     }
     fprintf(out, "; ");
     if (op == '+') {
-        fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s) + (long long)(%s))", var, var, step);
+        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s) + (long long)(%s))", var, var, step);
     } else if (op == '-') {
-        fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s) - (long long)(%s))", var, var, step);
+        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s) - (long long)(%s))", var, var, step);
     } else if (op == '*') {
-        fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s) * (long long)(%s))", var, var, step);
+        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s) * (long long)(%s))", var, var, step);
     } else if (op == '/') {
-        fprintf(out, "snprintf(%s, 256, \"%%lld\", _LTNG_DIV_LL((long long)atoll(%s), (long long)(%s), %d, %d))", var, var, step, node->line, node->col);
+        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", _LTNG_DIV_LL((long long)atoll(%s), (long long)(%s), %d, %d))", var, var, step, node->line, node->col);
     } else {
-        fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s) + (long long)(%s))", var, var, step);
+        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s) + (long long)(%s))", var, var, step);
     }
     fprintf(out, ") {\n");
     if (node->body) emit_block(out, node->body, table, indent + 2);
@@ -1317,9 +1316,9 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
     ObjSchema *sc = obj_lookup(cname);
 
     pad(out, indent);
-    fprintf(out, "char %s[256] = \"\";\n", cname);
+    fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", cname);
     pad(out, indent);
-    fprintf(out, "snprintf(%s, 256, \"%%s: %%s\", _ltng_exc_type, _ltng_exc_msg);\n",
+    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%s: %%s\", _ltng_exc_type, _ltng_exc_msg);\n",
         cname);
 
     if (!sc) return;
@@ -1327,30 +1326,27 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
         char fv[MAX_IDENTIFIER_LEN*2+8];
         obj_resolve_field(cname, sc->fields[i].name, fv, sizeof(fv));
         const char *fname = sc->fields[i].name;
-        int bsz = 256;
-        if (strcmp(fname, "trace") == 0) bsz = 4096;
-        else if (strcmp(fname, "obj") == 0) bsz = 512;
         pad(out, indent);
-        fprintf(out, "char %s[%d] = \"\";\n", fv, bsz);
+        fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", fv);
         pad(out, indent);
         if (strcmp(fname, "type") == 0) {
-            fprintf(out, "snprintf(%s, 256, \"%%s\", _ltng_exc_type);\n", fv);
+            fprintf(out, "_ltng_ds_set(&%s, _ltng_exc_type);\n", fv);
         } else if (strcmp(fname, "message") == 0) {
-            fprintf(out, "snprintf(%s, 256, \"%%s\", _ltng_exc_msg);\n", fv);
+            fprintf(out, "_ltng_ds_set(&%s, _ltng_exc_msg);\n", fv);
         } else if (strcmp(fname, "trace") == 0) {
-            fprintf(out, "snprintf(%s, %d, \"%%s\", _ltng_exc_trace);\n", fv, bsz);
+            fprintf(out, "_ltng_ds_set(&%s, _ltng_exc_trace);\n", fv);
         } else if (strcmp(fname, "line") == 0) {
-            fprintf(out, "snprintf(%s, 256, \"%%d\", _ltng_exc_line);\n", fv);
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%d\", _ltng_exc_line);\n", fv);
         } else if (strcmp(fname, "column") == 0) {
-            fprintf(out, "snprintf(%s, 256, \"%%d\", _ltng_exc_col);\n", fv);
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%d\", _ltng_exc_col);\n", fv);
         } else if (strcmp(fname, "function") == 0) {
-            fprintf(out, "snprintf(%s, 256, \"%%s\", _ltng_exc_func);\n", fv);
+            fprintf(out, "_ltng_ds_set(&%s, _ltng_exc_func);\n", fv);
         } else if (strcmp(fname, "value") == 0) {
-            fprintf(out, "snprintf(%s, 256, \"%%s\", _ltng_exc_value);\n", fv);
+            fprintf(out, "_ltng_ds_set(&%s, _ltng_exc_value);\n", fv);
         } else if (strcmp(fname, "obj") == 0) {
-            fprintf(out, "snprintf(%s, %d, \"%%s\", %s);\n", fv, bsz, cname);
+            fprintf(out, "_ltng_ds_set(&%s, %s);\n", fv, cname);
         } else {
-            fprintf(out, "%s[0] = '\\0';\n", fv);
+            fprintf(out, "_ltng_ds_set(&%s, \"\" );\n", fv);
         }
     }
 }
@@ -1520,16 +1516,16 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
             if (node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
                 node->var_type == TYPE_OBJECT || node->var_type == TYPE_NULL ||
                 strstr(node->value, "_ltng_add_sn") == node->value) {
-                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)atoll(%s));\n",
+                fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n",
                     target, node->value[0] ? node->value : "\"0\"");
             } else if (node->var_type == TYPE_FLOAT) {
-                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(double)(%s));\n",
+                fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(double)(%s));\n",
                     target, node->value[0] ? node->value : "0");
             } else if (node->var_type == TYPE_BOOL) {
-                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)((%s)?1:0));\n",
+                fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)((%s)?1:0));\n",
                     target, node->value[0] ? node->value : "0");
             } else {
-                fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(%s));\n",
+                fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n",
                     target, node->value[0] ? node->value : "0");
             }
             return;
@@ -1538,10 +1534,10 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
             if (node->is_variable || node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR ||
                 node->var_type == TYPE_OBJECT || node->var_type == TYPE_NULL ||
                 strstr(node->value, "_ltng_add_sn") == node->value) {
-                fprintf(out, "snprintf(%s, 256, \"%%g\", (double)atof(%s));\n",
+                fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n",
                     target, node->value[0] ? node->value : "\"0\"");
             } else {
-                fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+                fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n",
                     target, node->value[0] ? node->value : "0");
             }
             return;
@@ -1551,23 +1547,23 @@ static void emit_return_value(FILE *out, ASTNode *node, const char *target, int 
         node->var_type == TYPE_NULL ||
         strstr(node->value, "_ltng_add_sn") == node->value) {
         pad(out, indent);
-        fprintf(out, "snprintf(%s, 256, \"%%s\", %s);\n",
+        fprintf(out, "_ltng_ds_set(&%s, %s);\n",
             target, node->value[0] ? node->value : "\"\"");
     } else if (node->var_type == TYPE_FLOAT) {
         pad(out, indent);
-        fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+        fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n",
             target, node->value[0] ? node->value : "0");
     } else if (node->var_type == TYPE_BOOL) {
         pad(out, indent);
-        fprintf(out, "snprintf(%s, 256, \"%%s\", (%s) ? \"true\" : \"false\");\n",
+        fprintf(out, "_ltng_ds_set(&%s, (%s) ? \"true\" : \"false\");\n",
             target, node->value[0] ? node->value : "0");
     } else {
         pad(out, indent);
         if (strchr(node->value, '.')) {
-            fprintf(out, "snprintf(%s, 256, \"%%g\", (double)(%s));\n",
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n",
                 target, node->value[0] ? node->value : "0");
         } else {
-            fprintf(out, "snprintf(%s, 256, \"%%lld\", (long long)(%s));\n",
+            fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n",
                 target, node->value[0] ? node->value : "0");
         }
     }
@@ -1596,7 +1592,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             char arrname[MAX_IDENTIFIER_LEN];
             snprintf(arrname, sizeof(arrname), "%s_data", node->name);
             pad(out, indent);
-            fprintf(out, "{ char __apv[256]; snprintf(__apv, 256, \"%s\", %s%s%s); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); }\n",
+            fprintf(out, "{ char *__apv = _ltng_ds_fmt(\"%s\", %s%s%s); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); free(__apv); }\n",
                 fmt, cast, node->value, cast[0] ? ")" : "",
                 arrname, node->name, node->name);
             break;
@@ -1618,10 +1614,10 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             pad(out, indent);
             if (node->is_expr) {
                 if (node->var_type == TYPE_INT) {
-                    fprintf(out, "{ int __aidx = %s; char __asv[256]; snprintf(__asv, 256, \"%%lld\", (long long)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); }\n",
+                    fprintf(out, "{ int __aidx = %s; char *__asv = _ltng_ds_fmt(\"%%lld\", (long long)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); free(__asv); }\n",
                         node->array_index, node->value, arrname, node->name, node->name);
                 } else if (node->var_type == TYPE_FLOAT) {
-                    fprintf(out, "{ int __aidx = %s; char __asv[256]; snprintf(__asv, 256, \"%%g\", (double)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); }\n",
+                    fprintf(out, "{ int __aidx = %s; char *__asv = _ltng_ds_fmt(\"%%g\", (double)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); free(__asv); }\n",
                         node->array_index, node->value, arrname, node->name, node->name);
                 } else {
                     fprintf(out, "{ int __aidx = %s; _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, %s); }\n",
@@ -1644,7 +1640,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             else if (node->var_type == TYPE_FLOAT) { fmt = "%g"; cast = "(double)("; }
             else { fmt = "%s"; cast = ""; }
             pad(out, indent);
-            fprintf(out, "{ int __ii = (int)(%s); char __aiv[256]; snprintf(__aiv, 256, \"%s\", %s%s%s); _ltng_arr_insert(&%s, &%s_len, &%s_cap, __ii, __aiv); }\n",
+            fprintf(out, "{ int __ii = (int)(%s); char *__aiv = _ltng_ds_fmt(\"%s\", %s%s%s); _ltng_arr_insert(&%s, &%s_len, &%s_cap, __ii, __aiv); free(__aiv); }\n",
                 node->value, fmt, cast, node->array_index, cast[0] ? ")" : "",
                 arrname, node->name, node->name);
             break;
@@ -1747,22 +1743,22 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
         case NODE_RETURN: {
             if (g_cleanup_count > 0) {
                 pad(out, indent); fprintf(out, "{\n");
-                pad(out, indent + 1); fprintf(out, "char _ltng_rv[256] = \"\";\n");
+                pad(out, indent + 1); fprintf(out, "char *_ltng_rv = _ltng_ds_new(\"\");\n");
                 if (g_codegen_current_fn) emit_obj_return_staging(out, g_codegen_current_fn, node, indent + 1);
                 emit_return_value(out, node, "_ltng_rv", indent + 1);
                 emit_cleanup_unwind(out, table, indent + 1, 0);
                 if (g_codegen_in_function) {
                     pad(out, indent + 1); fprintf(out, "_ltng_fn_pop();\n");
                 }
-                pad(out, indent + 1); fprintf(out, "snprintf(_ret, 256, \"%%s\", _ltng_rv); return _ret;\n");
+                pad(out, indent + 1); fprintf(out, "_ltng_ds_set(&_ltng_retval, _ltng_rv); free(_ltng_rv); return _ltng_retval;\n");
                 pad(out, indent); fprintf(out, "}\n");
             } else {
                 if (g_codegen_current_fn) emit_obj_return_staging(out, g_codegen_current_fn, node, indent);
                 if (g_codegen_in_function) {
                     pad(out, indent); fprintf(out, "_ltng_fn_pop();\n");
                 }
-                emit_return_value(out, node, "_ret", indent);
-                pad(out, indent); fprintf(out, "return _ret;\n");
+                emit_return_value(out, node, "_ltng_retval", indent);
+                pad(out, indent); fprintf(out, "return _ltng_retval;\n");
             }
             break;
         }
@@ -1777,11 +1773,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
                 const char *msg_expr = node->value[0] ? node->value : "\"\"";
                 if (node->var_type == TYPE_INT) {
                     pad(out, indent);
-                    fprintf(out, "{ char _ltng_tm[256]; snprintf(_ltng_tm, sizeof(_ltng_tm), \"%%lld\", (long long)(%s)); _ltng_throw_value(%s, _ltng_tm, %d, %d); }\n",
+                    fprintf(out, "{ char *_ltng_tm = _ltng_ds_fmt(\"%%lld\", (long long)(%s)); _ltng_throw_value(%s, _ltng_tm, %d, %d); free(_ltng_tm); }\n",
                         msg_expr, type_expr, node->line, node->col);
                 } else if (node->var_type == TYPE_FLOAT) {
                     pad(out, indent);
-                    fprintf(out, "{ char _ltng_tm[256]; snprintf(_ltng_tm, sizeof(_ltng_tm), \"%%g\", (double)(%s)); _ltng_throw_value(%s, _ltng_tm, %d, %d); }\n",
+                    fprintf(out, "{ char *_ltng_tm = _ltng_ds_fmt(\"%%g\", (double)(%s)); _ltng_throw_value(%s, _ltng_tm, %d, %d); free(_ltng_tm); }\n",
                         msg_expr, type_expr, node->line, node->col);
                 } else {
                     pad(out, indent);
@@ -1813,7 +1809,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             if (node->is_base_assign && node->args && node->args->value[0] != '\0') {
                 const char *recv = node->args->value;
                 pad(out, indent);
-                fprintf(out, "snprintf(%s, 256, \"%%s\", ", recv);
+                fprintf(out, "_ltng_ds_set(&%s, ", recv);
                 emit_call_expr(out, node);
                 fprintf(out, ");\n");
                 break;
@@ -1952,6 +1948,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         }
     }
 
+    fprintf(out, "#define _GNU_SOURCE\n");
     fprintf(out, "#include <stdio.h>\n");
     fprintf(out, "#include <string.h>\n");
     fprintf(out, "#include <stdlib.h>\n");
@@ -2056,24 +2053,35 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         "}\n",
         out);
     fprintf(out, "\n");
-    fprintf(out, "static char *_ltng_concat(char *buf, size_t sz, int n, ...) { va_list ap; va_start(ap,n); buf[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); strncat(buf,s,sz-strlen(buf)-1); } va_end(ap); return buf; }\n");
-    fprintf(out, "static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { buf[0]=0; if (n < 0) n = 0; for (long long i=0; i<n && strlen(buf) < sz-1; i++) { strncat(buf, s, sz-strlen(buf)-1); } return buf; }\n");
+    /* Dynamic string/value runtime helpers (no fixed 256-byte truncation for values). */
+    fprintf(out, "static char *_ltng_ds_new(const char *s){ if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=(char*)malloc(n); if(!p) return NULL; memcpy(p,s,n); return p; }\n");
+    fprintf(out, "static void _ltng_ds_set(char **dst, const char *s){ if(!dst) return; if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=(char*)realloc(*dst,n); if(!p){ p=(char*)malloc(n); if(!p) return; } memcpy(p,s,n); *dst=p; }\n");
+    fprintf(out, "static char *_ltng_ds_take(char *s){ return s ? s : _ltng_ds_new(\"\"); }\n");
+    fprintf(out, "static char *_ltng_ds_slot_set(char **slot, char *s){ if(!slot) { if(s) free(s); return \"\"; } if(*slot) free(*slot); if(!s) s=_ltng_ds_new(\"\"); *slot=s; return *slot; }\n");
+    fprintf(out, "static char *_ltng_ds_slot_set_cstr(char **slot, const char *s){ if(!slot) return \"\"; char *n=_ltng_ds_new(s); return _ltng_ds_slot_set(slot,n); }\n");
+    fprintf(out, "static char *_ltng_ds_vfmt(const char *fmt, va_list ap){ va_list ap2; va_copy(ap2,ap); int n=vsnprintf(NULL,0,fmt,ap); va_end(ap); if(n<0){ va_end(ap2); return _ltng_ds_new(\"\"); } char *p=(char*)malloc((size_t)n+1); if(!p){ va_end(ap2); return _ltng_ds_new(\"\"); } vsnprintf(p,(size_t)n+1,fmt,ap2); va_end(ap2); return p; }\n");
+    fprintf(out, "static char *_ltng_ds_fmt(const char *fmt, ...){ va_list ap; va_start(ap,fmt); char *p=_ltng_ds_vfmt(fmt,ap); va_end(ap); return p; }\n");
+    fprintf(out, "static void _ltng_ds_setfmt(char **dst, const char *fmt, ...){ if(!dst) return; va_list ap; va_start(ap,fmt); char *p=_ltng_ds_vfmt(fmt,ap); va_end(ap); _ltng_ds_slot_set(dst,p); }\n");
+    fprintf(out, "static char *_ltng_concat(char *buf, size_t sz, int n, ...) { (void)buf; (void)sz; static char *slot[32]={0}; static int si=0; si=(si+1)%%32; va_list ap; va_start(ap,n); size_t total=1; va_list ap2; va_copy(ap2,ap); for(int i=0;i<n;i++){ const char *s=va_arg(ap2,const char*); if(s) total+=strlen(s); } va_end(ap2); char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p){ va_end(ap); return \"\"; } slot[si]=p; p[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); if(s) strcat(p,s); } va_end(ap); return p; }\n");
+    fprintf(out, "static char *_ltng_concat_dyn(int n, ...) { static char *slot[32]={0}; static int si=0; si=(si+1)%%32; va_list ap; va_start(ap,n); size_t total=1; va_list ap2; va_copy(ap2,ap); for(int i=0;i<n;i++){ const char *s=va_arg(ap2,const char*); if(s) total+=strlen(s); } va_end(ap2); char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p){ va_end(ap); return \"\"; } slot[si]=p; p[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); if(s) strcat(p,s); } va_end(ap); return p; }\n");
+    fprintf(out, "static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { (void)buf; (void)sz; static char *slot[32]={0}; static int si=0; si=(si+1)%%32; if(!s) s=\"\"; if(n<0) n=0; size_t sl=strlen(s); size_t total=(size_t)n*sl+1; char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p) return \"\"; slot[si]=p; for(long long i=0;i<n;i++){ memcpy(p + (size_t)i*sl, s, sl); } p[(size_t)n*sl]=0; return p; }\n");
+    fprintf(out, "static char *_ltng_repeat_dyn(const char *s, long long n) { static char *slot[32]={0}; static int si=0; si=(si+1)%%32; if(!s) s=\"\"; if(n<0) n=0; size_t sl=strlen(s); size_t total=(size_t)n*sl+1; char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p) return \"\"; slot[si]=p; for(long long i=0;i<n;i++){ memcpy(p + (size_t)i*sl, s, sl); } p[(size_t)n*sl]=0; return p; }\n");
     /* Dynamic array runtime helpers. Arrays are represented as char **data plus
        int len and int cap. Each element is a strdup'd char buffer. Indexing is
        1-based for positive indices, counts from the end for negative indices,
        and index 0 is invalid (returns ""). All '%' below are escaped for fprintf.
        Functions that may realloc take char ***d so the caller's pointer is updated. */
-    fprintf(out, "static char *_ltng_arr_strdup(const char *s){ if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=malloc(n); if(p) memcpy(p,s,n); return p; }\n");
-    fprintf(out, "static char **_ltng_arr_new(int cap){ if(cap<1)cap=1; char **d=malloc(sizeof(char*)*cap); for(int i=0;i<cap;i++) d[i]=NULL; return d; }\n");
-    fprintf(out, "static void _ltng_arr_ensure(char ***d,int *len,int *cap,int need){ if(*cap>=need) return; int nc=*cap?*cap*2:1; while(nc<need) nc*=2; *d=realloc(*d,sizeof(char*)*nc); for(int i=*cap;i<nc;i++) (*d)[i]=NULL; *cap=nc; }\n");
+    fprintf(out, "static char *_ltng_arr_strdup(const char *s){ if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=(char*)malloc(n); if(p) memcpy(p,s,n); return p; }\n");
+    fprintf(out, "static char **_ltng_arr_new(int cap){ if(cap<1)cap=1; char **d=(char**)malloc(sizeof(char*)*cap); for(int i=0;i<cap;i++) d[i]=NULL; return d; }\n");
+    fprintf(out, "static void _ltng_arr_ensure(char ***d,int *len,int *cap,int need){ if(*cap>=need) return; int nc=*cap?*cap*2:1; while(nc<need) nc*=2; char **nd=(char**)realloc(*d,sizeof(char*)*nc); if(!nd) return; *d=nd; for(int i=*cap;i<nc;i++) (*d)[i]=NULL; *cap=nc; }\n");
     fprintf(out, "static void _ltng_arr_set_elem(char **d,int idx,const char *v){ if(d[idx]) free(d[idx]); d[idx]=v?_ltng_arr_strdup(v):_ltng_arr_strdup(\"\"); }\n");
     fprintf(out, "static const char *_ltng_arr_get(char **d,int len,int idx){ if(idx>=0&&idx<len) return d[idx]?d[idx]:\"\"; if(idx<0&&len+idx>=0) return d[len+idx]?d[len+idx]:\"\"; return \"\"; }\n");
     fprintf(out, "static void _ltng_arr_set(char **d,int *len,int *cap,int idx,const char *v){ (void)cap; if(idx<0||idx>=*len) return; _ltng_arr_set_elem(d,idx,v); }\n");
     fprintf(out, "static void _ltng_arr_push(char ***d,int *len,int *cap,const char *v){ _ltng_arr_ensure(d,len,cap,*len+1); _ltng_arr_set_elem(*d,*len,v); (*len)++; }\n");
-    fprintf(out, "static char *_ltng_arr_pop(char **d,int *len){ static char b[256]; if(*len<=0){ b[0]=0; return b; } (*len)--; const char *v=d[*len]?d[*len]:\"\"; snprintf(b,256,\"%%s\",v); free(d[*len]); d[*len]=NULL; return b; }\n");
-    fprintf(out, "static char *_ltng_arr_pop_index(char **d,int *len,int idx){ static char b[256]; /* idx is 1-based positive, negative from end, 0 invalid */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0||idx>=*len){ b[0]=0; return b; } const char *v=d[idx]?d[idx]:\"\"; snprintf(b,256,\"%%s\",v); free(d[idx]); for(int i=idx;i<*len-1;i++) d[i]=d[i+1]; d[*len-1]=NULL; (*len)--; return b; }\n");
-    fprintf(out, "static void _ltng_arr_insert(char ***d,int *len,int *cap,int idx,const char *v){ /* idx is 1-based positive, negative from end */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0) idx=0; if(idx>*len) idx=*len; _ltng_arr_ensure(d,len,cap,*len+1); for(int i=*len;i>idx;i--) (*d)[i]=(*d)[i-1]; _ltng_arr_set_elem(*d,idx,v); (*len)++; }\n");
-    fprintf(out, "static void _ltng_arr_remove(char **d,int *len,int idx){ /* idx is 1-based positive, negative from end, 0 invalid */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0||idx>=*len) return; free(d[idx]); for(int i=idx;i<*len-1;i++) d[i]=d[i+1]; d[*len-1]=NULL; (*len)--; }\n");
+    fprintf(out, "static char *_ltng_arr_pop(char **d,int *len){ static char *b[32]={0}; static int i; i=(i+1)%%32; if(*len<=0){ _ltng_ds_set(&b[i],\"\"); return b[i]; } (*len)--; const char *v=d[*len]?d[*len]:\"\"; _ltng_ds_set(&b[i],v); free(d[*len]); d[*len]=NULL; return b[i]; }\n");
+    fprintf(out, "static char *_ltng_arr_pop_index(char **d,int *len,int idx){ static char *b[32]={0}; static int i; i=(i+1)%%32; /* idx is 1-based positive, negative from end, 0 invalid */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0||idx>=*len){ _ltng_ds_set(&b[i],\"\"); return b[i]; } const char *v=d[idx]?d[idx]:\"\"; _ltng_ds_set(&b[i],v); free(d[idx]); for(int j=idx;j<*len-1;j++) d[j]=d[j+1]; d[*len-1]=NULL; (*len)--; return b[i]; }\n");
+    fprintf(out, "static void _ltng_arr_insert(char ***d,int *len,int *cap,int idx,const char *v){ /* idx is 1-based positive, negative from end */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0) idx=0; if(idx>*len) idx=*len; _ltng_arr_ensure(d,len,cap,*len+1); for(int j=*len;j>idx;j--) (*d)[j]=(*d)[j-1]; _ltng_arr_set_elem(*d,idx,v); (*len)++; }\n");
+    fprintf(out, "static void _ltng_arr_remove(char **d,int *len,int idx){ /* idx is 1-based positive, negative from end, 0 invalid */ if(idx>0) idx=idx-1; else if(idx<0) idx=*len+idx; if(idx<0||idx>=*len) return; free(d[idx]); for(int j=idx;j<*len-1;j++) d[j]=d[j+1]; d[*len-1]=NULL; (*len)--; }\n");
     fprintf(out, "static int _ltng_arr_contains(char **d,int len,const char *v){ for(int i=0;i<len;i++){ if(d[i]&&strcmp(d[i],v)==0) return 1; } return 0; }\n");
     fprintf(out, "static int _ltng_arr_index_of(char **d,int len,const char *v){ for(int i=0;i<len;i++){ if(d[i]&&strcmp(d[i],v)==0) return i+1; } return 0; }\n");
     fprintf(out, "static void _ltng_arr_reverse(char **d,int len){ for(int i=0,j=len-1;i<j;i++,j--){ char *t=d[i]; d[i]=d[j]; d[j]=t; } }\n");
@@ -2085,13 +2093,13 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static void _ltng_arr_free(char **d,int len){ if(!d) return; for(int i=0;i<len;i++){ if(d[i]) free(d[i]); } free(d); }\n");
     fprintf(out, "static int _ltng_idx2(int i0, int i1, int d1) { return i0 * d1 + i1; }\n");
     fprintf(out, "static int _ltng_idx3(int i0, int i1, int i2, int d1, int d2) { return (i0 * d1 + i1) * d2 + i2; }\n");
-    fprintf(out, "static char *_ltng_retbuf(void){ static char b[32][256]; static int i; i=(i+1)%%32; b[i][0]=0; return b[i]; }\n");
-    fprintf(out, "static char *_ltng_ad(double v){ char *b=_ltng_retbuf(); snprintf(b,256,\"%%g\",v); return b; }\n");
-    fprintf(out, "static char *_ltng_as(const char *s){ char *b=_ltng_retbuf(); if(s){ strncpy(b,s,255); b[255]=0; } return b; }\n");
-    fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ snprintf(buf,256,\"%%lld\",v); return buf; }\n");
-    fprintf(out, "static char *_ltng_from_double(char *buf, double v){ snprintf(buf,256,\"%%g\",v); return buf; }\n");
-    fprintf(out, "static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit(*p)) h=1; else if(*p=='.'){} else return 0; } return h; }\n");
-    fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char buf[32][256]; static int _ltng_asn_idx=0; _ltng_asn_idx=(_ltng_asn_idx+1)%%32; char *r=buf[_ltng_asn_idx]; r[0]=0; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a),nb=atof(b); snprintf(r,256,\"%%g\",na+nb); } else { snprintf(r,256,\"%%s%%s\",a,b); } return r; }\n");
+    fprintf(out, "static char *_ltng_retbuf(void){ static char *b[32]={0}; static int i; i=(i+1)%%32; if(!b[i]) b[i]=_ltng_ds_new(\"\"); else b[i][0]=0; return b[i]; }\n");
+    fprintf(out, "static char *_ltng_ad(double v){ static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_as(const char *s){ static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_set(&b[i],s); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%lld\",v); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_from_double(char *buf, double v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
+    fprintf(out, "static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit((unsigned char)*p)) h=1; else if(*p=='.'){} else return 0; } return h; }\n");
+    fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char *buf[32]={0}; static int i=0; i=(i+1)%%32; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a?a:\"0\"),nb=atof(b?b:\"0\"); _ltng_ds_setfmt(&buf[i],\"%%g\",na+nb); } else { _ltng_ds_setfmt(&buf[i],\"%%s%%s\",a?a:\"\",b?b:\"\"); } return buf[i]; }\n");
     fprintf(out, "static long long _ltng_div0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Division by zero\", line, col); return 0; }\n");
     fprintf(out, "static long long _ltng_mod0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Modulo by zero\", line, col); return 0; }\n");
     fprintf(out, "static double _ltng_div0_d(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Division by zero\", line, col); return 0.0; }\n");
@@ -2115,12 +2123,11 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             if (!sc) continue;
             char stage_base[MAX_IDENTIFIER_LEN*2+16];
             snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", fn->name);
-            fprintf(out, "static char %s[256] = \"\";\n", stage_base);
+            fprintf(out, "static char *%s = NULL;\n", stage_base);
             for (int i = 0; i < sc->count; i++) {
                 char dst_f[MAX_IDENTIFIER_LEN*2+8];
                 obj_resolve_field(stage_base, sc->fields[i].name, dst_f, sizeof(dst_f));
-                int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
-                fprintf(out, "static char %s[%d] = \"\";\n", dst_f, bsz);
+                fprintf(out, "static char *%s = NULL;\n", dst_f);
             }
         }
         fprintf(out, "\n");
@@ -2158,24 +2165,24 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             if (fn->is_variadic)
                 fprintf(out, ", int _ltng_restc, const char **_ltng_restv");
             fprintf(out, ") {\n");
-            fprintf(out, "    if(!_ret) _ret=_ltng_retbuf(); _ret[0]=0;\n");
+            fprintf(out, "    (void)_ret; char *_ltng_retval = _ltng_ds_new(\"\");\n");
             fprintf(out, "    _ltng_fn_push(\"");
             write_c_string_raw(out, fn->for_var[0] ? fn->for_var : fn->name);
             fprintf(out, "\", _ltng_cl, _ltng_cc);\n");
             /* bind captured variables (shared/mutable - decode pointer to shared storage) */
             for (int ci = 0; ci < fn->capture_count; ci++) {
                 fprintf(out, "    char *%s = (char*)_ltng_str_to_ptr(_cap_%d);\n", fn->captures[ci], ci);
-                fprintf(out, "    char _%s_fallback[256] = \"\"; if(!%s) %s = _%s_fallback;\n",
-                    fn->captures[ci], fn->captures[ci], fn->captures[ci], fn->captures[ci]);
+                fprintf(out, "    if(!%s) %s = _ltng_ds_new(\"\");\n",
+                    fn->captures[ci], fn->captures[ci]);
             }
             for (ASTNode *p = fn->params; p; p = p->next) {
                 if (is_var_captured_by_nested(fn, program->functions, p->name)) {
-                    fprintf(out, "    char *%s = (char*)calloc(1, 256);\n", p->name);
-                    fprintf(out, "    if(_a_%s && %s) { strncpy(%s, _a_%s, 255); %s[255]=0; }\n",
-                        p->name, p->name, p->name, p->name, p->name);
+                    fprintf(out, "    char *%s = _ltng_ds_new(\"\");\n", p->name);
+                    fprintf(out, "    _ltng_ds_set(&%s, _a_%s ? _a_%s : \"\");\n",
+                        p->name, p->name, p->name);
                 } else {
-                    fprintf(out, "    char %s[256] = \"\"; if(_a_%s) { strncpy(%s, _a_%s, 255); %s[255]=0; }\n",
-                        p->name, p->name, p->name, p->name, p->name);
+                    fprintf(out, "    char *%s = _ltng_ds_new(_a_%s ? _a_%s : \"\");\n",
+                        p->name, p->name, p->name);
                 }
             }
             /* Build the variadic rest parameter as a dynamic array. */
@@ -2201,9 +2208,9 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                         char fv[MAX_IDENTIFIER_LEN*2+8];
                         obj_resolve_field(p->name, combined.fields[fi].name, fv, sizeof(fv));
                         int bsz = (strcmp(combined.fields[fi].name, "obj") == 0) ? 512 : 256;
-                        fprintf(out, "    char %s[%d] = \"", fv, bsz);
+                        fprintf(out, "    char *%s = _ltng_ds_new(\"", fv);
                         { const char *v=combined.fields[fi].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\\n'){fputs("\\n",out);} else if(*v=='\\t'){fputs("\\t",out);} else fputc(*v,out);} }
-                        fprintf(out, "\";\n");
+                        fprintf(out, "\");\n");
                     }
                 }
             }
@@ -2221,7 +2228,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 g_codegen_in_function = saved_infn;
             }
             fprintf(out, "    _ltng_fn_pop();\n");
-            fprintf(out, "    return _ret;\n");
+            fprintf(out, "    return _ltng_retval;\n");
             fprintf(out, "}\n\n");
         }
         g_codegen_current_fn = NULL;
@@ -2237,7 +2244,8 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "    for (int i = 0; i < argc && i < 64; i++) { const char *v = va_arg(ap, const char*); _argv[i] = v ? v : \"\"; }\n");
     fprintf(out, "    va_end(ap);\n");
     fprintf(out, "    if (!target) target = \"\";\n");
-    fprintf(out, "    char _tname[256]; snprintf(_tname, sizeof(_tname), \"%%s\", target);\n");
+    fprintf(out, "    char *_tname_buf = _ltng_ds_new(target);\n");
+    fprintf(out, "    char *_tname = _tname_buf;\n");
     fprintf(out, "    const char *_caps[8] = {\"\",\"\",\"\",\"\",\"\",\"\",\"\"}; int _ncaps = 0;\n");
     fprintf(out, "    char *_sep = strchr(_tname, 1);\n");
     fprintf(out, "    if (_sep) { *_sep = 0; char *_p = _sep + 1; while (_p && *_p && _ncaps < 8) { char *_n = strchr(_p, 1); if (_n) { *_n = 0; _caps[_ncaps++] = _p; _p = _n + 1; } else { _caps[_ncaps++] = _p; break; } } }\n");
@@ -2253,20 +2261,26 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 fprintf(out, "        int __rn = argc - %d; if (__rn < 0) __rn = 0; if (__rn > 64 - %d) __rn = 64 - %d;\n", pc, pc, pc);
                 fprintf(out, "        const char *__rv[64];\n");
                 fprintf(out, "        for (int __i = 0; __i < __rn; __i++) __rv[__i] = _argv[%d + __i];\n", pc);
-                fprintf(out, "        return %s(_ret, _ltng_cl, _ltng_cc", fn->name);
+                fprintf(out, "        char *_ir = %s(_ret, _ltng_cl, _ltng_cc", fn->name);
                 for (int ci = 0; ci < fn->capture_count; ci++) fprintf(out, ", _caps[%d]", ci);
                 for (int pi = 0; pi < pc; pi++) fprintf(out, ", _argv[%d]", pi);
-                fprintf(out, ", __rn, (const char**)__rv);\n    }\n");
+                fprintf(out, ", __rn, (const char**)__rv);\n");
+                fprintf(out, "        free(_tname_buf); return _ir;\n");
+                fprintf(out, "    }\n");
             } else {
-                fprintf(out, "    if (strcmp(_tname, \"%s\") == 0) return %s(_ret, _ltng_cl, _ltng_cc", fn->name, fn->name);
+                fprintf(out, "    if (strcmp(_tname, \"%s\") == 0) {\n", fn->name);
+                fprintf(out, "        char *_ir = %s(_ret, _ltng_cl, _ltng_cc", fn->name);
                 for (int ci = 0; ci < fn->capture_count; ci++) fprintf(out, ", _caps[%d]", ci);
                 for (int pi = 0; pi < pc; pi++) fprintf(out, ", _argv[%d]", pi);
                 fprintf(out, ");\n");
+                fprintf(out, "        free(_tname_buf); return _ir;\n");
+                fprintf(out, "    }\n");
             }
         }
     }
+    fprintf(out, "    free(_tname_buf);\n");
     fprintf(out, "    _ltng_throw_value(\"Error\", \"Unknown function in indirect call\", _ltng_cl, _ltng_cc);\n");
-    fprintf(out, "    return _ret;\n");
+    fprintf(out, "    return _ltng_ds_new(\"\");\n");
     fprintf(out, "}\n\n");
 
 
@@ -2285,23 +2299,23 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         if (table->vars[i].type == TYPE_OBJECT) {
             ObjSchema *sc = obj_lookup(table->vars[i].name);
             const char *dv = sc ? sc->default_val : "";
-            fprintf(out, "    char %s[256] = \"", table->vars[i].name);
+            fprintf(out, "    char *%s = _ltng_ds_new(\"", table->vars[i].name);
             write_c_string(out, dv);
-            fprintf(out, "\";\n");
+            fprintf(out, "\");\n");
             if (sc) {
                 for (int fi = 0; fi < sc->count; fi++) {
                     char fv[MAX_IDENTIFIER_LEN*2+8];
                     obj_resolve_field(table->vars[i].name, sc->fields[fi].name, fv, sizeof(fv));
                     int bsz = (strcmp(sc->fields[fi].name, "obj") == 0) ? 512 : 256;
-                    fprintf(out, "    char %s[%d] = \"", fv, bsz);
+                    fprintf(out, "    char *%s = _ltng_ds_new(\"", fv);
                     write_c_string(out, sc->fields[fi].value);
-                    fprintf(out, "\";\n");
+                    fprintf(out, "\");\n");
                 }
             }
         } else {
-            fprintf(out, "    char %s[256] = \"", table->vars[i].name);
+            fprintf(out, "    char *%s = _ltng_ds_new(\"", table->vars[i].name);
             write_c_string(out, default_for(table->vars[i].type));
-            fprintf(out, "\";\n");
+            fprintf(out, "\");\n");
         }
     }
     if (table->count > 0) fprintf(out, "\n");
