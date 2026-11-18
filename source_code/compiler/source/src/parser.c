@@ -733,6 +733,25 @@ static int token_is_int(Token tok, SymbolTable *table) {
     return 0;
 }
 
+static FuncInfo *find_funcinfo_by_cname(const char *cname);
+
+static VarType effective_param_default_type(const char *src_name, VarType sym_type) {
+    if (!g_enclosing_cname[0]) return sym_type;
+    /* Untyped params are typically stored as TYPE_FLOAT placeholders in scope.
+       For params with known default types, prefer the default type in typing/inference. */
+    if (sym_type != TYPE_FLOAT) return sym_type;
+    FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
+    if (!efi) return sym_type;
+    for (int pi = 0; pi < efi->param_count && pi < MAX_FUNC_PARAMS; pi++) {
+        if (strcmp(efi->param_names[pi], src_name) == 0) {
+            if (efi->has_default[pi] && efi->def_type[pi] != TYPE_NULL)
+                return efi->def_type[pi];
+            return sym_type;
+        }
+    }
+    return sym_type;
+}
+
 static int has_operator_ahead(Lexer *lexer);
 
 static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result);
@@ -4030,7 +4049,7 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                 lexer->current = saved_pos;
                 return 0;
             }
-            vtype = symbol_table_get(table, mangled);
+            vtype = effective_param_default_type(arg.value, symbol_table_get(table, mangled));
         } else if (arg.type == TOKEN_STRING) {
             vtype = TYPE_STRING;
         } else if (arg.type == TOKEN_INT_LIT) {
@@ -9533,21 +9552,12 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
                     fi->param_names[pi][MAX_IDENTIFIER_LEN - 1] = '\0';
                     fi->has_default[pi] = pp->has_default;
                     fi->def_type[pi] = pp->has_default ? pp->var_type : TYPE_NULL;
-                    fi->def_type[pi] = pp->has_default ? pp->var_type : TYPE_NULL;
                     pi++;
                 }
             }
             fi->required_count = req;
             fi->is_variadic = variadic;
             fi->defined = 1;
-            /* copy default types from param AST nodes */
-            {
-                int pti = 0;
-                for (ASTNode *pp = params; pp && pti < MAX_FUNC_PARAMS; pp = pp->next, pti++) {
-                    if (pp->has_default) fi->def_type[pti] = pp->var_type;
-                    else fi->def_type[pti] = TYPE_NULL;
-                }
-            }
         }
     }
     if (!is_anon && table) symbol_table_add_func(table, name.value, cname, pcount);
