@@ -72,3 +72,77 @@ write(typeof(as_arr[1] + as_arr[2]))
 write(ai[1])
 write(af[1])
 write(as_arr[1])
+
+# element assignment preserves homogeneous dtype and coerces the value
+set ai[1] = "7"
+write(ai[1])
+write(typeof(ai[1]))
+write(typeof(ai[2]))
+write(ai[2] + 1)
+write(typeof(ai[2] + 1))
+set af[1] = 4
+write(af[1])
+write(typeof(af[2]))
+set ab[1] = false
+write(ab[1])
+set ab[1] = ab[3]
+write(ab[1])
+write(typeof(ab[2]))
+
+# OOB compatibility across typed contexts
+let oob = [1, 2, 3]
+write("bare=[" + oob[99] + "]")
+write(oob[99] + 0)
+write("v=" + oob[99])
+write(oob[99] == 0)
+if (oob[99]) { write("t") } else { write("f") }
+set oob[99] = 5
+write(oob[1])
+write(typeof(oob[99]))
+
+# negative indices use the live length after push/pop
+let dyn = [1, 2, 3]
+dyn.push(4)
+write(dyn[-1])
+write(dyn[-1] + 0)
+set dyn[-1] = 99
+write(dyn[4])
+
+# deep non-bare access (more than three indices) is stack-safe
+let deep = [[[[9]]]]
+write(deep[1][1][1][1] + 0)
+let dv = deep[1][1][1][1]
+write(dv)
+
+# typeof inside string interpolation uses array/call result typing
+function id(x) { return x }
+write("$[typeof(ai[1])]")
+let it = "$[typeof(af[1])]"
+write(it)
+write("$[typeof(id(ab[1]))]")
+
+# typed element returns from a local array
+function getElem() {
+  let local = [4, 5, 6]
+  return local[2]
+}
+write(typeof(getElem()))
+write(getElem() + 1)
+
+# compound element assignments keep typed element semantics
+let cint = [1, 2, 3]
+set cint[1] += 2
+set cint[2] *= 3
+set cint[3] /= 2
+set cint[1] %= 2
+write(cint[1])
+write(cint[2])
+write(cint[3])
+write(typeof(cint[2]))
+let cfloat = [1.5, 2.5]
+set cfloat[1] += 0.5
+write(cfloat[1])
+write(typeof(cfloat[2]))
+let cstr = ["a", "b"]
+set cstr[1] += "c"
+write(cstr[1])

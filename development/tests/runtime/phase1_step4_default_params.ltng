@@ -1,0 +1,40 @@
+# Default parameter type propagation in bodies/expressions
+function addd(a = 1, b = 2.5) {
+  let s = a + b
+  return s
+}
+let r = addd()
+write(r)
+write(typeof(r))
+write(addd())
+write(typeof(addd()))
+
+function sum2(a = 1, b = 2) {
+  return a + b
+}
+write(sum2())
+write(typeof(sum2()))
+write(sum2(3, 4))
+write(sum2(3.5, 1.5))
+
+# typeof of default params in body
+function check(a = 1, b = 2.5, c = "hi") {
+  write(typeof(a))
+  write(typeof(b))
+  write(typeof(c))
+}
+check()
+
+# string default params with untyped prefix (phase5_defaults-like)
+function make(prefix, sep = "-", suffix = "!") {
+  return prefix + sep + suffix
+}
+write(make("a"))
+write(make("x", ":", ""))
+
+# named arguments preserve default-derived result typing
+write(addd(a=1, b=2.5))
+write(typeof(addd(a=1, b=2.5)))
+write(addd(b=4.5, a=2))
+write(typeof(addd(b=4.5, a=2)))
+

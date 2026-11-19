@@ -26,6 +26,7 @@ typedef struct {
     VarType def_type[MAX_FUNC_PARAMS]; /* inferred type of default expression */
     int def_start[MAX_FUNC_PARAMS];  /* token range of the default expression */
     int def_end[MAX_FUNC_PARAMS];
+    int passthrough_param; /* index of param returned as simple pass-through, or -1 */
 } FuncInfo;
 static FuncInfo g_funcs[MAX_FUNCS];
 static int g_func_count = 0;
@@ -117,6 +118,7 @@ static void register_function(const char *name, int param_count) {
             return;
         }
     }
+    g_funcs[g_func_count].passthrough_param = -1;
     strncpy(g_funcs[g_func_count].name, mangled, MAX_IDENTIFIER_LEN - 1);
     g_funcs[g_func_count].name[MAX_IDENTIFIER_LEN - 1] = '\0';
     strncpy(g_funcs[g_func_count].src, name, MAX_IDENTIFIER_LEN - 1);
@@ -233,6 +235,7 @@ static ASTNode *create_node(NodeType type, const char *name, const char *value) 
         exit(1);
     }
     memset(node, 0, sizeof(ASTNode));
+    node->passthrough_param = -1;
     node->type = type;
     strncpy(node->name, name ? name : "", MAX_IDENTIFIER_LEN - 1);
     node->name[MAX_IDENTIFIER_LEN - 1] = '\0';
@@ -1401,7 +1404,8 @@ static int part_is_stringy(const char *part) {
             /* runtime helpers that return char* */
             if (strcmp(callee, "_ltng_add_sn") == 0 || strcmp(callee, "_ltng_concat") == 0 ||
                 strcmp(callee, "_ltng_repeat") == 0 || strcmp(callee, "_ltng_as") == 0 ||
-                strcmp(callee, "_ltng_ad") == 0 || strcmp(callee, "_ltng_retbuf") == 0)
+                strcmp(callee, "_ltng_ad") == 0 || strcmp(callee, "_ltng_retbuf") == 0 ||
+                strcmp(callee, "__ltng_call_indirect") == 0)
                 return 1;
             return function_returns_string(callee);
         }
@@ -1439,6 +1443,7 @@ static int resolve_func_ref_info(SymbolTable *table, const char *name, char *out
 
 /* Infer the return type of a user-defined function by scanning its return statements. */
 static VarType infer_function_return_type(const char *fname);
+static VarType infer_call_result_type(ASTNode *call);
 
 /* Return 1 when a call to the named function is known to produce a string
    value (explicit `-> string` annotation, or inferred from its returns). */
@@ -2619,18 +2624,30 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     char cexpr[MAX_STRING_LEN];
                     build_call_cexpr(call, cexpr, sizeof(cexpr));
                     append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
-                    if (!type_locked && function_returns_string(call->name)) {
-                        pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
-                        result_type = TYPE_STRING;
-                    } else {
-                        VarType crt = infer_function_return_type(call->name);
-                        if (crt == TYPE_INT) {
+                    {
+                        VarType crt = infer_call_result_type(call);
+                        if (!type_locked && crt == TYPE_STRING && function_returns_string(call->name)) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                            result_type = TYPE_STRING;
+                        } else if (crt == TYPE_INT) {
                             pos += snprintf(out + pos, out_size - pos, "(double)atoll(%s)", cexpr);
                             if (!type_locked) result_type = TYPE_INT;
                         } else if (crt == TYPE_FLOAT || crt == TYPE_NULL || crt == TYPE_VOID) {
-                            pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
-                            if (!type_locked) result_type = TYPE_FLOAT;
+                            /* for passthrough-specialized non-string types we got concrete type; NULL/VOID means unknown */
+                            if (crt == TYPE_NULL || crt == TYPE_VOID) {
+                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_FLOAT;
+                            } else {
+                                pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
+                                if (!type_locked) result_type = TYPE_FLOAT;
+                            }
                         } else if (crt == TYPE_STRING) {
+                            pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                            if (!type_locked) result_type = TYPE_STRING;
+                        } else if (crt == TYPE_BOOL) {
+                            pos += snprintf(out + pos, out_size - pos, "(%s[0]=='t'||%s[0]=='T'||%s[0]=='1'?1:0)", cexpr, cexpr, cexpr);
+                            if (!type_locked) result_type = TYPE_BOOL;
+                        } else if (crt == TYPE_CHAR) {
                             pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
                             if (!type_locked) result_type = TYPE_STRING;
                         } else {
@@ -2732,18 +2749,24 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         char cexpr[MAX_STRING_LEN];
                         build_call_cexpr(call, cexpr, sizeof(cexpr));
                         append_immediate_call_chains(lexer, table, cexpr, sizeof(cexpr));
-                        if (!type_locked && function_returns_string(mname.value)) {
-                            pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
-                            result_type = TYPE_STRING;
-                        } else {
-                            VarType crt = infer_function_return_type(mname.value);
-                            if (crt == TYPE_INT) {
+                        {
+                            VarType crt = infer_call_result_type(call);
+                            if (!type_locked && crt == TYPE_STRING && function_returns_string(mname.value)) {
+                                pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                                result_type = TYPE_STRING;
+                            } else if (crt == TYPE_INT) {
                                 pos += snprintf(out + pos, out_size - pos, "(double)atoll(%s)", cexpr);
                                 if (!type_locked) result_type = TYPE_INT;
                             } else if (crt == TYPE_FLOAT || crt == TYPE_NULL || crt == TYPE_VOID) {
                                 pos += snprintf(out + pos, out_size - pos, "atof(%s)", cexpr);
                                 if (!type_locked) result_type = TYPE_FLOAT;
                             } else if (crt == TYPE_STRING) {
+                                pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
+                                if (!type_locked) result_type = TYPE_STRING;
+                            } else if (crt == TYPE_BOOL) {
+                                pos += snprintf(out + pos, out_size - pos, "(%s[0]=='t'||%s[0]=='T'||%s[0]=='1'?1:0)", cexpr, cexpr, cexpr);
+                                if (!type_locked) result_type = TYPE_BOOL;
+                            } else if (crt == TYPE_CHAR) {
                                 pos += snprintf(out + pos, out_size - pos, "%s", cexpr);
                                 if (!type_locked) result_type = TYPE_STRING;
                             } else {
@@ -2847,11 +2870,24 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                     } else {
                         VarType vtype = symbol_table_get(table, mangled);
                         const char *cname = symbol_table_get_cname(table, mangled);
+                        /* For parameters with a known default type, prefer that type for
+                           typing/inference in expressions (and for emission of the value).
+                           Untyped params with no default remain dynamic. */
+                        VarType _eff_type = vtype;
+                        int _has_default_type = 0;
+                        if (symbol_table_is_param(table, mangled)) {
+                            VarType _pdt = effective_param_default_type(tok.value, vtype);
+                            if (_pdt != vtype && _pdt != TYPE_NULL) {
+                                _eff_type = _pdt;
+                                _has_default_type = 1;
+                            }
+                        }
+                        VarType _emit_type = _eff_type;
                         /* in a string-building context, use the raw buffer
                            (array variables are handled by the index logic below) */
-                        if (result_type == TYPE_STRING && !type_locked && vtype != TYPE_ARRAY) {
+                        if (result_type == TYPE_STRING && !type_locked && _emit_type != TYPE_ARRAY) {
                             pos += snprintf(out + pos, out_size - pos, "%s", cname);
-                        } else switch (vtype) {
+                        } else switch (_emit_type) {
                             case TYPE_INT: {
                                 char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atoll(%s)", cname);
                                 if (pending_divmod) {
@@ -2865,8 +2901,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
                                     }
                                 } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
-                                /* Untyped/dynamic parameters need runtime add semantics; value-initialized locals have known types. */
-                                if (symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
+                                /* Untyped/dynamic parameters (no known default type) need runtime add semantics.
+                                   Parameters with known default types are treated as typed by default. */
+                                if (!_has_default_type && symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
                                 pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_FLOAT: {
@@ -2883,8 +2920,9 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     }
                                 } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
                                 if (!type_locked) { if (result_type == TYPE_INT) result_type = TYPE_FLOAT; }
-                                /* Untyped/dynamic parameters need runtime add semantics; value-initialized locals have known types. */
-                                if (symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
+                                /* Untyped/dynamic parameters (no known default type) need runtime add semantics.
+                                   Parameters with known default types are treated as typed by default. */
+                                if (!_has_default_type && symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
                                 pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_CHAR:
@@ -3230,7 +3268,7 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                         VarType vt = symbol_table_get(table, mangled);
 
                         if (vt == TYPE_ARRAY) {
-                            char index_exprs[3][MAX_STRING_LEN];
+                            char index_exprs[32][MAX_STRING_LEN];
                             int index_count = 0;
                             int index_error = 0;
 
@@ -3286,9 +3324,19 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
 
                                     pos += snprintf(out + pos, out_size - pos, "({ ");
                                     for (int d = 0; d < index_count; d++) {
-                                        pos += snprintf(out + pos, out_size - pos,
-                                            "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ",
-                                            d, index_exprs[d], d, d, d, d, dims[d]);
+                                        /* For 1-D arrays use the live length so negative indices see
+                                           pushes/pops. Static dimensions remain the shape for N-D. */
+                                        if (dim_count == 1) {
+                                            /* Live length plus a non-negative OOB sentinel avoids
+                                               double-adjustment in the runtime getter. */
+                                            pos += snprintf(out + pos, out_size - pos,
+                                                "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%s); if (__i%d < 0 || __i%d >= %s) __i%d = %s; ",
+                                                d, index_exprs[d], d, d, d, d, lenname, d, d, lenname, d, lenname);
+                                        } else {
+                                            pos += snprintf(out + pos, out_size - pos,
+                                                "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ",
+                                                d, index_exprs[d], d, d, d, d, dims[d]);
+                                        }
                                     }
                                     /* Compute linear index: __idx = __i0; __idx = __idx * d1 + __i1; ... */
                                     pos += snprintf(out + pos, out_size - pos, "int __idx = __i0");
@@ -3639,7 +3687,29 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                 char cparts[32][600];
                 for (int i = 0; i < nparts; i++) {
                     const char *part = parts[i];
-                    if (!part_is_stringy(part)) {
+                    char unwrapped[512] = {0};
+                    int is_num_wrap = 0;
+                    {
+                        const char *pw = part;
+                        while (*pw == ' ' || *pw == '\t') pw++;
+                        if (strncmp(pw, "atoi(", 5) == 0 || strncmp(pw, "atof(", 5) == 0 || strncmp(pw, "atoll(", 6) == 0) {
+                            int off = (strncmp(pw, "atoll(", 6) == 0) ? 6 : 5;
+                            const char *inner = pw + off;
+                            const char *start = inner;
+                            while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
+                            if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
+                                int tl = (int)(inner - start);
+                                if (tl >= (int)sizeof(unwrapped)) tl = (int)sizeof(unwrapped) - 1;
+                                memcpy(unwrapped, start, tl);
+                                unwrapped[tl] = '\0';
+                                is_num_wrap = 1;
+                            }
+                        }
+                    }
+                    if (is_num_wrap) {
+                        strncpy(cparts[i], unwrapped, sizeof(cparts[i]) - 1);
+                        cparts[i][sizeof(cparts[i]) - 1] = 0;
+                    } else if (!part_is_stringy(part)) {
                         int has_dot = (strchr(part, '.') != NULL);
                         snprintf(cparts[i], sizeof(cparts[i]),
                                  "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
@@ -3673,7 +3743,34 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
             for (int i = 0; i < nparts; i++) {
                 const char *part = parts[i];
                 char cpart[2048];
-                if (!part_is_stringy(part)) {
+                /* In string concatenation, atof/atoi/atoll(ident) wrappers came from
+                   numeric-context emission of variables/params; use the original char
+                   buffer so string values are preserved (e.g. untyped params). */
+                char unwrapped[512] = {0};
+                int is_num_wrap = 0;
+                {
+                    const char *pw = part;
+                    while (*pw == ' ' || *pw == '\t') pw++;
+                    if (strncmp(pw, "atoi(", 5) == 0 || strncmp(pw, "atof(", 5) == 0 || strncmp(pw, "atoll(", 6) == 0) {
+                        int off = (strncmp(pw, "atoll(", 6) == 0) ? 6 : 5;
+                        const char *inner = pw + off;
+                        const char *start = inner;
+                        while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
+                        if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
+                            int tl = (int)(inner - start);
+                            if (tl >= (int)sizeof(unwrapped)) tl = (int)sizeof(unwrapped) - 1;
+                            memcpy(unwrapped, start, tl);
+                            unwrapped[tl] = '\0';
+                            is_num_wrap = 1;
+                        }
+                    }
+                }
+                if (is_num_wrap) {
+                    /* Treat as string buffer for concatenation (runtime _ltng_add_sn handles numeric-vs-string). */
+                    strncpy(cpart, unwrapped, sizeof(cpart) - 1);
+                    cpart[sizeof(cpart) - 1] = 0;
+                    all_stringy = 0; /* force _ltng_add_sn for runtime-correct behavior */
+                } else if (!part_is_stringy(part)) {
                     all_stringy = 0;
                     int has_dot = (strchr(part, '.') != NULL);
                     snprintf(cpart, sizeof(cpart), "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
@@ -3731,6 +3828,125 @@ static const char *var_type_name(VarType t) {
     return "string";
 }
 
+/* Infer a VarType from a textual expression without leaking parser diagnostics
+   into the enclosing interpolation. Used by `$[typeof(...)]` for array elements
+   and call results, which need the same typing rules as direct `typeof(...)`. */
+static VarType infer_expression_text_type(const char *expr, SymbolTable *table) {
+    char buf[MAX_STRING_LEN];
+    snprintf(buf, sizeof(buf), "%s\n", expr);
+    Lexer lexer;
+    lexer_init(&lexer, buf);
+    ErrorState tmp_errors;
+    memset(&tmp_errors, 0, sizeof(tmp_errors));
+    tmp_errors.filename = strdup("<typeof>");
+    lexer_tokenize(&lexer, &tmp_errors);
+
+    ErrorState *saved = parser_errors;
+    parser_errors = &tmp_errors;
+    char scratch[MAX_STRING_LEN];
+    VarType type = collect_expression(&lexer, table, scratch, sizeof(scratch),
+                                       1, 0, NULL, NULL, NULL, NULL);
+    parser_errors = saved;
+    lexer_free(&lexer);
+    free(tmp_errors.filename);
+    return type;
+}
+
+static void append_resolved_text(char *resolved, int *rlen, const char *text) {
+    int avail = MAX_STRING_LEN - *rlen;
+    if (avail <= 0) return;
+    int n = snprintf(resolved + *rlen, (size_t)avail, "%s", text);
+    if (n > 0) *rlen += (n < avail ? n : avail - 1);
+}
+
+/* Resolve the inner text of a `$[typeof(...)]` interpolation. Returns 1 when
+   handled (including conversion helpers, calls, array elements, and plain vars). */
+static int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
+                                        int line, int col, char *resolved, int *rlen) {
+    int vlen = (int)strlen(vname);
+    if (strncmp(vname, "typeof(", 7) != 0 || vlen < 8 || vname[vlen - 1] != ')') return 0;
+
+    char inner[MAX_IDENTIFIER_LEN];
+    int ilen = vlen - 8;
+    if (ilen >= (int)sizeof(inner)) ilen = (int)sizeof(inner) - 1;
+    memcpy(inner, vname + 7, ilen);
+    inner[ilen] = '\0';
+
+    if (strncmp(inner, "toint(", 6) == 0 || strncmp(inner, "int(", 4) == 0) {
+        append_resolved_text(resolved, rlen, "int"); return 1;
+    }
+    if (strncmp(inner, "tofloat(", 8) == 0 || strncmp(inner, "float(", 6) == 0) {
+        append_resolved_text(resolved, rlen, "float"); return 1;
+    }
+    if (strncmp(inner, "tostring(", 9) == 0 || strncmp(inner, "string(", 7) == 0) {
+        append_resolved_text(resolved, rlen, "string"); return 1;
+    }
+    if (strncmp(inner, "tochar(", 7) == 0 || strncmp(inner, "char(", 5) == 0) {
+        append_resolved_text(resolved, rlen, "char"); return 1;
+    }
+    if (strncmp(inner, "tobool(", 7) == 0 || strncmp(inner, "bool(", 5) == 0) {
+        append_resolved_text(resolved, rlen, "bool"); return 1;
+    }
+
+    const char *p = inner;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    if (p > inner && *p == '(') {
+        char fname[MAX_IDENTIFIER_LEN];
+        int flen = (int)(p - inner);
+        if (flen >= (int)sizeof(fname)) flen = (int)sizeof(fname) - 1;
+        memcpy(fname, inner, flen);
+        fname[flen] = '\0';
+        if (find_function_ast_by_name(fname) || is_callable_ident(table, fname) ||
+            is_function_name_scoped(table, fname)) {
+            VarType t = infer_expression_text_type(inner, table);
+            append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+        } else {
+            append_resolved_text(resolved, rlen, "string");
+        }
+        return 1;
+    }
+
+    if (strchr(inner, '[')) {
+        VarType t = infer_expression_text_type(inner, table);
+        append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+        return 1;
+    }
+
+    /* Nested typeof(...) keeps the legacy string fallback. */
+    const char *q = inner;
+    while (strncmp(q, "typeof(", 7) == 0) {
+        int nl = (int)strlen(q);
+        if (nl < 8 || q[nl - 1] != ')') break;
+        char stripped[MAX_IDENTIFIER_LEN];
+        int slen = nl - 8;
+        if (slen >= (int)sizeof(stripped)) slen = (int)sizeof(stripped) - 1;
+        memcpy(stripped, q + 7, slen);
+        stripped[slen] = '\0';
+        snprintf(inner, sizeof(inner), "%s", stripped);
+        q = inner;
+    }
+    if (q != inner || strncmp(inner, "typeof(", 7) == 0) {
+        append_resolved_text(resolved, rlen, "string");
+        return 1;
+    }
+
+    char mvname[MAX_IDENTIFIER_LEN];
+    mangle_name(inner, mvname, MAX_IDENTIFIER_LEN);
+    if (!symbol_table_has(table, mvname) && !is_type_keyword(inner) && !is_bool_value(inner)) {
+        char errmsg[256];
+        snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
+        error_state_add(parser_errors, line, col, errmsg);
+    } else if (symbol_table_has(table, mvname)) {
+        append_resolved_text(resolved, rlen,
+            var_type_name(effective_param_default_type(inner, symbol_table_get(table, mvname))));
+    } else if (is_bool_value(inner)) {
+        append_resolved_text(resolved, rlen, "bool");
+    } else {
+        append_resolved_text(resolved, rlen, inner);
+    }
+    return 1;
+}
+
 static void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int col) {
     if (tok->type != TOKEN_STRING) return;
     if (!strchr(tok->value, '$')) return;
@@ -3753,89 +3969,8 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                 if (vlen >= MAX_IDENTIFIER_LEN) vlen = MAX_IDENTIFIER_LEN - 1;
                 memcpy(vname, vstart, vlen);
                 vname[vlen] = '\0';
-                if (strncmp(vname, "typeof(", 7) == 0 && vname[vlen - 1] == ')') {
-                    vname[vlen - 1] = '\0';
-                    memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                    
-                    /* typeof(toint("5")) → "int", typeof(tofloat("5")) → "float",
-                       typeof(tostring("x")) → "string", typeof(tochar("x")) → "char",
-                       typeof(tobool("t")) → "bool" */
-                    if (strncmp(vname, "toint(", 6) == 0 || strncmp(vname, "int(", 4) == 0) {
-                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
-                    } else if (strncmp(vname, "tofloat(", 8) == 0 || strncmp(vname, "float(", 6) == 0) {
-                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "float");
-                    } else if (strncmp(vname, "tostring(", 9) == 0 || strncmp(vname, "string(", 7) == 0) {
-                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
-                    } else if (strncmp(vname, "tochar(", 7) == 0 || strncmp(vname, "char(", 5) == 0) {
-                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "char");
-                    } else if (strncmp(vname, "tobool(", 7) == 0 || strncmp(vname, "bool(", 5) == 0) {
-                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
-                    } else {
-                        /* typeof(func(...)) for user-defined functions */
-                        const char *p = vname;
-                        while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
-                        if (p > vname && *p == '(') {
-                            char fname[MAX_IDENTIFIER_LEN];
-                            int flen = (int)(p - vname);
-                            if (flen >= MAX_IDENTIFIER_LEN) flen = MAX_IDENTIFIER_LEN - 1;
-                            memcpy(fname, vname, flen);
-                            fname[flen] = '\0';
-                            if (find_function_ast_by_name(fname)) {
-                                VarType ftype = infer_function_return_type(fname);
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", var_type_name(ftype));
-                            } else {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
-                            }
-                        } else {
-                            /* Nested typeof or variable lookup */
-                            int is_nested = (strncmp(vname, "typeof(", 7) == 0);
-                            if (is_nested) {
-                                while (strncmp(vname, "typeof(", 7) == 0) {
-                                    int nl = (int)strlen(vname);
-                                    if (vname[nl - 1] != ')') break;
-                                    vname[nl - 1] = '\0';
-                                    memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                                }
-                                char mvname[MAX_IDENTIFIER_LEN];
-                                mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                                if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                    char errmsg[256];
-                                    snprintf(errmsg, sizeof(errmsg),
-                                        "Variable '%s' not declared (used in typeof)", vname);
-                                    error_state_add(parser_errors, line, col, errmsg);
-                                }
-                                const char *tname = "string";
-                                int tlen = (int)strlen(tname);
-                                if (rlen + tlen < MAX_STRING_LEN) {
-                                    memcpy(resolved + rlen, tname, tlen);
-                                    rlen += tlen;
-                                }
-                            } else {
-                                char mvname[MAX_IDENTIFIER_LEN];
-                                mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                                if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                    char errmsg[256];
-                                    snprintf(errmsg, sizeof(errmsg),
-                                        "Variable '%s' not declared (used in typeof)", vname);
-                                    error_state_add(parser_errors, line, col, errmsg);
-                                } else {
-                                    const char *tname = "unknown";
-                                    if (symbol_table_has(table, mvname)) {
-                                        tname = var_type_name(symbol_table_get(table, mvname));
-                                    } else if (is_bool_value(vname)) {
-                                        tname = "bool";
-                                    } else if (is_type_keyword(vname)) {
-                                        tname = vname;
-                                    }
-                                    int tlen = (int)strlen(tname);
-                                    if (rlen + tlen < MAX_STRING_LEN) {
-                                        memcpy(resolved + rlen, tname, tlen);
-                                        rlen += tlen;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if (resolve_typeof_interpolation(vname, table, line, col, resolved, &rlen)) {
+                    /* skip generic variable/expression validation below */
                 } else {
                     int is_expr = 0;
                     for (const char *c = vname; *c; c++) {
@@ -4039,35 +4174,27 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
 
     /* User-defined function call inside typeof: typeof(add(1, 2)) */
     if (arg.type == TOKEN_IDENT && lexer_peek(lexer).type == TOKEN_LPAREN) {
-        /* Check if this is a known function */
-        if (find_function_ast_by_name(arg.value)) {
+        /* Check if this is a known/callable function */
+        if (find_function_ast_by_name(arg.value) || is_callable_ident(table, arg.value) || is_function_name_scoped(table, arg.value)) {
             int call_saved = lexer->current; /* before consuming ( */
+            /* Try to fully parse the call for type specialization */
+            int saved_errors = parser_errors ? parser_errors->count : 0;
             lexer_next(lexer); /* consume ( */
-            int depth = 1;
-            while (lexer->current < lexer->count && depth > 0) {
-                Token itok = lexer_peek(lexer);
-                if (itok.type == TOKEN_LPAREN) depth++;
-                else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
-                else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
-                lexer_next(lexer);
-            }
-            if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
-                lexer_next(lexer); /* consume inner ) */
-            }
-            Token close = lexer_peek(lexer);
-            if (close.type == TOKEN_RPAREN) {
-                lexer_next(lexer); /* consume outer ) */
-                VarType ftype = infer_function_return_type(arg.value);
+            ASTNode *tcall = parse_call_node(lexer, table, arg.value, arg.line, arg.col, NULL);
+            Token close2 = lexer_peek(lexer);
+            if (close2.type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume outer ) of typeof */
+                VarType ftype = infer_call_result_type(tcall);
                 result->type = TOKEN_STRING;
-                strncpy(result->value, var_type_name(ftype), MAX_STRING_LEN - 1);
+                strncpy(result->value, var_type_name(ftype == TYPE_NULL ? TYPE_STRING : ftype), MAX_STRING_LEN - 1);
                 result->value[MAX_STRING_LEN - 1] = '\0';
                 result->line = typeof_tok.line;
                 result->col = typeof_tok.col;
                 return 1;
             }
-            /* Not a sole call argument (e.g. typeof(func() + 1)); let general
-               expression parsing handle it. */
+            /* Not a sole call argument (e.g. typeof(func() + 1)); restore and let general expression parsing handle it. */
             lexer->current = call_saved;
+            if (parser_errors && parser_errors->count > saved_errors) parser_errors->count = saved_errors;
         }
     }
 
@@ -4078,7 +4205,9 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         if (symbol_table_has(table, mangled_arr) && symbol_table_get(table, mangled_arr) == TYPE_ARRAY) {
             int idx_saved = lexer->current;
             int ok = 1;
+            int index_count = 0;
             while (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+                index_count++;
                 lexer_next(lexer); /* [ */
                 int depth = 1;
                 while (lexer->current < lexer->count && depth > 0) {
@@ -4094,6 +4223,16 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             Token rclose = lexer_peek(lexer);
             if (ok && rclose.type == TOKEN_RPAREN) {
                 lexer_next(lexer); /* consume ) */
+                int *dims = NULL;
+                int dim_count = 0;
+                int have_dims = symbol_table_get_array_dims(table, mangled_arr, &dims, &dim_count);
+                if (have_dims && index_count != dim_count) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg),
+                        "Array '%s' has %d dimension(s) but %d index(es) were given",
+                        arg.value, dim_count, index_count);
+                    error_state_add(parser_errors, typeof_tok.line, typeof_tok.col, errmsg);
+                }
                 VarType aet = symbol_table_get_array_elem_type(table, mangled_arr);
                 if (aet == TYPE_NULL) aet = TYPE_STRING;
                 result->type = TOKEN_STRING;
@@ -4601,10 +4740,13 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                     #define WAPP(...) do { if (p < esz - 1) { int _n = snprintf(expr + p, esz - p, __VA_ARGS__); if (_n > 0) { p += _n; if (p >= esz) p = esz - 1; } } } while(0)
                     WAPP("({ ");
                     for (int d = 0; d < idx_n_w; d++) {
-                        if (have_dims_w && dims_w && d < dimc_w)
+                        if (dimc_w == 1) {
+                            WAPP("int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%s); if (__i%d < 0 || __i%d >= %s) __i%d = %s; ", d, idx_exprs_w[d], d, d, d, d, lenname_w, d, d, lenname_w, d, lenname_w);
+                        } else if (have_dims_w && dims_w && d < dimc_w) {
                             WAPP("int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ", d, idx_exprs_w[d], d, d, d, d, dims_w[d]);
-                        else
-                            WAPP("int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + %s; ", d, idx_exprs_w[d], d, d, d, d, lenname_w);
+                        } else {
+                            WAPP("int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%s); ", d, idx_exprs_w[d], d, d, d, d, lenname_w);
+                        }
                     }
                     WAPP("int __idx = __i0");
                     for (int d = 1; d < idx_n_w; d++) {
@@ -4699,88 +4841,7 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                         memcpy(vname, vstart, vlen);
                         vname[vlen] = '\0';
                         int skip_check = 0;
-                        if (strncmp(vname, "typeof(", 7) == 0 && vname[vlen - 1] == ')') {
-                            vname[vlen - 1] = '\0';
-                            memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                            
-                            /* typeof(toint("5")) → "int", typeof(tostring("x")) → "string",
-                               typeof(tobool("t")) → "bool", typeof(tofloat("5")) → "float", typeof(tochar("x")) → "char" */
-                            if (strncmp(vname, "toint(", 6) == 0 || strncmp(vname, "int(", 4) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "int");
-                            } else if (strncmp(vname, "tofloat(", 8) == 0 || strncmp(vname, "float(", 6) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "float");
-                            } else if (strncmp(vname, "tostring(", 9) == 0 || strncmp(vname, "string(", 7) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
-                            } else if (strncmp(vname, "tochar(", 7) == 0 || strncmp(vname, "char(", 5) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "char");
-                            } else if (strncmp(vname, "tobool(", 7) == 0 || strncmp(vname, "bool(", 5) == 0) {
-                                rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "bool");
-                            } else {
-                                /* typeof(func(...)) for user-defined functions */
-                                const char *p = vname;
-                                while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
-                                if (p > vname && *p == '(') {
-                                    char fname[MAX_IDENTIFIER_LEN];
-                                    int flen = (int)(p - vname);
-                                    if (flen >= MAX_IDENTIFIER_LEN) flen = MAX_IDENTIFIER_LEN - 1;
-                                    memcpy(fname, vname, flen);
-                                    fname[flen] = '\0';
-                                    if (find_function_ast_by_name(fname)) {
-                                        VarType ftype = infer_function_return_type(fname);
-                                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", var_type_name(ftype));
-                                    } else {
-                                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "string");
-                                    }
-                                } else {
-                                    /* Nested typeof or variable lookup */
-                                    int is_nested = (strncmp(vname, "typeof(", 7) == 0);
-                                    if (is_nested) {
-                                        while (strncmp(vname, "typeof(", 7) == 0) {
-                                            int nl = (int)strlen(vname);
-                                            if (vname[nl - 1] != ')') break;
-                                            vname[nl - 1] = '\0';
-                                            memmove(vname, vname + 7, strlen(vname + 7) + 1);
-                                        }
-                                        char mvname[MAX_IDENTIFIER_LEN];
-                                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                                        if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                            char errmsg[256];
-                                            snprintf(errmsg, sizeof(errmsg),
-                                                "Variable '%s' not declared (used in typeof)", vname);
-                                            error_state_add(parser_errors, arg.line, arg.col, errmsg);
-                                        }
-                                        const char *tname = "string";
-                                        int tlen = (int)strlen(tname);
-                                        if (rlen + tlen < MAX_STRING_LEN) {
-                                            memcpy(resolved + rlen, tname, tlen);
-                                            rlen += tlen;
-                                        }
-                                    } else {
-                                        char mvname[MAX_IDENTIFIER_LEN];
-                                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
-                                        if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                            char errmsg[256];
-                                            snprintf(errmsg, sizeof(errmsg),
-                                                "Variable '%s' not declared (used in typeof)", vname);
-                                            error_state_add(parser_errors, arg.line, arg.col, errmsg);
-                                        } else {
-                                            const char *tname = "unknown";
-                                            if (symbol_table_has(table, mvname)) {
-                                                tname = var_type_name(symbol_table_get(table, mvname));
-                                            } else if (is_bool_value(vname)) {
-                                                tname = "bool";
-                                            } else if (is_type_keyword(vname)) {
-                                                tname = vname;
-                                            }
-                                            int tlen = (int)strlen(tname);
-                                            if (rlen + tlen < MAX_STRING_LEN) {
-                                                memcpy(resolved + rlen, tname, tlen);
-                                                rlen += tlen;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if (resolve_typeof_interpolation(vname, table, arg.line, arg.col, resolved, &rlen)) {
                             skip_check = 1;
                         }
                         if (!skip_check) {
@@ -5186,6 +5247,36 @@ static ASTNode *make_receiver_arg(SymbolTable *table, Token rtok) {
     return recv;
 }
 
+static int get_function_passthrough_param(const char *fname);
+
+/* Get the effective result type of a call, applying pass-through specialization
+   when feasible. For direct calls to pass-through functions, uses the argument
+   type of the passed-through parameter. */
+static VarType infer_call_result_type(ASTNode *call) {
+    if (!call) return TYPE_STRING;
+    if (strcmp(call->name, "__ltng_indirect") == 0) return TYPE_NULL; /* dynamic/unknown: preserve legacy numeric behavior */
+    /* Check for pass-through specialization */
+    int pt = get_function_passthrough_param(call->name);
+    if (pt >= 0) {
+        /* Find the argument for parameter pt in the expanded args list */
+        int idx = 0;
+        for (ASTNode *a = call->args; a; a = a->next, idx++) {
+            if (idx == pt) {
+                VarType at = a->var_type;
+                /* Treat unknown/void/null as non-specializable string pass-through */
+                if (at == TYPE_INT || at == TYPE_FLOAT || at == TYPE_BOOL || at == TYPE_STRING || at == TYPE_CHAR) {
+                    return at;
+                }
+                /* If arg is a variable, try to get its actual type? var_type should be set */
+                return TYPE_STRING;
+            }
+        }
+        /* pt might be in variadic rest args? unlikely for simple passthrough */
+        return TYPE_STRING;
+    }
+    return infer_function_return_type(call->name);
+}
+
 static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign, VarType *out_type, char *out_call_cname, int out_call_cname_sz) {
     Token first = lexer_peek(lexer);
     int saved = lexer->current;
@@ -5298,7 +5389,7 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
     if (out_type) {
         if (chain) *out_type = TYPE_INT; /* dynamic result, assume numeric-compatible */
         else if (strcmp(call->name, "__ltng_indirect") == 0) *out_type = TYPE_STRING;
-        else *out_type = infer_function_return_type(call->name);
+        else *out_type = infer_call_result_type(call);
     }
     if (out_call_cname && out_call_cname_sz > 0 && !chain) {
         strncpy(out_call_cname, call->name, out_call_cname_sz - 1);
@@ -6519,36 +6610,142 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             }
             break;
         }
-        /* Expect '=' */
+        /* Expect '=' or a compound assignment operator */
         Token eq = lexer_next(lexer);
-        if (eq.type != TOKEN_EQUALS) {
+        char compound_op = 0;
+        if (eq.type == TOKEN_PLUS_EQUALS || eq.type == TOKEN_MINUS_EQUALS ||
+            eq.type == TOKEN_STAR_EQUALS || eq.type == TOKEN_SLASH_EQUALS ||
+            eq.type == TOKEN_PERCENT_EQUALS) {
+            compound_op = eq.type == TOKEN_PLUS_EQUALS ? '+' :
+                          eq.type == TOKEN_MINUS_EQUALS ? '-' :
+                          eq.type == TOKEN_STAR_EQUALS ? '*' :
+                          eq.type == TOKEN_SLASH_EQUALS ? '/' : '%';
+        } else if (eq.type != TOKEN_EQUALS) {
             error_state_add(parser_errors, eq.line, eq.col,
-                "Expected '=' after array index in set statement");
+                "Expected '=' or compound operator after array index in set statement");
             skip_to_newline(lexer);
             return;
         }
         /* Parse RHS expression */
         char rhs_expr[MAX_STRING_LEN];
         VarType rhs_type = collect_expression(lexer, table, rhs_expr, MAX_STRING_LEN, 0, 0, NULL, NULL, NULL, NULL);
-        /* Update inferred array element type on element assignment (Step 4). */
+        VarType assign_type = rhs_type;
+        if (compound_op) {
+            /* Expand `set arr[i] += rhs` into a normal element assignment using
+               the current typed element value. */
+            VarType cet = symbol_table_get_array_elem_type(table, mangled);
+            int *cdims = NULL; int ccount = 0;
+            int chave = symbol_table_get_array_dims(table, mangled, &cdims, &ccount);
+            if (!chave || ccount <= 0) { ccount = 1; cdims = malloc(sizeof(int)); if (cdims) cdims[0] = 0; chave = 0; }
+            if (ccount != index_count) {
+                char errmsg[256];
+                snprintf(errmsg, sizeof(errmsg),
+                    "Array '%s' has %d dimension(s) but %d index(es) were given",
+                    name.value, ccount, index_count);
+                error_state_add(parser_errors, name.line, name.col, errmsg);
+                if (!chave) free(cdims);
+                return;
+            }
+            char clenname[MAX_IDENTIFIER_LEN], carrname[MAX_IDENTIFIER_LEN], cidx[MAX_STRING_LEN];
+            snprintf(clenname, sizeof(clenname), "%s_len", mangled);
+            snprintf(carrname, sizeof(carrname), "%s_data", mangled);
+            int cpos = snprintf(cidx, sizeof(cidx), "({ ");
+            for (int d = 0; d < index_count; d++) {
+                if (ccount == 1)
+                    cpos += snprintf(cidx + cpos, sizeof(cidx) - cpos,
+                        "int __ci%d = (int)(%s); __ci%d = __ci%d > 0 ? __ci%d - 1 : __ci%d + (%s); if (__ci%d < 0 || __ci%d >= %s) __ci%d = %s; ",
+                        d, index_exprs[d], d, d, d, d, clenname, d, d, clenname, d, clenname);
+                else
+                    cpos += snprintf(cidx + cpos, sizeof(cidx) - cpos,
+                        "int __ci%d = (int)(%s); __ci%d = __ci%d > 0 ? __ci%d - 1 : __ci%d + (%d); ",
+                        d, index_exprs[d], d, d, d, d, cdims[d]);
+            }
+            cpos += snprintf(cidx + cpos, sizeof(cidx) - cpos, "int __cidx = __ci0");
+            for (int d = 1; d < index_count; d++)
+                cpos += snprintf(cidx + cpos, sizeof(cidx) - cpos, "; __cidx = __cidx * %d + __ci%d", cdims[d], d);
+            snprintf(cidx + cpos, sizeof(cidx) - cpos, "; __cidx; })");
+            if (!chave) free(cdims);
+
+            char curexpr[MAX_STRING_LEN], combined[MAX_STRING_LEN];
+            if (cet == TYPE_INT) {
+                snprintf(curexpr, sizeof(curexpr),
+                    "({ const char *__ltng_cur = _ltng_arr_get(%s, %s, %s); atoll(__ltng_cur ? __ltng_cur : \"\"); })",
+                    carrname, clenname, cidx);
+            } else if (cet == TYPE_FLOAT) {
+                snprintf(curexpr, sizeof(curexpr),
+                    "({ const char *__ltng_cur = _ltng_arr_get(%s, %s, %s); atof(__ltng_cur ? __ltng_cur : \"\"); })",
+                    carrname, clenname, cidx);
+            } else if (cet == TYPE_BOOL) {
+                snprintf(curexpr, sizeof(curexpr),
+                    "({ const char *__ltng_cur = _ltng_arr_get(%s, %s, %s); (__ltng_cur && (__ltng_cur[0]=='t' || __ltng_cur[0]=='T' || __ltng_cur[0]=='1')) ? 1 : 0; })",
+                    carrname, clenname, cidx);
+            } else {
+                snprintf(curexpr, sizeof(curexpr), "_ltng_arr_get(%s, %s, %s)", carrname, clenname, cidx);
+            }
+            if (cet == TYPE_STRING && compound_op == '+') {
+                snprintf(combined, sizeof(combined), "_ltng_add_sn(%s, %s)", curexpr, rhs_expr);
+            } else if (compound_op == '/' || compound_op == '%') {
+                if (cet == TYPE_FLOAT && compound_op == '%')
+                    snprintf(combined, sizeof(combined),
+                        "fmod(%s, (%s) == 0.0 ? 1.0 : (%s))", curexpr, rhs_expr, rhs_expr);
+                else if (cet == TYPE_FLOAT)
+                    snprintf(combined, sizeof(combined),
+                        "((%s) == 0.0 ? 0.0 : (%s) / (%s))", rhs_expr, curexpr, rhs_expr);
+                else if (compound_op == '%')
+                    snprintf(combined, sizeof(combined),
+                        "((%s) == 0 ? 0 : ((long long)(%s) %% (long long)(%s)))", rhs_expr, curexpr, rhs_expr);
+                else
+                    snprintf(combined, sizeof(combined),
+                        "((%s) == 0 ? 0 : ((long long)(%s) / (long long)(%s)))", rhs_expr, curexpr, rhs_expr);
+            } else {
+                snprintf(combined, sizeof(combined), "(%s %c %s)", curexpr, compound_op, rhs_expr);
+            }
+            snprintf(rhs_expr, sizeof(rhs_expr), "%s", combined);
+        }
+        /* Homogeneous arrays keep their inferred element type: a single element
+           assignment coerces the value instead of de-typing every element. Dynamic
+           (untyped) arrays keep their raw value semantics. (Step 4) */
         {
             VarType cur_et = symbol_table_get_array_elem_type(table, mangled);
-            VarType new_et = rhs_type;
-            if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
-                new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING) {
-                new_et = TYPE_NULL;
+            if (cur_et == TYPE_INT || cur_et == TYPE_FLOAT || cur_et == TYPE_BOOL) {
+                char coerced[MAX_STRING_LEN];
+                int rhs_is_text = (rhs_type == TYPE_STRING || rhs_type == TYPE_CHAR ||
+                                   rhs_type == TYPE_OBJECT || rhs_type == TYPE_ARRAY ||
+                                   rhs_type == TYPE_NULL || rhs_type == TYPE_VOID);
+                if (cur_et == TYPE_INT) {
+                    if (rhs_is_text)
+                        snprintf(coerced, sizeof(coerced),
+                                 "({ const char *__ltng_rhs = (%s); atoll(__ltng_rhs ? __ltng_rhs : \"\"); })", rhs_expr);
+                    else
+                        snprintf(coerced, sizeof(coerced), "(long long)(%s)", rhs_expr);
+                } else if (cur_et == TYPE_FLOAT) {
+                    if (rhs_is_text)
+                        snprintf(coerced, sizeof(coerced),
+                                 "({ const char *__ltng_rhs = (%s); atof(__ltng_rhs ? __ltng_rhs : \"\"); })", rhs_expr);
+                    else
+                        snprintf(coerced, sizeof(coerced), "(double)(%s)", rhs_expr);
+                } else { /* TYPE_BOOL */
+                    if (rhs_is_text)
+                        snprintf(coerced, sizeof(coerced),
+                                 "({ const char *__ltng_rhs = (%s); (__ltng_rhs && (__ltng_rhs[0]=='t' || __ltng_rhs[0]=='T' || __ltng_rhs[0]=='1')) ? 1 : 0; })", rhs_expr);
+                    else
+                        snprintf(coerced, sizeof(coerced), "((%s) ? 1 : 0)", rhs_expr);
+                }
+                snprintf(rhs_expr, sizeof(rhs_expr), "%s", coerced);
+                assign_type = cur_et;
+            } else {
+                /* Dynamic array: preserve numeric/bool formatting when known. */
+                if (rhs_type != TYPE_INT && rhs_type != TYPE_FLOAT && rhs_type != TYPE_BOOL)
+                    assign_type = TYPE_STRING;
             }
-            if (cur_et == TYPE_NULL || new_et == TYPE_NULL) cur_et = TYPE_NULL;
-            else if (cur_et == new_et) { /* same */ }
-            else if ((cur_et == TYPE_INT && new_et == TYPE_FLOAT) || (cur_et == TYPE_FLOAT && new_et == TYPE_INT)) cur_et = TYPE_FLOAT;
-            else cur_et = TYPE_NULL;
-            symbol_table_set_array_elem_type(table, mangled, cur_et);
         }
 
         /* Get array dimensions */
         int dim_count = 0;
         int *dims = NULL;
         int have_dims = symbol_table_get_array_dims(table, mangled, &dims, &dim_count);
+        char lenname[MAX_IDENTIFIER_LEN];
+        snprintf(lenname, sizeof(lenname), "%s_len", mangled);
         if (!have_dims || dim_count <= 0) {
             dim_count = 1;
             dims = malloc(sizeof(int));
@@ -6570,9 +6767,15 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         int ipos = 0;
         ipos += snprintf(idx_code + ipos, sizeof(idx_code) - ipos, "({ ");
         for (int d = 0; d < index_count; d++) {
-            ipos += snprintf(idx_code + ipos, sizeof(idx_code) - ipos,
-                "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ",
-                d, index_exprs[d], d, d, d, d, dims[d]);
+            if (dim_count == 1) {
+                ipos += snprintf(idx_code + ipos, sizeof(idx_code) - ipos,
+                    "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%s); if (__i%d < 0 || __i%d >= %s) __i%d = %s; ",
+                    d, index_exprs[d], d, d, d, d, lenname, d, d, lenname, d, lenname);
+            } else {
+                ipos += snprintf(idx_code + ipos, sizeof(idx_code) - ipos,
+                    "int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ",
+                    d, index_exprs[d], d, d, d, d, dims[d]);
+            }
         }
         ipos += snprintf(idx_code + ipos, sizeof(idx_code) - ipos, "int __idx = __i0");
         for (int d = 1; d < index_count; d++) {
@@ -6585,7 +6788,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         ASTNode *node = create_node(NODE_ARRAY_SET, cname, rhs_expr);
         strncpy(node->array_index, idx_code, MAX_STRING_LEN - 1);
         node->array_index[MAX_STRING_LEN - 1] = '\0';
-        node->var_type = rhs_type;
+        node->var_type = assign_type;
         node->is_expr = 1;
         emit(node);
         return;
@@ -8311,8 +8514,8 @@ static void parse_throw(Lexer *lexer, SymbolTable *table) {
 
 /* Try to parse a function call as a complete argument (boundary: comma or rparen at depth 0).
    Returns 1 on success (cexpr filled with raw "F(_ltng_retbuf(),...)" call), lexer consumed past call.
-   Returns 0 if not a sole call arg (lexer restored). */
-static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size) {
+   Returns 0 if not a sole call arg (lexer restored). Sets *out_type to call result type when non-NULL. */
+static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, VarType *out_type) {
     Token first = lexer_peek(lexer);
     if (first.type != TOKEN_IDENT || !is_callable_ident(table, first.value)) return 0;
     int saved = lexer->current;
@@ -8330,6 +8533,7 @@ static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int
         return 0;
     }
     build_call_cexpr(call, cexpr, cexpr_size);
+    if (out_type) *out_type = infer_call_result_type(call);
     return 1;
 }
 
@@ -8640,6 +8844,63 @@ static VarType analyze_function_returns(ASTNode *node, int *has_return) {
         }
     }
     return result;
+}
+
+/* Check if a function body is a simple pass-through of a single parameter.
+   Returns the parameter index (>=0) if all return statements in the body
+   pass through the same parameter with no other value returns; returns -1 otherwise.
+   Bare returns (no value) or mixed returns disqualify. */
+static int analyze_function_passthrough(ASTNode *node, int *pt_param, int *saw_return, int *disqualified) {
+    if (!node || *disqualified) return *pt_param;
+    if (node->type == NODE_RETURN) {
+        *saw_return = 1;
+        if (node->passthrough_param >= 0) {
+            if (*pt_param == -2) *pt_param = node->passthrough_param; /* first */
+            else if (*pt_param != node->passthrough_param) *disqualified = 1;
+        } else {
+            /* value return that is not a simple param pass-through, or bare return */
+            *disqualified = 1;
+        }
+        return *pt_param;
+    }
+    ASTNode *kids[5] = { node->body, node->orelse, node->cases, node->else_body, node->next };
+    for (int k = 0; k < 5; k++) {
+        analyze_function_passthrough(kids[k], pt_param, saw_return, disqualified);
+        if (*disqualified) return -1;
+    }
+    return *pt_param;
+}
+
+static int get_function_passthrough_param(const char *fname) {
+    /* Check FuncInfo cache first */
+    FuncInfo *fi = find_funcinfo_by_cname(fname);
+    if (!fi) {
+        for (int i = 0; i < g_func_count; i++) {
+            if (strcmp(g_funcs[i].src, fname) == 0) { fi = &g_funcs[i]; break; }
+        }
+    }
+    /* -1 means unknown/not-passthrough in cache; we need to distinguish "not checked"
+       from "checked, not passthrough". Use -2 in a local check? Easier to just compute
+       when we have the function node. But cache positive results in FuncInfo. */
+    if (fi && fi->passthrough_param >= 0) return fi->passthrough_param;
+
+    ASTNode *fn = find_function_node_by_cname(fname);
+    if (!fn) fn = find_function_ast_by_name(fname);
+    if (!fn) return -1;
+    if (fn->has_return_type) return -1; /* explicit annotation takes precedence */
+
+    int pt = -2; /* sentinel: no returns seen yet */
+    int saw = 0, disq = 0;
+    analyze_function_passthrough(fn->body, &pt, &saw, &disq);
+    if (disq || !saw || pt < 0) return -1;
+    if (fi) fi->passthrough_param = pt;
+    /* also cache on src-name match */
+    if (!fi) {
+        for (int i = 0; i < g_func_count; i++) {
+            if (strcmp(g_funcs[i].src, fname) == 0) { g_funcs[i].passthrough_param = pt; break; }
+        }
+    }
+    return pt;
 }
 
 /* Infer the effective return type of a user-defined function. For annotated
@@ -9078,11 +9339,12 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
             } else if (!named_arg && at.type == TOKEN_IDENT && is_callable_ident(table, at.value)) {
                 /* function call argument - pass result as string buffer */
                 char cexpr[MAX_STRING_LEN];
-                if (try_parse_call_arg(lexer, table, cexpr, sizeof(cexpr))) {
+                VarType carg_type = TYPE_STRING;
+                if (try_parse_call_arg(lexer, table, cexpr, sizeof(cexpr), &carg_type)) {
                     ASTNode *an = create_node(NODE_PARAM, "", cexpr);
-                    an->var_type = TYPE_STRING;
+                    an->var_type = carg_type;
                     an->is_expr = 1;
-                    an->is_variable = 1; /* pass pointer directly */
+                    an->is_variable = 1; /* pass pointer directly (call returns char* buffer) */
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 } else {
                     /* complex expression involving call, or plain variable (since is_callable_ident now includes vars) */
@@ -9349,6 +9611,26 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 node->var_type = etype;
                 node->is_expr = 1;
                 node->is_variable = (etype == TYPE_OBJECT || etype == TYPE_STRING) ? 1 : 0;
+                /* Mark pure pass-through of an untyped parameter (no default type coercion)
+                   so call sites can specialize return type when feasible. */
+                if (etype == TYPE_STRING && symbol_table_is_param(table, m) && g_enclosing_cname[0]) {
+                    int _is_pt = 1;
+                    /* exclude if param has a concrete default type (we'd have taken pdt branch above) */
+                    VarType _pdt2 = TYPE_NULL;
+                    FuncInfo *_efi2 = find_funcinfo_by_cname(g_enclosing_cname);
+                    if (_efi2) {
+                        for (int _pi = 0; _pi < _efi2->param_count && _pi < MAX_FUNC_PARAMS; _pi++) {
+                            if (strcmp(_efi2->param_names[_pi], id.value) == 0) {
+                                if (_efi2->has_default[_pi] && _efi2->def_type[_pi] != TYPE_NULL &&
+                                    (_efi2->def_type[_pi] == TYPE_INT || _efi2->def_type[_pi] == TYPE_FLOAT || _efi2->def_type[_pi] == TYPE_BOOL))
+                                    _is_pt = 0;
+                                if (_is_pt) node->passthrough_param = _pi;
+                                break;
+                            }
+                        }
+                    }
+                    (void)_pdt2;
+                }
                 if (etype == TYPE_OBJECT) record_return_obj_schema(cname);
                 emit(node);
                 return;
@@ -9619,6 +9901,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
         if (g_func_count < MAX_FUNCS) {
             FuncInfo *nf = &g_funcs[g_func_count++];
             memset(nf, 0, sizeof(*nf));
+            nf->passthrough_param = -1;
             strncpy(nf->name, cname, MAX_IDENTIFIER_LEN - 1);
             nf->name[MAX_IDENTIFIER_LEN - 1] = 0;
             strncpy(nf->src, name.value, MAX_IDENTIFIER_LEN - 1);
@@ -10397,6 +10680,7 @@ static void prescan_functions(Lexer *lexer) {
 
         FuncInfo *fi = &g_funcs[g_func_count];
         memset(fi, 0, sizeof(*fi));
+        fi->passthrough_param = -1;
         fi->top_level = 1;
         strncpy(fi->src, nm.value, MAX_IDENTIFIER_LEN - 1);
         fi->src[MAX_IDENTIFIER_LEN - 1] = '\0';

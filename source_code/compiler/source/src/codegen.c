@@ -1603,13 +1603,19 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             const char *cast;
             if (node->var_type == TYPE_INT) { fmt = "%lld"; cast = "(long long)("; }
             else if (node->var_type == TYPE_FLOAT) { fmt = "%g"; cast = "(double)("; }
+            else if (node->var_type == TYPE_BOOL) { fmt = "%s"; cast = "("; }
             else { fmt = "%s"; cast = ""; }
             char arrname[MAX_IDENTIFIER_LEN];
             snprintf(arrname, sizeof(arrname), "%s_data", node->name);
             pad(out, indent);
-            fprintf(out, "{ char *__apv = _ltng_ds_fmt(\"%s\", %s%s%s); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); free(__apv); }\n",
-                fmt, cast, node->value, cast[0] ? ")" : "",
-                arrname, node->name, node->name);
+            if (node->var_type == TYPE_BOOL) {
+                fprintf(out, "{ char *__apv = _ltng_ds_fmt(\"%s\", (%s) ? \"true\" : \"false\"); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); free(__apv); }\n",
+                    fmt, node->value, arrname, node->name, node->name);
+            } else {
+                fprintf(out, "{ char *__apv = _ltng_ds_fmt(\"%s\", %s%s%s); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); free(__apv); }\n",
+                    fmt, cast, node->value, cast[0] ? ")" : "",
+                    arrname, node->name, node->name);
+            }
             break;
         }
         case NODE_ARRAY_POP:
@@ -1634,6 +1640,9 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
                 } else if (node->var_type == TYPE_FLOAT) {
                     fprintf(out, "{ int __aidx = %s; char *__asv = _ltng_ds_fmt(\"%%g\", (double)(%s)); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); free(__asv); }\n",
                         node->array_index, node->value, arrname, node->name, node->name);
+                } else if (node->var_type == TYPE_BOOL) {
+                    fprintf(out, "{ int __aidx = %s; char *__asv = _ltng_ds_fmt(\"%%s\", (%s) ? \"true\" : \"false\"); _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, __asv); free(__asv); }\n",
+                        node->array_index, node->value, arrname, node->name, node->name);
                 } else {
                     fprintf(out, "{ int __aidx = %s; _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, %s); }\n",
                         node->array_index, arrname, node->name, node->name, node->value);
@@ -1653,8 +1662,13 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             const char *cast;
             if (node->var_type == TYPE_INT) { fmt = "%lld"; cast = "(long long)("; }
             else if (node->var_type == TYPE_FLOAT) { fmt = "%g"; cast = "(double)("; }
+            else if (node->var_type == TYPE_BOOL) { fmt = "%s"; cast = ""; }
             else { fmt = "%s"; cast = ""; }
             pad(out, indent);
+            if (node->var_type == TYPE_BOOL) {
+                fprintf(out, "{ int __ii = (int)(%s); char *__aiv = _ltng_ds_fmt(\"%s\", (%s) ? \"true\" : \"false\"); _ltng_arr_insert(&%s, &%s_len, &%s_cap, __ii, __aiv); free(__aiv); }\n",
+                    node->value, fmt, node->array_index, arrname, node->name, node->name);
+            } else
             fprintf(out, "{ int __ii = (int)(%s); char *__aiv = _ltng_ds_fmt(\"%s\", %s%s%s); _ltng_arr_insert(&%s, &%s_len, &%s_cap, __ii, __aiv); free(__aiv); }\n",
                 node->value, fmt, cast, node->array_index, cast[0] ? ")" : "",
                 arrname, node->name, node->name);

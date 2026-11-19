@@ -1,0 +1,48 @@
+# Pass-through call-site specialization and call-result typing
+function id(x) { return x }
+write(typeof(id(5)))
+write(id(5))
+write(typeof(id(3.5)))
+write(id(3.5))
+write(typeof(id("hi")))
+write(id("hi"))
+
+let a = id(7)
+write(typeof(a))
+let b = id(2.5)
+write(typeof(b))
+let c = id("ok")
+write(typeof(c))
+
+# nested pass-through
+let d = id(id(9))
+write(typeof(d))
+write(d)
+write(typeof(id(id(1.5))))
+write(id(id(1.5)))
+
+# pass-through in expressions
+write(typeof(id(5) + 1))
+write(id(5) + 1)
+write(typeof(id(2.5) + 1))
+write(id(2.5) + 1)
+write(id(3) + id(4))
+
+# typed call results
+function getInt() { return 42 }
+function getFloat() { return 3.5 }
+write(typeof(getInt()))
+write(typeof(getFloat()))
+write(getInt() + 1)
+write(getFloat() + 0.5)
+
+# first-class/indirect calls retain call-site result typing
+let fn1 = id
+write(typeof(fn1(5)))
+write(fn1(5))
+write(typeof(fn1(3.5)))
+write(fn1(3.5))
+let fn2 = fn1
+write(typeof(fn2("hi")))
+write(fn2("hi"))
+

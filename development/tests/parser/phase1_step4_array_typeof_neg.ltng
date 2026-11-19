@@ -1,0 +1,3 @@
+let m = [[1, 2], [3, 4]]
+write(typeof(m[1]))
+write(typeof(m[1][1][1]))

@@ -204,6 +204,7 @@ typedef struct ASTNode {
     struct ASTNode *index1;  /* first index expression */
     struct ASTNode *index2;  /* second index expression */
     struct ASTNode *index3;  /* third index expression */
+    int passthrough_param;   /* NODE_RETURN: index of param passed through, or -1 */
 } ASTNode;
 
 typedef struct {
