@@ -460,6 +460,7 @@ static void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType
     ve->type = type;
     ve->is_const = 0;
     ve->is_locked = 0;
+    ve->is_param = 0;
     ve->array_dim_count = 0;
     ve->array_dims = NULL;
     ve->array_elem_type = TYPE_NULL;
@@ -497,6 +498,12 @@ void symbol_table_add_local(SymbolTable *table, const char *name, VarType type) 
 /* Add a function parameter (C name must match parameter variable name) */
 void symbol_table_add_param(SymbolTable *table, const char *name, VarType type) {
     symbol_table_add_in_ex(table, name, type, 0);
+    for (int i = 0; i < table->count; i++) {
+        if (strcmp(table->vars[i].name, name) == 0) {
+            table->vars[i].is_param = 1;
+            return;
+        }
+    }
 }
 
 /* Add a variable and auto-lock it if it has a concrete (non-null) type.
@@ -638,6 +645,28 @@ void symbol_table_set_locked(SymbolTable *table, const char *name, int locked) {
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0) {
                 s->vars[i].is_locked = locked;
+                return;
+            }
+        }
+    }
+}
+
+int symbol_table_is_param(SymbolTable *table, const char *name) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                return s->vars[i].is_param;
+            }
+        }
+    }
+    return 0;
+}
+
+void symbol_table_set_param(SymbolTable *table, const char *name, int is_param) {
+    for (Scope *s = table; s; s = s->parent) {
+        for (int i = 0; i < s->count; i++) {
+            if (strcmp(s->vars[i].name, name) == 0) {
+                s->vars[i].is_param = is_param;
                 return;
             }
         }
@@ -2836,7 +2865,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
                                     }
                                 } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
-                                if (!symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
+                                /* Untyped/dynamic parameters need runtime add semantics; value-initialized locals have known types. */
+                                if (symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
                                 pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_FLOAT: {
@@ -2853,7 +2883,8 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                     }
                                 } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
                                 if (!type_locked) { if (result_type == TYPE_INT) result_type = TYPE_FLOAT; }
-                                if (!symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
+                                /* Untyped/dynamic parameters need runtime add semantics; value-initialized locals have known types. */
+                                if (symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
                                 pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_CHAR:
@@ -5362,8 +5393,12 @@ static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *ma
     obj_register(cname, &schema);
 
     if (!is_assignment) {
-        symbol_table_add_locked(table, mangled, TYPE_OBJECT);
-        if (is_const) symbol_table_set_const(table, mangled, 1);
+        if (is_const) {
+            symbol_table_add_locked(table, mangled, TYPE_OBJECT);
+            symbol_table_set_const(table, mangled, 1);
+        } else {
+            symbol_table_add(table, mangled, TYPE_OBJECT);
+        }
         cname = symbol_table_get_cname(table, mangled);
     } else {
         symbol_table_update(table, mangled, TYPE_OBJECT);
@@ -5437,7 +5472,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 fn->next = g_program_ref->functions;
                 g_program_ref->functions = fn;
             }
-            symbol_table_add_locked(table, mangled, TYPE_STRING);
+            symbol_table_add(table, mangled, TYPE_STRING);
             symbol_table_set_func_ref(table, mangled, fn ? fn->name : "", -1);
             if (fn) {
                 int pc = 0;
@@ -5477,7 +5512,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             char ref_cname[MAX_IDENTIFIER_LEN]; int ref_pc = -1;
             if (!is_var && resolve_func_ref_info(table, fnref_tok.value, ref_cname, sizeof(ref_cname), &ref_pc)) {
                 lexer_next(lexer);
-                symbol_table_add_locked(table, mangled, TYPE_STRING);
+                symbol_table_add(table, mangled, TYPE_STRING);
                 symbol_table_set_func_ref(table, mangled, ref_cname, ref_pc);
                 const char *cname = symbol_table_get_cname(table, mangled);
                 char fval[MAX_STRING_LEN];
@@ -5508,7 +5543,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             skip_to_newline(lexer);
             return;
         }
-        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+        symbol_table_add(table, mangled, TYPE_ARRAY);
         symbol_table_set_array_dims(table, mangled, arr->array_dim_count, arr->array_dims);
         symbol_table_set_array_elem_type(table, mangled, arr->array_elem_type);
         const char *cname = symbol_table_get_cname(table, mangled);
@@ -5543,7 +5578,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     int *src_dims = NULL; int src_dim_count = 0;
                     if (symbol_table_get_array_dims(table, sm, &src_dims, &src_dim_count))
                         symbol_table_set_array_dims(table, mangled, src_dim_count, src_dims);
-                    symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                    symbol_table_add(table, mangled, TYPE_ARRAY);
                     if (src_dim_count > 0) symbol_table_set_array_dims(table, mangled, src_dim_count, src_dims);
                     symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                     const char *dcname = symbol_table_get_cname(table, mangled);
@@ -5583,7 +5618,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         int *src_dims2 = NULL; int src_dim_count2 = 0;
                         if (symbol_table_get_array_dims(table, sm, &src_dims2, &src_dim_count2))
                             symbol_table_set_array_dims(table, mangled, src_dim_count2, src_dims2);
-                        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        symbol_table_add(table, mangled, TYPE_ARRAY);
                         if (src_dim_count2 > 0) symbol_table_set_array_dims(table, mangled, src_dim_count2, src_dims2);
                         symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                         const char *dcname = symbol_table_get_cname(table, mangled);
@@ -5628,7 +5663,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         }
                         lexer_next(lexer); /* consume ) */
                         const char *scname = symbol_table_get_cname(table, sm);
-                        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        symbol_table_add(table, mangled, TYPE_ARRAY);
                         symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
                         const char *dcname = symbol_table_get_cname(table, mangled);
                         ASTNode *node = create_node(NODE_LET, dcname, "");
@@ -5659,13 +5694,15 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
     int is_type_conv_call = (next.type == TOKEN_IDENT && is_type_conversion(next.value) &&
                              next2.type == TOKEN_LPAREN);
 
+    int dtype_decl = 0;
     if (next.type == TOKEN_IDENT && is_type_keyword(next.value) && !is_type_conv_call) {
         Token type_tok = lexer_next(lexer);
         vtype = type_keyword_to_vartype(type_tok.value);
 
         Token peek_val = lexer_peek(lexer);
-        if (peek_val.type == TOKEN_NEWLINE || peek_val.type == TOKEN_EOF) {
-            /* Type declaration without value - init to default */
+        if (peek_val.type == TOKEN_NEWLINE || peek_val.type == TOKEN_EOF || peek_val.type == TOKEN_RBRACE) {
+            /* Type declaration without value - init to default (kept locked by default) */
+            dtype_decl = 1;
             switch (vtype) {
                 case TYPE_INT: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
                 case TYPE_FLOAT: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
@@ -5853,7 +5890,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
             VarType _let_vt = expr_type;
             if (strcmp(conv.value,"tobool")==0||strcmp(conv.value,"bool")==0) _let_vt = TYPE_BOOL;
             if (strcmp(conv.value,"tochar")==0||strcmp(conv.value,"char")==0) _let_vt = TYPE_CHAR;
-            symbol_table_add_locked(table, mangled, _let_vt);
+            symbol_table_add(table, mangled, _let_vt);
             const char *cname = symbol_table_get_cname(table, mangled);
             ASTNode *node = create_node(NODE_LET, cname, expr);
             node->var_type = _let_vt;
@@ -5872,7 +5909,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         }
         char expr[MAX_STRING_LEN];
         VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
-        symbol_table_add_locked(table, mangled, expr_type);
+        symbol_table_add(table, mangled, expr_type);
         const char *cname = symbol_table_get_cname(table, mangled);
         ASTNode *node = create_node(NODE_LET, cname, expr);
         node->var_type = expr_type;
@@ -5922,7 +5959,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                     }
                     if (ret_sc) {
                         const char *cname = symbol_table_get_cname(table, mangled);
-                        symbol_table_add_locked(table, mangled, TYPE_OBJECT);
+                        symbol_table_add(table, mangled, TYPE_OBJECT);
                         ObjSchema ds; memset(&ds, 0, sizeof(ds));
                         strncpy(ds.var, cname, MAX_IDENTIFIER_LEN - 1);
                         for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
@@ -5949,7 +5986,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         }
                         return;
                     }
-                    symbol_table_add_locked(table, mangled, store_type);
+                    symbol_table_add(table, mangled, store_type);
                     const char *cname = symbol_table_get_cname(table, mangled);
                     ASTNode *node = create_node(NODE_LET, cname, expr);
                     node->var_type = store_type;
@@ -5960,7 +5997,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 }
             }
             VarType expr_type = collect_expression(lexer, table, expr, sizeof(expr), 0, 0, NULL, NULL, NULL, NULL);
-            symbol_table_add_locked(table, mangled, expr_type);
+            symbol_table_add(table, mangled, expr_type);
             const char *cname = symbol_table_get_cname(table, mangled);
             ASTNode *node = create_node(NODE_LET, cname, expr);
             node->var_type = expr_type;
@@ -5996,7 +6033,11 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
         }
     }
 
-    symbol_table_add_locked(table, mangled, vtype);
+    if (dtype_decl) {
+        symbol_table_add_locked(table, mangled, vtype);
+    } else {
+        symbol_table_add(table, mangled, vtype);
+    }
     const char *cname = symbol_table_get_cname(table, mangled);
 
     resolve_string_interpolation(&value, table, value.line, value.col);
@@ -7722,7 +7763,7 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
         }
         scope_init(loop_scope, table, 0);
         if (elem_vt != TYPE_STRING && elem_vt != TYPE_NULL)
-            symbol_table_add_locked(loop_scope, mangled, elem_vt);
+            symbol_table_add(loop_scope, mangled, elem_vt);
         else
             symbol_table_add_local(loop_scope, mangled, elem_vt);
         const char *cname = symbol_table_get_cname(loop_scope, mangled);
@@ -9269,12 +9310,14 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                 VarType vtype2 = TYPE_STRING;
                 if (symbol_table_has(table, m)) vtype2 = symbol_table_get(table, m);
                 /* Preserve legacy pass-through for dynamic/string/object values, but keep
-                   typed numeric/bool returns for known (locked) variables. For parameters
-                   with default values of known types, prefer that type for inference/return. */
+                   typed numeric/bool returns for known-typed variables. Value-initialized
+                   locals are dtype-unlocked by default, so infer from current known type
+                   (excluding untyped/dynamic parameters). For parameters with default
+                   values of known types, prefer that type for inference/return. */
                 if (vtype2 == TYPE_OBJECT) {
                     etype = TYPE_OBJECT;
                 } else if ((vtype2 == TYPE_INT || vtype2 == TYPE_FLOAT || vtype2 == TYPE_BOOL) &&
-                           symbol_table_get_locked(table, m)) {
+                           (symbol_table_get_locked(table, m) || !symbol_table_is_param(table, m))) {
                     etype = vtype2;
                     if (vtype2 == TYPE_INT) snprintf(expr, sizeof(expr), "atoll(%s)", cname);
                     else if (vtype2 == TYPE_FLOAT) snprintf(expr, sizeof(expr), "atof(%s)", cname);

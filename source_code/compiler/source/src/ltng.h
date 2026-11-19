@@ -212,6 +212,7 @@ typedef struct {
     VarType type;
     int is_const;
     int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
+    int is_param;    /* declared as a function parameter (untyped params use dynamic typing) */
     int array_dim_count;  /* number of array dimensions (0 if not an array) */
     int *array_dims;      /* dynamically allocated size of each array dimension */
     VarType array_elem_type; /* inferred homogeneous element type (TYPE_NULL = unknown/mixed) */
@@ -317,6 +318,8 @@ void symbol_table_update(SymbolTable *table, const char *name, VarType type);
 int symbol_table_has_local(SymbolTable *table, const char *name);
 int symbol_table_get_locked(SymbolTable *table, const char *name);
 void symbol_table_set_locked(SymbolTable *table, const char *name, int locked);
+int symbol_table_is_param(SymbolTable *table, const char *name);
+void symbol_table_set_param(SymbolTable *table, const char *name, int is_param);
 void symbol_table_set_array_dims(SymbolTable *table, const char *name,
                                  int dim_count, const int *dims);
 int symbol_table_get_array_dims(SymbolTable *table, const char *name,

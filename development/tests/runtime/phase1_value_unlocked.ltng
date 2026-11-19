@@ -1,0 +1,32 @@
+# Value-initialized let declarations are unlocked by default (dtype-mutable via set)
+let x = 5
+write(typeof(x))
+write(x)
+set x = "hi"
+write(typeof(x))
+write(x)
+set x = 3.5
+write(typeof(x))
+write(x)
+
+let y = 2.5
+write(typeof(y))
+write(y)
+set y = 7
+write(typeof(y))
+write(y)
+set y = "ok"
+write(y)
+
+# dtype-only declarations remain locked by default
+let d = int
+write(typeof(d))
+write(d)
+set d = 9
+write(typeof(d))
+write(d)
+
+let ds = string
+write(typeof(ds))
+set ds = "abc"
+write(ds)
