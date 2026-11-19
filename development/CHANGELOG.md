@@ -21,6 +21,10 @@ All notable changes to the Lightning project in this development effort are docu
 
 ## [Unreleased]
 
+### Changed
+- Value-initialized `let` declarations (variables declared with an initial value, e.g. `let x = 5`) are now dtype-unlocked by default, allowing `set` to change their dtype/value. Dtype-only declarations (e.g. `let x = int`) remain locked by default; `const` declarations remain immutable/locked as before.
+- Phase 1 Step 4 typing/inference: tracked parameter symbols (`is_param`) to preserve dynamic/untyped parameter behavior while allowing typed inference/returns for known-typed unlocked value-initialized locals (fixing regressions in typed arithmetic/return typing and mutable closure codegen paths affected by the lock-semantic change).
+
 ### Fixed
 - Fixed runtime/generated-code string truncation by replacing fixed-size emitted buffers with dynamic string storage/helpers (`_ltng_ds_*`, dynamic concat/repeat, dynamic formatting and rotating dynamic return/slot buffers) for variables, parameters, returns, reads, interpolated/assignment emission, and related covered paths. Validated against the reported large concatenated/repeated string case (534-char stored/compared value).
 - Fixed indirect-call dispatcher to copy and mutate a local target buffer instead of mutating the caller's closure/function value, preventing captured-closure corruption on repeated dynamic calls.

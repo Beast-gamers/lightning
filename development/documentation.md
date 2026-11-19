@@ -225,6 +225,18 @@ let pi = 3.14
 let letter = 'A'
 ```
 
+When a variable is declared with an initial value, it is **dtype-unlocked by default**. This means you can change both its value and its type later with `set`:
+
+```
+let x = 5
+write(typeof(x))   # int
+set x = "hi"
+write(typeof(x))   # string
+write(x)           # hi
+```
+
+To keep a variable's dtype fixed, use an explicit type declaration without a value (e.g. `let x = int`), or call `x.lock()` after declaration. Use `x.unlock()` to allow dtype changes again.
+
 ### Bare `let` (null variable)
 
 Use `let x` without an assignment to declare a `null`-typed variable that can
@@ -242,14 +254,15 @@ set x = true    # OK - x becomes bool
 write(x)        # true
 ```
 
-To prevent dtype changes on a typed variable, declare it with a type
-(`let x = int`) which auto-locks it, or call `x.lock()` after the first
-`set`. Use `x.unlock()` to allow dtype changes again.
+To prevent dtype changes on a variable with a concrete type, use an explicit
+type declaration without a value (e.g. `let x = int`, which is locked by
+default), or call `x.lock()`. Use `x.unlock()` to allow dtype changes again.
 
 ### Explicit Type Declaration
 
 You can specify the type explicitly by placing a type keyword after `=` (without
-a value). The variable is initialized to the type's default.
+a value). The variable is initialized to the type's default and is **locked by
+default** (its dtype cannot be changed with `set`).
 
 ```
 let x = int        # x = 0
@@ -265,7 +278,7 @@ let x = int 42     # error: cannot assign a value with a type declaration
 let score = float 99.5  # error
 ```
 
-Use a separate `set` to assign a value after declaring the type:
+Use a separate `set` to assign a value after declaring the type (same dtype is allowed for a locked variable):
 
 ```
 let x = int
@@ -295,14 +308,20 @@ const x = int 5   # error: const requires a value assignment, not a type declara
 
 ### Setting Variables
 
-Use `set` to change the value of a variable. After a variable's type is locked
-(e.g. by `let x = 5` or `let x = int`), `set` cannot change the type.
+Use `set` to change the value of a variable.
+
+- **Value-initialized `let` declarations** (e.g. `let x = 5`, `let s = "hi"`) are **dtype-unlocked by default**, so `set` can change both their value and dtype.
+- **Dtype-only declarations** (e.g. `let x = int`) are **locked by default**, so `set` can change the value but not the dtype.
+- **Bare `let` declarations** (`let x`, null) are not dtype-locked.
 
 ```
-let x = int        # OK, x = 0 (default)
-set x = 20          # x is now 20 (int)
-set x = float 3.14  # error: cannot change type from int to float
-set x = "hello"     # error: cannot change type from int to string
+let x = 5           # value-initialized: unlocked by default
+set x = "hi"        # OK - dtype changes to string
+set x = 3.5         # OK - dtype changes to float
+
+let y = int         # dtype-only declaration: locked by default
+set y = 20          # OK - same dtype
+set y = "hello"     # error: cannot change type of locked variable
 ```
 
 The variable must already be declared:
@@ -321,17 +340,20 @@ set c = 2           # error: Cannot assign to constant
 ### Dtype Lock: `lock()` and `unlock()`
 
 Use `lock()` to freeze a variable's dtype so it cannot be changed by `set`.
-Use `unlock()` to remove the freeze and restore normal dtype-immutability rules.
+Use `unlock()` to allow dtype changes via `set`.
+
+By default, **value-initialized `let` declarations** (e.g. `let x = 5`) are
+dtype-unlocked, while **dtype-only declarations** (e.g. `let x = int`) are
+locked.
 
 ```
 let x = 5
-x.lock()        # x's dtype (int) is now locked
-set x = 10      # OK - same type
-set x = "hi"    # error: Cannot change type of locked variable 'x' from int to string
+set x = "hi"    # OK - value-initialized variables are unlocked by default
+x.lock()        # x's dtype (string) is now locked
+set x = "ok"    # OK - same type
+set x = 10      # error: Cannot change type of locked variable 'x' from string to int
 x.unlock()      # lock removed - dtype can now change freely
-set x = 10      # OK - same type
-set x = "hi"    # OK - x becomes string
-set x = true    # OK - x becomes bool
+set x = 10      # OK - x becomes int
 ```
 
 **Rules:**
@@ -343,8 +365,9 @@ set x = true    # OK - x becomes bool
   `let x` (null) followed by `x.lock()` is a compile error.
 - Once locked, `set` cannot change the dtype at all — `set x = <newtype>`
   is a compile error.
-- Calling `unlock()` removes the dtype lock entirely, after which `set` can
-  change the variable's dtype freely (e.g. `int` → `string` → `int`).
+- Calling `unlock()` removes the dtype lock, after which `set` can change the
+  variable's dtype freely (e.g. `int` → `string` → `int`), subject to the
+  current implementation's type/assignment rules.
 - Locking an already-locked variable, or unlocking an already-unlocked one,
   produces a **warning** but compilation still succeeds.
 - `lock()`/`unlock()` are compile-time operations only — no runtime code is
@@ -864,14 +887,22 @@ if (n > 0) {
 
 ### Variables and Blocks
 
-`let` and `const` declarations are **not allowed** inside `if`/`else` blocks, `switch`/`case`/`default` blocks, or loop bodies (`for`, `while`, `do-while`). Declare variables before the control structure and use `set` to modify them inside the block.
+`let` and `const` declarations are allowed inside control-flow blocks, nested
+blocks, and function bodies. Declarations inside a block are scoped to that
+block and can shadow outer variables.
 
 ```
 let x = 0
 if (true) {
-    set x = 5   # OK
-    # let y = 1 # error: 'let' not allowed inside control blocks
+    let y = 5
+    set x = y
+    write(y)
 }
+{
+    let x = 2   # shadows outer x
+    write(x)
+}
+write(x)        # outer x
 ```
 
 ---
@@ -1631,10 +1662,11 @@ ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
 - Chars must be wrapped in single quotes and contain exactly one character
 - Comments start with `#`
 - Blocks are wrapped in `{ }`, one `{` per block and one `}` to close it
-- `let` and `const` declarations are not allowed inside `if` statements, `switch` statements, or loops (`for`, `while`, `do-while`)
-- `let x = int` declares without a value (default 0); `let x = int 42` is **not** allowed — use `set x = 42` afterward
-- `const x = 42` requires a value; `const x = int` or `const x = int 42` are **not** allowed
-- After a variable's type is locked (via `let x = <type>` or `x.lock()`), `set` cannot change it (dtype immutability). Bare `let x` (null) is not locked — `set` can change its dtype freely on every assignment.
+- `let` and `const` declarations are allowed in control-flow blocks, nested blocks, and function bodies (block-scoped, with shadowing supported).
+- `let x = int` declares without a value (default 0) and is locked by default; `let x = int 42` is **not** allowed — use `set x = 42` afterward.
+- Value-initialized `let` declarations (e.g. `let x = 5`) are dtype-unlocked by default, so `set` can change their dtype. Dtype-only declarations (e.g. `let x = int`) are locked by default.
+- `const x = 42` requires a value; `const x = int` or `const x = int 42` are **not** allowed.
+- After a variable's dtype is locked (e.g. dtype-only declaration or `x.lock()`), `set` cannot change it. Bare `let x` (null) is not locked; value-initialized declarations start unlocked.
 - Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `exit`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
 - C reserved words (e.g. `return`, `break`, `continue`, `switch`, `case`, `default`, `struct`, `main`, `printf`) **can** be used as variable names — they are mangled internally with a `_res` suffix.
 
