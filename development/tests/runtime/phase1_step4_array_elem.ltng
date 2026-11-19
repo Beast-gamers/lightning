@@ -1,0 +1,74 @@
+let ai = [1, 2, 3]
+let af = [1.5, 2.5, 3.5]
+let ab = [true, false, true]
+let as_arr = ["a", "b", "c"]
+
+# basic typed access and typeof
+write(typeof(ai[1]))
+write(typeof(af[1]))
+write(typeof(ab[1]))
+write(typeof(as_arr[1]))
+
+# arithmetic with int/float elements
+write(ai[1] + ai[2])
+write(typeof(ai[1] + ai[2]))
+write(ai[1] + 2.5)
+write(typeof(ai[1] + 2.5))
+write(af[1] * 2)
+write(typeof(af[1] * 2))
+
+# comparisons
+if (ai[1] == 1) { write("eq1") } else { write("no") }
+if (ai[1] == "1") { write("eqs1") } else { write("no") }
+if (af[1] == 1.5) { write("feq") } else { write("no") }
+if (af[1] > 1.0) { write("fgt") } else { write("no") }
+if (ai[2] > ai[1]) { write("igt") } else { write("no") }
+
+# assignment from element
+let x = ai[2]
+write(x)
+write(typeof(x))
+let y = af[2]
+write(y)
+write(typeof(y))
+
+# set/compound use
+let sum = 0
+set sum = sum + ai[1]
+set sum = sum + ai[3]
+write(sum)
+write(typeof(sum))
+
+# conditions / bool elements
+if (ab[1]) { write("bt") } else { write("bf") }
+if (ab[2]) { write("bt2") } else { write("bf2") }
+
+# for-each typed accumulation
+let total = 0
+for (v in ai) {
+    set total = total + v
+}
+write(total)
+write(typeof(total))
+
+let fsum = 0.0
+for (v in af) {
+    set fsum = fsum + v
+}
+write(fsum)
+
+# nested arrays
+let m = [[1, 2], [3, 4]]
+write(typeof(m[1][1]))
+write(m[1][1] + m[2][2])
+write(m[1][1] == 1)
+write(m[1][1] == "1")
+
+# string array concat behavior
+write(as_arr[1] + as_arr[2])
+write(typeof(as_arr[1] + as_arr[2]))
+
+# bare write preserves raw element text
+write(ai[1])
+write(af[1])
+write(as_arr[1])

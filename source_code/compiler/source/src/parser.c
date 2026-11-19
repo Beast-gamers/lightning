@@ -1931,12 +1931,46 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                     {
                         int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("))!=NULL;
                         int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("))!=NULL;
-                        if ((lnumh && (rnumh || rn)) || (rnumh && (lnumh || ln))) {
-                            snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
-                        } else if (strcmp(ops[i], "==") == 0)
-                            snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lq, rq);
-                        else
-                            snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lq, rq);
+                        /* Numeric expression compared with quoted numeric string literal: compare numerically */
+                        int lq_qnumlit = 0, rq_qnumlit = 0, lq_quoted = 0, rq_quoted = 0;
+                        {
+                            const char *lpq = lq; while (*lpq==' '||*lpq=='\t') lpq++;
+                            if (*lpq=='"') { lq_quoted = 1; const char *p=lpq+1; if(*p=='+'||*p=='-') p++; int hd=0,ok=1,dot=0; while(*p && *p!='"'){ if(isdigit((unsigned char)*p)) hd=1; else if(*p=='.'&&!dot) dot=1; else {ok=0;break;} p++; } if(*p=='"' && hd && ok && p[1]=='\0') lq_qnumlit=1; }
+                            const char *rpq = rq; while (*rpq==' '||*rpq=='\t') rpq++;
+                            if (*rpq=='"') { rq_quoted = 1; const char *p=rpq+1; if(*p=='+'||*p=='-') p++; int hd=0,ok=1,dot=0; while(*p && *p!='"'){ if(isdigit((unsigned char)*p)) hd=1; else if(*p=='.'&&!dot) dot=1; else {ok=0;break;} p++; } if(*p=='"' && hd && ok && p[1]=='\0') rq_qnumlit=1; }
+                        }
+                        if ((lnumh && (rnumh || rn || rq_qnumlit)) || (rnumh && (lnumh || ln || lq_qnumlit))) {
+                            /* if side is quoted numeric literal string, unquote for numeric compare */
+                            char lcmp[4096], rcmp[4096];
+                            strncpy(lcmp, left, sizeof(lcmp)-1); lcmp[sizeof(lcmp)-1]=0;
+                            strncpy(rcmp, right, sizeof(rcmp)-1); rcmp[sizeof(rcmp)-1]=0;
+                            if (lq_qnumlit) { const char *p=lq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ snprintf(lcmp,sizeof(lcmp),"%.*s",(int)(n-2),p+1); } } }
+                            if (rq_qnumlit) { const char *p=rq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ snprintf(rcmp,sizeof(rcmp),"%.*s",(int)(n-2),p+1); } } }
+                            snprintf(buf, buf_size, "(%s) %s (%s)", lcmp, ops[i], rcmp);
+                        } else {
+                            /* Ensure numeric helper expressions become string expressions for strcmp */
+                            char lsc[4200], rsc[4200];
+                            strncpy(lsc, lq, sizeof(lsc)-1); lsc[sizeof(lsc)-1]=0;
+                            strncpy(rsc, rq, sizeof(rsc)-1); rsc[sizeof(rsc)-1]=0;
+                            if (lnumh) {
+                                int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("))!=NULL;
+                                if (is_f)
+                                    snprintf(lsc, sizeof(lsc), "({ char __nb[64]; snprintf(__nb,64,\"%%g\",(double)(%s)); __nb; })", left);
+                                else
+                                    snprintf(lsc, sizeof(lsc), "({ char __nb[64]; snprintf(__nb,64,\"%%lld\",(long long)(%s)); __nb; })", left);
+                            }
+                            if (rnumh) {
+                                int is_f = (strstr(right,"atof(")||strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D("))!=NULL;
+                                if (is_f)
+                                    snprintf(rsc, sizeof(rsc), "({ char __nb[64]; snprintf(__nb,64,\"%%g\",(double)(%s)); __nb; })", right);
+                                else
+                                    snprintf(rsc, sizeof(rsc), "({ char __nb[64]; snprintf(__nb,64,\"%%lld\",(long long)(%s)); __nb; })", right);
+                            }
+                            if (strcmp(ops[i], "==") == 0)
+                                snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lsc, rsc);
+                            else
+                                snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lsc, rsc);
+                        }
                         /* fallback: numeric helper compared to numeric string literal should be numeric */
                         {
                                                         if ((strstr(lq,"_ltng_from_double(")||strstr(lq,"_ltng_from_int(")||strstr(lq,"_ltng_ad(")) && rq[0]=='"') {
@@ -3232,18 +3266,43 @@ static VarType collect_expression(Lexer *lexer, SymbolTable *table,
                                             "; __idx = __idx * %d + __i%d", dims[d], d);
                                     }
                                     VarType _aet = symbol_table_get_array_elem_type(table, mangled);
-                                    pos += snprintf(out + pos, out_size - pos,
-                                        "; _ltng_arr_get(%s, %s, __idx); })",
-                                        arrname, lenname);
-                                    /* Preserve string access for compatibility (oob returns empty string),
-                                       but track element type for typeof/inference where safe. */
-                                    if (_aet == TYPE_INT || _aet == TYPE_FLOAT) {
-                                        /* keep as string expression; type info tracked in symbol table */
-                                        result_type = TYPE_STRING;
-                                        array_access_used = 1;
+                                    /* If we're already in a string-building context, keep string form.
+                                       Otherwise, emit typed access for known homogeneous element types
+                                       to support numeric/bool semantics, typeof, and comparisons. */
+                                    int _in_str_ctx = (result_type == TYPE_STRING && !type_locked);
+                                    if (!_in_str_ctx && _aet == TYPE_INT) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "; const char *__av = _ltng_arr_get(%s, %s, __idx); atoll(__av ? __av : \"\"); })",
+                                            arrname, lenname);
+                                        if (!type_locked) result_type = TYPE_INT;
+                                    } else if (!_in_str_ctx && _aet == TYPE_FLOAT) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "; const char *__av = _ltng_arr_get(%s, %s, __idx); atof(__av ? __av : \"\"); })",
+                                            arrname, lenname);
+                                        if (!type_locked) {
+                                            if (result_type == TYPE_INT) result_type = TYPE_FLOAT;
+                                            else result_type = TYPE_FLOAT;
+                                        }
+                                    } else if (!_in_str_ctx && _aet == TYPE_BOOL) {
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "; const char *__av = _ltng_arr_get(%s, %s, __idx); (__av && (__av[0]=='t' || __av[0]=='1')) ? 1 : 0; })",
+                                            arrname, lenname);
+                                        if (!type_locked) result_type = TYPE_BOOL;
                                     } else {
-                                        result_type = TYPE_STRING;
-                                        array_access_used = 1;
+                                        pos += snprintf(out + pos, out_size - pos,
+                                            "; _ltng_arr_get(%s, %s, __idx); })",
+                                            arrname, lenname);
+                                        if (_aet == TYPE_STRING || _aet == TYPE_CHAR) {
+                                            result_type = TYPE_STRING;
+                                            array_access_used = 1;
+                                        } else if (_aet == TYPE_INT || _aet == TYPE_FLOAT || _aet == TYPE_BOOL) {
+                                            /* In string context, treat as string value (OOB-safe). */
+                                            result_type = TYPE_STRING;
+                                            array_access_used = 1;
+                                        } else {
+                                            result_type = TYPE_STRING;
+                                            array_access_used = 1;
+                                        }
                                     }
                                 }
                                 if (!have_dims) free(dims);
@@ -4471,6 +4530,83 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
     Token second = lexer->tokens[lexer->current + 1];
     int is_conv_call = (first.type == TOKEN_IDENT && is_type_conversion(first.value) &&
                         second.type == TOKEN_LPAREN);
+
+    /* Simple array element access as sole write argument: write(arr[i]) / write(arr[i][j])
+       Preserve raw string value for OOB compatibility (empty string) and exact element text. */
+    if (first.type == TOKEN_IDENT && second.type == TOKEN_LBRACKET) {
+        char rm_arr[MAX_IDENTIFIER_LEN];
+        mangle_name(first.value, rm_arr, sizeof(rm_arr));
+        if (symbol_table_has(table, rm_arr) && symbol_table_get(table, rm_arr) == TYPE_ARRAY) {
+            int saved_a = lexer->current;
+            Token arrtok = lexer_next(lexer); /* consume arr ident */
+            (void)arrtok;
+            #define MAX_IDX_W 32
+            char (*idx_exprs_w)[1024] = calloc(MAX_IDX_W, 1024);
+            int idx_n_w = 0;
+            int ok_w = idx_exprs_w != NULL;
+            while (ok_w && lexer_peek(lexer).type == TOKEN_LBRACKET) {
+                lexer_next(lexer); /* [ */
+                if (idx_n_w >= MAX_IDX_W) { ok_w = 0; break; }
+                collect_expression(lexer, table, idx_exprs_w[idx_n_w], 1024, 1, 0, NULL, NULL, NULL, NULL);
+                Token rb = lexer_peek(lexer);
+                if (rb.type != TOKEN_RBRACKET) { ok_w = 0; break; }
+                lexer_next(lexer); /* ] */
+                idx_n_w++;
+            }
+            if (ok_w && idx_n_w > 0 && lexer_peek(lexer).type == TOKEN_RPAREN) {
+                lexer_next(lexer); /* consume write's ) */
+                char arrname_w[MAX_IDENTIFIER_LEN], lenname_w[MAX_IDENTIFIER_LEN];
+                snprintf(arrname_w, sizeof(arrname_w), "%s_data", rm_arr);
+                snprintf(lenname_w, sizeof(lenname_w), "%s_len", rm_arr);
+                int *dims_w = NULL; int dimc_w = 0;
+                int have_dims_w = symbol_table_get_array_dims(table, rm_arr, &dims_w, &dimc_w);
+                /* For 1D or matching dims, emit _ltng_arr_get; for unknown dims treat as 1D */
+                int edim = (have_dims_w && dimc_w > 0) ? dimc_w : 1;
+                if (idx_n_w == edim) {
+                    char *expr = malloc(MAX_STRING_LEN);
+                    if (!expr) { free(idx_exprs_w); lexer->current = saved_a; goto _write_array_fallback; }
+                    int p = 0;
+                    int esz = MAX_STRING_LEN;
+                    #define WAPP(...) do { if (p < esz - 1) { int _n = snprintf(expr + p, esz - p, __VA_ARGS__); if (_n > 0) { p += _n; if (p >= esz) p = esz - 1; } } } while(0)
+                    WAPP("({ ");
+                    for (int d = 0; d < idx_n_w; d++) {
+                        if (have_dims_w && dims_w && d < dimc_w)
+                            WAPP("int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + (%d); ", d, idx_exprs_w[d], d, d, d, d, dims_w[d]);
+                        else
+                            WAPP("int __i%d = (int)(%s); __i%d = __i%d > 0 ? __i%d - 1 : __i%d + %s; ", d, idx_exprs_w[d], d, d, d, d, lenname_w);
+                    }
+                    WAPP("int __idx = __i0");
+                    for (int d = 1; d < idx_n_w; d++) {
+                        if (have_dims_w && dims_w && d < dimc_w)
+                            WAPP("; __idx = __idx * %d + __i%d", dims_w[d], d);
+                        else
+                            WAPP("; __idx = __idx * %s + __i%d", lenname_w, d);
+                    }
+                    WAPP("; _ltng_arr_get(%s, %s, __idx); })", arrname_w, lenname_w);
+                    #undef WAPP
+                    expr[esz - 1] = '\0';
+                    ASTNode *node = create_node(NODE_WRITE, "", expr);
+                    node->is_variable = 0;
+                    node->is_expr = 1;
+                    node->var_type = TYPE_STRING; /* preserve raw/OOB string behavior */
+                    emit(node);
+                    free(expr);
+                    free(idx_exprs_w);
+                    #undef MAX_IDX_W
+                    return;
+                }
+                /* fall back to general expression handling for mismatched dims */
+                free(idx_exprs_w);
+                #undef MAX_IDX_W
+                lexer->current = saved_a;
+                goto _write_array_fallback;
+            }
+            if (idx_exprs_w) free(idx_exprs_w);
+            #undef MAX_IDX_W
+            _write_array_fallback:
+            lexer->current = saved_a;
+        }
+    }
 
     if (first.type == TOKEN_LPAREN || first.type == TOKEN_MINUS || first.type == TOKEN_BANG ||
         first.type == TOKEN_PLUS_PLUS || first.type == TOKEN_MINUS_MINUS ||
@@ -7577,18 +7713,23 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
         }
         char mangled[MAX_IDENTIFIER_LEN];
         mangle_name(var_tok.value, mangled, MAX_IDENTIFIER_LEN);
+        VarType elem_vt = symbol_table_get_array_elem_type(table, am);
+        if (elem_vt == TYPE_NULL) elem_vt = TYPE_STRING;
         Scope *loop_scope = (Scope *)malloc(sizeof(Scope));
         if (!loop_scope) {
             error_state_add(parser_errors, var_tok.line, var_tok.col, "Memory allocation failed");
             return NULL;
         }
         scope_init(loop_scope, table, 0);
-        symbol_table_add_local(loop_scope, mangled, TYPE_STRING);
+        if (elem_vt != TYPE_STRING && elem_vt != TYPE_NULL)
+            symbol_table_add_locked(loop_scope, mangled, elem_vt);
+        else
+            symbol_table_add_local(loop_scope, mangled, elem_vt);
         const char *cname = symbol_table_get_cname(loop_scope, mangled);
         const char *acname = symbol_table_get_cname(table, am);
         ASTNode *node = create_node(NODE_FOR, cname, "");
     node->line = kw.line; node->col = kw.col;
-        node->var_type = TYPE_STRING;
+        node->var_type = elem_vt;
         strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
         node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
         strncpy(node->for_start, acname, MAX_STRING_LEN - 1);
