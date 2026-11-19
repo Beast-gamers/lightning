@@ -499,7 +499,7 @@ write(typeof('A'))     # char
 write(typeof(true))    # bool
 ```
 
-`typeof()` accepts variables, literal values, reserved words, type conversion calls, user-defined function calls, and nested typeof calls, returning:
+`typeof()` accepts variables, literal values, reserved words, type conversion calls, user-defined function calls, array element expressions, and nested typeof calls, returning:
 
 | Input | Returns |
 |-------|---------|
@@ -515,7 +515,10 @@ write(typeof(true))    # bool
 | `typeof(toint(expr))` | `"int"` |
 | `typeof(tostring(expr))` | `"string"` |
 | `typeof(tobool(expr))` | `"bool"` |
-| `typeof(func(args))` | inferred return type of user-defined function |
+| `typeof(func(args))` | inferred/call-site specialized return type of user-defined function |
+| `typeof(arr[i])` | inferred element type of a homogeneous array (otherwise `"string"`) |
+
+The number of indices in `typeof(arr[i][j]...)` must match the array's dimension count; a mismatch is a compile-time error. `typeof` inside string interpolation (`"$[typeof(expr)]"`) uses the same inference rules.
 
 It works with let, const, set, and write:
 
@@ -536,7 +539,12 @@ write(typeof(tobool("t")))       # bool
 function add(a, b) {
     return a + b
 }
-write(typeof(add(1, 2)))         # string (a+b via _ltng_add_sn returns string)
+write(typeof(add(1, 2)))         # string (fully untyped params use dynamic add)
+
+function id(x) { return x }
+write(typeof(id(5)))             # int (pass-through call-site specialization)
+write(typeof(id(3.5)))           # float
+write(typeof(id("hi")))          # string
 
 function flag() {
     return true
@@ -1166,6 +1174,7 @@ write(greet("World", "Hi"))  # Hi, World
 
 - Defaults are positional: omitted arguments take the value of the first parameter that has a default and has not been supplied yet.
 - Defaults may be numeric or string literals, or expressions (including references to enclosing-scope variables, as in `function abc(a = x) { ... }`).
+- Literal default types drive typing in the function body and call-result inference without locking the parameter to that dtype.
 - Omitted arguments before a defaulted argument are not allowed; supply earlier arguments first.
 
 ### Named arguments
@@ -1699,11 +1708,12 @@ let empty = array                 # empty dynamic array
 
 ### Element Access (get / set)
 
-- `x[i]` reads the element at position `i` (1-based)
-- `set x[i] = value` assigns to position `i`
-- Array elements are string buffers, like all Lightning values
-- `+` on array elements uses the runtime numeric-or-string add
-- Array access works inside string interpolation: `write("first=$[arr[1]]")`
+- `x[i]` reads the element at position `i` (1-based); negative indices count from the live end (including pushes/pops for 1D arrays)
+- `set x[i] = value` assigns to position `i`; compound forms (`+=`, `-=`, `*=`, `/=`, `%=`) are supported
+- Array elements are stored as string buffers, but homogeneous `int`/`float`/`bool` literals keep an element dtype used by `typeof` and arithmetic; assigning to a typed element coerces the value to that dtype
+- `+` on array elements uses typed arithmetic for homogeneous typed arrays and the runtime numeric-or-string add for dynamic arrays
+- Out-of-bounds reads still return an empty string; typed-element comparisons/OOB behavior is normalized for compatibility
+- Array access works inside string interpolation: `write("first=$[arr[1]]")`; `write("$[typeof(arr[1])]")` resolves the element dtype
 
 ### Array Length
 
