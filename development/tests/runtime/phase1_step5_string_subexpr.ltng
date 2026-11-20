@@ -1,0 +1,85 @@
+# string concatenation with parenthesized numeric subexpressions
+let x = 1
+let y = 2
+let fv = 1.5
+
+# numeric add in string context
+write("sum=" + (x + y))
+write((x + y) + "=sum")
+write("v=" + x + y)
+write("v=" + (x + y) + "e")
+
+# float/int mixed in subexpr
+write("v=" + (x + fv))
+write("v=" + (fv + y))
+
+# numeric literals
+write("v=" + (1 + 2))
+write("v=" + (1.5 + 0.5))
+write("v=" + (1 + 2) + "x")
+
+# nested
+write("v=" + ((x + y) + 1))
+write("v=" + (1 + (x + y)))
+write("v=" + (x + (y + 1)))
+
+# with conversions
+write("v=" + (toint(1.9) + y))
+write("v=" + (x + toint(2.9)))
+write("v=" + (tofloat(x) + y))
+
+# ternary in string concat subexpr (numeric and string branches)
+write("v=" + (x < y ? x + y : 0))
+write("v=" + (x > y ? "big" : "small"))
+
+# comparison in string concat subexpr
+write("v=" + (x < y))
+write("v=" + ((x < y) + 1))
+
+# string-typed vars must remain string concat (numeric-looking strings)
+let a = "1"
+let b = "2"
+write(a + b)
+write("x=" + (a + b))
+write((a + b) + "=x")
+let s1 = "10"
+let s2 = "20"
+write(s1 + s2)
+write("x=" + (s1 + s2))
+
+# dynamic: string var + numeric var in subexpr
+write("v=" + (a + x))
+write("v=" + (x + a))
+
+# function results in subexpr
+function getn() { return 5 }
+write("v=" + (getn() + 1))
+write("v=" + (1 + getn()))
+
+# logical/comparison conditions in while with complex expressions
+let ci = 0
+let cs = 0
+while (ci < 3 && cs < 100) {
+    set cs = cs + ci + 1
+    set ci = ci + 1
+}
+write(cs)
+write(ci)
+
+# minus, division, modulo, multiply in string-concat subexpressions
+let mx = 6
+let my = 3
+let mfv = 1.5
+write("r=" + (mx - my))
+write("r=" + (mx / my))
+write("r=" + (mx % my))
+write("r=" + (mx * my))
+write("r=" + (mx - mfv))
+write("r=" + (mx * mfv))
+write("r=" + (10 - mx))
+write("r=" + (10 / mx))
+write("r=" + (7 % my))
+write("r=" + ((mx - my) * 2))
+write("r=" + (mx + (my * 2)))
+write("r=" + (mx - my * 2))
+write("r=" + (0 - mx))

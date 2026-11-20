@@ -988,7 +988,7 @@ static int part_is_stringy(const char *part);
    pass resolves one group, so the number of passes is bounded by the
    string length - no fixed depth cap that would crash on deeply nested
    parentheses. */
-static void normalize_string_expr(char *buf, int buf_size, int array_access_used) {
+static void normalize_string_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
     if (!buf || buf_size < 2) return;
     char work[8192];
     strncpy(work, buf, sizeof(work) - 1);
@@ -1105,27 +1105,34 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
             /* Helper logic inline: normalize a part and make it stringy for concat */
             char ires[4096];
             strncpy(ires, parts[0], sizeof(ires) - 1); ires[sizeof(ires) - 1] = 0;
-            normalize_string_expr(ires, sizeof(ires), array_access_used);
+            normalize_string_expr(ires, sizeof(ires), array_access_used, table);
             for (int k = 1; k < nip; k++) {
                 char p[2048];
                 strncpy(p, parts[k], sizeof(p) - 1); p[sizeof(p) - 1] = 0;
-                normalize_string_expr(p, sizeof(p), array_access_used);
+                normalize_string_expr(p, sizeof(p), array_access_used, table);
                 /* Build concat step. In array-access context use _ltng_add_sn.
                    Otherwise, if either side is not stringy (e.g. atoi(x) from
                    int var in mixed context, or numeric literal), convert to
                    string form or use _ltng_add_sn. */
                 char lhs[4096]; strncpy(lhs, ires, sizeof(lhs)-1); lhs[sizeof(lhs)-1]=0;
                 char rhs[2048]; strncpy(rhs, p, sizeof(rhs)-1); rhs[sizeof(rhs)-1]=0;
-                /* If a part is atoi(ident) or atof(ident), in string concat we
-                   want the original buffer (vars are char buffers). */
+                /* If a part is atoi/atoll/atof(ident), in string concat we
+                   want the original buffer (vars are char buffers). Track whether
+                   each side was a numeric conversion wrapper (numeric-typed var). */
+                int lhs_was_numwrap = 0, rhs_was_numwrap = 0;
                 {
                     char *sides[2] = {lhs, rhs};
                     int slens[2] = {(int)sizeof(lhs), (int)sizeof(rhs)};
+                    int *numwrap[2] = {&lhs_was_numwrap, &rhs_was_numwrap};
                     for (int si = 0; si < 2; si++) {
-                        char *s = sides[si];
-                        while (*s==' '||*s=='\t') s++;
-                        if (strncmp(s, "atoi(", 5) == 0 || strncmp(s, "atof(", 5) == 0) {
-                            const char *inner = s + 5;
+                        char *sp = sides[si];
+                        while (*sp==' '||*sp=='\t') sp++;
+                        int pfx = 0;
+                        if (strncmp(sp, "atoll(", 6) == 0) pfx = 6;
+                        else if (strncmp(sp, "atoi(", 5) == 0) pfx = 5;
+                        else if (strncmp(sp, "atof(", 5) == 0) pfx = 5;
+                        if (pfx) {
+                            const char *inner = sp + pfx;
                             const char *start = inner;
                             while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
                             if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
@@ -1133,22 +1140,117 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                                 if (tl >= (int)sizeof(tmp)) tl = sizeof(tmp)-1;
                                 memcpy(tmp, start, tl); tmp[tl]=0;
                                 strncpy(sides[si], tmp, slens[si]-1); sides[si][slens[si]-1]=0;
+                                *numwrap[si] = 1;
                             }
                         }
                     }
                 }
+                int lhs_s = part_is_stringy(lhs);
+                int rhs_s = part_is_stringy(rhs);
+
+                /* Build char* args for concat helpers (_ltng_add_sn/_ltng_concat_dyn take const char*). */
+                char lhs_arg[4200], rhs_arg[4200];
+                #define _LTNG_SN_ARG(src, dst, dstsz, is_str) do { \
+                    const char *_ps = (src); while (*_ps==' '||*_ps=='\t') _ps++; \
+                    if (is_str) { \
+                        strncpy((dst), (src), (dstsz)-1); (dst)[(dstsz)-1]=0; \
+                    } else { \
+                        const char *_q = _ps; if (*_q=='-'||*_q=='+') _q++; \
+                        int _isnum = 0, _hasd = 0, _dot = 0; \
+                        if (*_q) { _isnum = 1; while (*_q) { \
+                            if (isdigit((unsigned char)*_q)) _hasd=1; \
+                            else if (*_q=='.' && !_dot) _dot=1; \
+                            else { _isnum=0; break; } _q++; } } \
+                        if (_isnum && _hasd) { \
+                            snprintf((dst), (dstsz), "\"%s\"", _ps); \
+                        } else { \
+                            int _hd = (strchr(_ps,'.')!=NULL); \
+                            snprintf((dst), (dstsz), \
+                                "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })", \
+                                _hd ? "%g" : "%lld", _hd ? "double" : "long long", _ps); \
+                        } \
+                    } \
+                } while(0)
+                _LTNG_SN_ARG(lhs, lhs_arg, sizeof(lhs_arg), lhs_s);
+                _LTNG_SN_ARG(rhs, rhs_arg, sizeof(rhs_arg), rhs_s);
+                #undef _LTNG_SN_ARG
+
+                /* Helper: determine if a stringy bare-identifier part is a string-typed variable. */
+                int lhs_is_str_var = 0, rhs_is_str_var = 0;
+                if (table) {
+                    const char *sides2[2] = {lhs, rhs};
+                    int *flags[2] = {&lhs_is_str_var, &rhs_is_str_var};
+                    int wraps[2] = {lhs_was_numwrap, rhs_was_numwrap};
+                    for (int si = 0; si < 2; si++) {
+                        if (wraps[si]) continue;
+                        const char *sp = sides2[si];
+                        while (*sp==' '||*sp=='\t') sp++;
+                        const char *qe = sp;
+                        if (*qe=='_' || isalpha((unsigned char)*qe)) {
+                            while (*qe && (isalnum((unsigned char)*qe) || *qe=='_')) qe++;
+                            const char *end = qe;
+                            while (*end==' '||*end=='\t') end++;
+                            if (*end == '\0') {
+                                char nm[512]; int nl = (int)(qe - sp);
+                                if (nl >= (int)sizeof(nm)) nl = (int)sizeof(nm)-1;
+                                memcpy(nm, sp, nl); nm[nl] = 0;
+                                if (symbol_table_has(table, nm)) {
+                                    VarType vt = symbol_table_get(table, nm);
+                                    if (vt == TYPE_STRING || vt == TYPE_CHAR) *flags[si] = 1;
+                                } else {
+                                    char mn[512];
+                                    mangle_name(nm, mn, sizeof(mn));
+                                    if (symbol_table_has(table, mn)) {
+                                        VarType vt = symbol_table_get(table, mn);
+                                        if (vt == TYPE_STRING || vt == TYPE_CHAR) *flags[si] = 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 char st[5000];
                 if (array_access_used) {
-                    snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs, rhs);
+                    snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 } else {
-                    /* If parts aren't clearly stringy, fall back to _ltng_add_sn
-                       which handles numeric-or-string at runtime. */
-                    int lhs_s = part_is_stringy(lhs);
-                    int rhs_s = part_is_stringy(rhs);
-                    if (lhs_s && rhs_s)
-                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs, rhs);
+                    int lhs_def_str = lhs_is_str_var || (lhs_s && !lhs_was_numwrap && lhs[0] == '"') || (!lhs_was_numwrap && lhs_s && strstr(lhs, "_ltng_concat") != NULL);
+                    int rhs_def_str = rhs_is_str_var || (rhs_s && !rhs_was_numwrap && rhs[0] == '"') || (!rhs_was_numwrap && rhs_s && strstr(rhs, "_ltng_concat") != NULL);
+                    int lhs_bare_ident = 0, rhs_bare_ident = 0;
+                    {
+                        const char *ss[2] = {lhs, rhs}; int *bf[2] = {&lhs_bare_ident, &rhs_bare_ident};
+                        for (int si=0; si<2; si++) {
+                            const char *sp = ss[si]; while (*sp==' '||*sp=='\t') sp++;
+                            if (*sp=='_' || isalpha((unsigned char)*sp)) {
+                                const char *qe=sp; while(*qe&&(isalnum((unsigned char)*qe)||*qe=='_')) qe++;
+                                const char *end=qe; while(*end==' '||*end=='\t') end++;
+                                if (*end=='\0') *bf[si]=1;
+                            }
+                        }
+                    }
+                    if (lhs_s && rhs_s && lhs_def_str && rhs_def_str)
+                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                    else if (lhs_s && rhs_s && lhs_bare_ident && rhs_bare_ident && !lhs_was_numwrap && !rhs_was_numwrap && !lhs_is_str_var && !rhs_is_str_var) {
+                        int lhs_num = 0, rhs_num = 0;
+                        if (table) {
+                            const char *ss[2] = {lhs, rhs}; int *nf[2] = {&lhs_num, &rhs_num};
+                            for (int si=0; si<2; si++) {
+                                const char *sp = ss[si]; while (*sp==' '||*sp=='\t') sp++;
+                                char nm[512]; int nl=0; while(sp[nl]&&(isalnum((unsigned char)sp[nl])||sp[nl]=='_')){nm[nl]=sp[nl];nl++; if(nl>=511)break;} nm[nl]=0;
+                                if (symbol_table_has(table, nm)) { VarType vt=symbol_table_get(table,nm); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL) *nf[si]=1; }
+                                else { char mn[512]; mangle_name(nm,mn,sizeof(mn)); if(symbol_table_has(table,mn)){VarType vt=symbol_table_get(table,mn); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL)*nf[si]=1;} }
+                            }
+                        }
+                        if (lhs_num || rhs_num)
+                            snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                        else
+                            snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                    } else if (lhs_s && rhs_s && lhs_def_str && !rhs_def_str)
+                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                    else if (lhs_s && rhs_s && !lhs_def_str && rhs_def_str)
+                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else
-                        snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs, rhs);
+                        snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 }
                 strncpy(ires, st, sizeof(ires) - 1); ires[sizeof(ires) - 1] = 0;
             }
@@ -1203,16 +1305,16 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
             if (left_is_num && !right_is_num) {
                 /* number * "string" (or number * string-expr) */
                 strncpy(str_operand, right, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
-                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
+                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used, table);
                 snprintf(countbuf, sizeof(countbuf), "%s", left);
             } else if (right_is_num) {
                 strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
-                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
+                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used, table);
                 snprintf(countbuf, sizeof(countbuf), "%s", right);
             } else {
                 /* variable * variable: assume left is string, right is count */
                 strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
-                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used);
+                normalize_string_expr(str_operand, sizeof(str_operand), array_access_used, table);
                 snprintf(countbuf, sizeof(countbuf), "atoll(%s)", right);
             }
             char rep[8192];
@@ -1370,10 +1472,69 @@ static int part_is_stringy(const char *part) {
                         if (*p == '"' || *p == '\'') { in = 1; qc = *p; continue; }
                         if (*p == '(' || *p == '{' || *p == '[') d++;
                         else if (*p == ')' || *p == '}' || *p == ']') { if (d > 0) d--; }
-                        else if (*p == '+' && d == 0) { has_plus = 1; break; }
-                        else if (*p == '*' && d == 0) { has_star = 1; break; }
+                        else if (*p == '+' && d == 0) { has_plus = 1; }
+                        else if (*p == '*' && d == 0) { has_star = 1; }
                     }
-                    if (has_plus || has_star) return 1;
+                    if (has_plus || has_star) {
+                        /* Definitely stringy if it has string literals or string helpers */
+                        if (strchr(is, '"') || strstr(is, "_ltng_concat") != NULL ||
+                            strstr(is, "_ltng_repeat") != NULL || strstr(is, "_ltng_as(") != NULL)
+                            return 1;
+                        /* _ltng_add_sn can appear in mixed contexts; if also has string indicators treat as stringy */
+                        if (strstr(is, "_ltng_add_sn") != NULL) {
+                            /* could be numeric runtime add or string concat - treat as stringy for concat processing */
+                            return 1;
+                        }
+                        /* If it looks like a pure numeric arithmetic expression (numbers, atoll/atof/atoi
+                           conversions, arithmetic ops, parens, casts), treat as NOT stringy so it gets
+                           stringified as a numeric value in concat context. */
+                        int looks_numeric = 1;
+                        /* Check for bare identifiers that are NOT inside atoll/atof/atoi - these might be
+                           string vars. Identifiers inside numeric conversion calls are fine. */
+                        {
+                            const char *pp = is;
+                            while (*pp) {
+                                if (isalpha((unsigned char)*pp) || *pp == '_') {
+                                    const char *start = pp;
+                                    while (*pp && (isalnum((unsigned char)*pp) || *pp == '_')) pp++;
+                                    int len = (int)(pp - start);
+                                    /* Allow known numeric conversion/cast tokens and common numeric helpers */
+                                    if ((len == 5 && strncmp(start, "atoll", 5) == 0) ||
+                                        (len == 4 && strncmp(start, "atof", 4) == 0) ||
+                                        (len == 4 && strncmp(start, "atoi", 4) == 0) ||
+                                        (len == 4 && strncmp(start, "long", 4) == 0) ||
+                                        (len == 6 && strncmp(start, "double", 6) == 0) ||
+                                        (len == 3 && strncmp(start, "int", 3) == 0) ||
+                                        (len == 4 && strncmp(start, "char", 4) == 0) ||
+                                        (len == 8 && strncmp(start, "_LTNG_", 6) == 0) ||
+                                        (len > 6 && strncmp(start, "_LTNG_", 6) == 0) ||
+                                        (len > 5 && strncmp(start, "_ltng", 5) == 0 && strstr(start, "num") == NULL)) {
+                                        /* _ltng numeric helpers are fine; string helpers already caught above */
+                                        continue;
+                                    }
+                                    /* Check if this identifier is the argument of an immediately preceding
+                                       atoll(/atof(/atoi( - if so, it's a numeric use. */
+                                    int inside_numeric_conv = 0;
+                                    if (start > is && *(start - 1) == '(') {
+                                        if (start - is >= 6 && strncmp(start - 6, "atoll(", 6) == 0) inside_numeric_conv = 1;
+                                        else if (start - is >= 5 && strncmp(start - 5, "atof(", 5) == 0) inside_numeric_conv = 1;
+                                        else if (start - is >= 5 && strncmp(start - 5, "atoi(", 5) == 0) inside_numeric_conv = 1;
+                                    }
+                                    if (inside_numeric_conv) {
+                                        continue;
+                                    }
+                                    /* Bare identifier (variable name) - could be string var; treat as stringy
+                                       to be safe unless we have more info. */
+                                    looks_numeric = 0;
+                                    break;
+                                } else {
+                                    pp++;
+                                }
+                            }
+                        }
+                        if (looks_numeric) return 0; /* numeric expression, not stringy */
+                        return 1;
+                    }
                 }
                 if (strstr(is, "_ltng_add_sn") != NULL || strstr(is, "_ltng_concat") != NULL)
                     return 1;
@@ -1800,7 +1961,7 @@ static void trim_c_expr(char *s) {
 }
 
 /* Normalize a value subexpression that may be a string concat/repeat. */
-static void normalize_value_expr(char *buf, int buf_size, int array_access_used) {
+static void normalize_value_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
     trim_c_expr(buf);
     if (!buf[0]) return;
     /* Check for + or * at any depth (outside C string literals) */
@@ -1816,7 +1977,7 @@ static void normalize_value_expr(char *buf, int buf_size, int array_access_used)
         if (expr_is_string_value(buf) ||
             strchr(buf, '"') || strstr(buf, "_ltng_add_sn") || strstr(buf, "_ltng_repeat") ||
             strstr(buf, "_ltng_as(") || strstr(buf, "_ltng_ad(")) {
-            normalize_string_expr(buf, buf_size, array_access_used);
+            normalize_string_expr(buf, buf_size, array_access_used, table);
         }
     }
 }
@@ -1862,20 +2023,20 @@ static int split_top_level(const char *s, const char *op, char *left, int lsz, c
     return 1;
 }
 
-static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used);
+static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table);
 
-static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
+static void normalize_or_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
     char left[4096], right[4096];
     if (split_top_level(buf, "||", left, sizeof(left), right, sizeof(right))) {
-        normalize_mixed_expr(left, sizeof(left), array_access_used);
-        normalize_mixed_expr(right, sizeof(right), array_access_used);
+        normalize_mixed_expr(left, sizeof(left), array_access_used, table);
+        normalize_mixed_expr(right, sizeof(right), array_access_used, table);
         snprintf(buf, buf_size, "(%s) || (%s)", left, right);
         return;
     }
     /* try && */
     if (split_top_level(buf, "&&", left, sizeof(left), right, sizeof(right))) {
-        normalize_mixed_expr(left, sizeof(left), array_access_used);
-        normalize_mixed_expr(right, sizeof(right), array_access_used);
+        normalize_mixed_expr(left, sizeof(left), array_access_used, table);
+        normalize_mixed_expr(right, sizeof(right), array_access_used, table);
         snprintf(buf, buf_size, "(%s) && (%s)", left, right);
         return;
     }
@@ -1928,8 +2089,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                     int lnl = (*lq2=='-'||*lq2=='+'||isdigit((unsigned char)*lq2));
                     int rnl = (*rq2=='-'||*rq2=='+'||isdigit((unsigned char)*rq2));
                     if ((lnumh && (rnumh || rnl)) || (rnumh && (lnumh || lnl))) {
-                        normalize_value_expr(left, sizeof(left), array_access_used);
-                        normalize_value_expr(right, sizeof(right), array_access_used);
+                        normalize_value_expr(left, sizeof(left), array_access_used, table);
+                        normalize_value_expr(right, sizeof(right), array_access_used, table);
                         snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
                         return;
                     }
@@ -1939,15 +2100,15 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                 {
                     int hp=0,hs=0,in=0; char qc=0;
                     for(const char *p=left;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
-                    if(hp||hs) normalize_string_expr(left,sizeof(left),array_access_used);
+                    if(hp||hs) normalize_string_expr(left,sizeof(left),array_access_used, table);
                 }
                 {
                     int hp=0,hs=0,in=0; char qc=0;
                     for(const char *p=right;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
-                    if(hp||hs) normalize_string_expr(right,sizeof(right),array_access_used);
+                    if(hp||hs) normalize_string_expr(right,sizeof(right),array_access_used, table);
                 }
-                normalize_value_expr(left, sizeof(left), array_access_used);
-                normalize_value_expr(right, sizeof(right), array_access_used);
+                normalize_value_expr(left, sizeof(left), array_access_used, table);
+                normalize_value_expr(right, sizeof(right), array_access_used, table);
                 /* Ensure numeric literals are quoted for strcmp */
                 {
                     char lq[4096], rq[4096];
@@ -2035,8 +2196,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
                     }
                 }
             } else {
-                normalize_value_expr(left, sizeof(left), array_access_used);
-                normalize_value_expr(right, sizeof(right), array_access_used);
+                normalize_value_expr(left, sizeof(left), array_access_used, table);
+                normalize_value_expr(right, sizeof(right), array_access_used, table);
                 /* Unwrap numeric-string helper results for numeric comparisons */
                 {
                     char *sides[2] = {left, right};
@@ -2139,14 +2300,14 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used) {
         }
     }
     /* No top-level logical/comparison op: treat as value expr */
-    normalize_value_expr(buf, buf_size, array_access_used);
+    normalize_value_expr(buf, buf_size, array_access_used, table);
 }
 
-static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used) {
+static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
     trim_c_expr(buf);
     /* Unwrap fully-enclosing outer parens if they wrap the whole expr? Not necessary;
        but split_top_level works on current level. Handle leading unary ! at top? */
-    normalize_or_expr(buf, buf_size, array_access_used);
+    normalize_or_expr(buf, buf_size, array_access_used, table);
     /* Fix: strcmp(numeric_helper, "num") / strcmp("num", numeric_helper) -> numeric compare */
     for (int pass = 0; pass < 4; pass++) {
         char *s = buf;
@@ -2241,7 +2402,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
     int pending_mod_op_pos = -1; /* output position of % char for float-fmod rewrite */
     int comparison_or_logical = 0;
     int depth_content_start[64];
+    int depth_in_str_concat[64]; /* 1 if this paren depth is inside an outer string-concat context */
     depth_content_start[0] = 0;
+    depth_in_str_concat[0] = 0;
 
     while (lexer->current < lexer->count) {
         Token tok = lexer_peek(lexer);
@@ -2293,7 +2456,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             }
                         }
                         if (_has_cmp) {
-                            normalize_mixed_expr(cond_buf, sizeof(cond_buf), array_access_used);
+                            normalize_mixed_expr(cond_buf, sizeof(cond_buf), array_access_used, table);
                             cond_type = TYPE_INT;
                         }
                     }
@@ -2455,19 +2618,29 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     }
 
                     /* Build combined expression, replacing from condition start at this depth */
+                    int _saved_has_string_concat = has_string_concat;
+                    int _saved_has_string_mult = has_string_mult;
+                    int _saved_array_access_used = array_access_used;
+                    int _saved_arithmetic_used = arithmetic_used;
+                    VarType _saved_result_type = result_type;
                     pos = cstart;
                     pos += snprintf(out + pos, out_size - pos, "(%s?(%s):(%s))", cond_buf, true_buf, false_buf);
                     if (pos >= out_size) pos = out_size - 1;
                     out[pos] = '\0';
                     result_type = res_type;
                     type_locked = 0;
-                    arithmetic_used = 0;
+                    arithmetic_used = _saved_arithmetic_used;
                     comparison_or_logical = 0;
-                    has_string_concat = 0;
-                    has_string_mult = 0;
-                    array_access_used = 0;
+                    has_string_concat = _saved_has_string_concat;
+                    has_string_mult = _saved_has_string_mult;
+                    array_access_used = _saved_array_access_used;
                     has_dynamic_numeric = 0;
                     pending_divmod = 0; pending_mod_op_pos = -1;
+                    /* If this ternary is inside an outer string-concat context, the overall
+                       expression remains a string expression (ternary result will be stringified). */
+                    if (_saved_has_string_concat || _saved_has_string_mult) {
+                        has_string_concat = _saved_has_string_concat;
+                    }
                     /* At paren_depth 0 the ternary consumed the rest of this expression level */
                     if (paren_depth == 0) {
                         if (out_sl) *out_sl = sl; if (out_sc) *out_sc = sc;
@@ -3155,8 +3328,22 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                         VarType _emit_type = _eff_type;
                         /* in a string-building context, use the raw buffer
-                           (array variables are handled by the index logic below) */
-                        if (result_type == TYPE_STRING && !type_locked && _emit_type != TYPE_ARRAY) {
+                           (array variables are handled by the index logic below),
+                           unless the next operator requires numeric form. */
+                        int _strctx_raw = (result_type == TYPE_STRING && !type_locked && _emit_type != TYPE_ARRAY);
+                        if (_strctx_raw && (_emit_type == TYPE_INT || _emit_type == TYPE_FLOAT || _emit_type == TYPE_BOOL)) {
+                            Token _nxt = lexer_peek(lexer);
+                            if (_nxt.type == TOKEN_MINUS || _nxt.type == TOKEN_SLASH || _nxt.type == TOKEN_PERCENT ||
+                                _nxt.type == TOKEN_EQ_EQ || _nxt.type == TOKEN_BANG_EQ ||
+                                _nxt.type == TOKEN_LT || _nxt.type == TOKEN_GT ||
+                                _nxt.type == TOKEN_LT_EQ || _nxt.type == TOKEN_GT_EQ ||
+                                _nxt.type == TOKEN_AMP_AMP || _nxt.type == TOKEN_PIPE_PIPE ||
+                                _nxt.type == TOKEN_CARET_CARET ||
+                                ((_nxt.type == TOKEN_PLUS || _nxt.type == TOKEN_STAR) && paren_depth > 0)) {
+                                _strctx_raw = 0;
+                            }
+                        }
+                        if (_strctx_raw) {
                             pos += snprintf(out + pos, out_size - pos, "%s", cname);
                         } else switch (_emit_type) {
                             case TYPE_INT: {
@@ -3685,11 +3872,27 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
             case TOKEN_LPAREN:
                 pos += snprintf(out + pos, out_size - pos, "(");
                 paren_depth++;
-                if (paren_depth < 64) depth_content_start[paren_depth] = pos;
+                if (paren_depth < 64) {
+                    depth_content_start[paren_depth] = pos;
+                    depth_in_str_concat[paren_depth] = (has_string_concat || result_type == TYPE_STRING) ? 1 : 0;
+                }
                 break;
             case TOKEN_RPAREN:
                 pos += snprintf(out + pos, out_size - pos, ")");
-                if (paren_depth > 0) paren_depth--;
+                if (paren_depth > 0) {
+                    int _was_str_concat = (paren_depth < 64) ? depth_in_str_concat[paren_depth] : 0;
+                    paren_depth--;
+                    /* If we were inside a string-concat context at this paren level,
+                       restore string context so subsequent outer + operations are treated
+                       as string concat, not numeric addition. */
+                    if (_was_str_concat && has_string_concat) {
+                        if (result_type != TYPE_STRING) {
+                            /* The paren subexpr produced a numeric result but is inside
+                               string concat; the overall expression is still string concat. */
+                            result_type = TYPE_STRING;
+                        }
+                    }
+                }
                 break;
             case TOKEN_PLUS:
             case TOKEN_MINUS:
@@ -3698,19 +3901,144 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
             case TOKEN_PERCENT:
                 if (result_type == TYPE_STRING) {
                     if (tok.type == TOKEN_PLUS) {
-                        pos += snprintf(out + pos, out_size - pos, " + ");
-                        arithmetic_used = 1;
-                        has_string_concat = 1;
+                        /* In string context, + can be string concat or numeric add.
+                           Inside parens in a string-concat subexpr, prefer numeric add when
+                           both operands look numeric. */
+                        int _in_str_sub = (paren_depth > 0 && paren_depth < 64 && depth_in_str_concat[paren_depth]);
+                        int _numeric_add = 0;
+                        if (_in_str_sub) {
+                            Token _rtok = lexer_peek(lexer);
+                            int _right_numeric = 0;
+                            if (_rtok.type == TOKEN_INT_LIT || _rtok.type == TOKEN_FLOAT_LIT) {
+                                _right_numeric = 1;
+                            } else if ((_rtok.type == TOKEN_IDENT || token_is_name(_rtok)) && !is_bool_value(_rtok.value)) {
+                                char _rm[MAX_IDENTIFIER_LEN]; mangle_name(_rtok.value, _rm, MAX_IDENTIFIER_LEN);
+                                VarType _rvt = TYPE_NULL;
+                                if (symbol_table_has(table, _rm)) _rvt = symbol_table_get(table, _rm);
+                                if (_rvt == TYPE_INT || _rvt == TYPE_FLOAT || _rvt == TYPE_BOOL) _right_numeric = 1;
+                            } else if (_rtok.type == TOKEN_LPAREN) {
+                                /* nested subexpr - could be numeric */
+                                _right_numeric = 1;
+                            }
+                            if (_right_numeric) {
+                                /* check left side is numeric */
+                                int _left_num = 0;
+                                if (pos >= 1) {
+                                    int _i = pos - 1;
+                                    while (_i >= 0 && (out[_i] == ' ' || out[_i] == '\t')) _i--;
+                                    if (_i >= 0 && (isdigit((unsigned char)out[_i]) || out[_i] == ')')) _left_num = 1;
+                                }
+                                if (!_left_num && pos >= 6) {
+                                    char _tail[32] = {0};
+                                    int _tl = pos < 30 ? pos : 30;
+                                    memcpy(_tail, out + pos - _tl, _tl);
+                                    if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1;
+                                }
+                                _numeric_add = _left_num;
+                            }
+                        }
+                        if (_numeric_add) {
+                            pos += snprintf(out + pos, out_size - pos, " + ");
+                            arithmetic_used = 1;
+                            result_type = TYPE_INT;
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, " + ");
+                            arithmetic_used = 1;
+                            has_string_concat = 1;
+                        }
                     } else if (tok.type == TOKEN_STAR) {
-                        pos += snprintf(out + pos, out_size - pos, " * ");
-                        arithmetic_used = 1;
-                        has_string_mult = 1;
+                        /* * in string context: string repeat, or numeric multiply inside parens
+                           in a string-concat subexpression when left operand is numeric. */
+                        int _in_str_sub = (paren_depth > 0 && paren_depth < 64 && depth_in_str_concat[paren_depth]);
+                        int _numeric_mul = 0;
+                        if (_in_str_sub) {
+                            /* Check if this looks like numeric multiply (not string repeat) */
+                            /* Peek right operand type */
+                            Token _rtok = lexer_peek(lexer);
+                            if (_rtok.type == TOKEN_INT_LIT || _rtok.type == TOKEN_FLOAT_LIT) {
+                                /* "str" * 3 is string repeat, but (x * 3) where x is numeric is multiply.
+                                   Check left side: if buffer ends with a numeric form, it's numeric. */
+                                int _left_num = 0;
+                                if (pos >= 1) {
+                                    /* look for atoll(, atof(, digit, ) as end of numeric expr */
+                                    int _i = pos - 1;
+                                    while (_i >= 0 && (out[_i] == ' ' || out[_i] == '\t')) _i--;
+                                    if (_i >= 0 && (isdigit((unsigned char)out[_i]) || out[_i] == ')')) _left_num = 1;
+                                }
+                                /* Also check if left side contains atoll/atof at end */
+                                if (!_left_num && pos >= 6) {
+                                    if (strstr(out + (pos > 20 ? pos - 20 : 0), "atoll(") ||
+                                        strstr(out + (pos > 20 ? pos - 20 : 0), "atof(")) _left_num = 1;
+                                }
+                                /* If left side starts with " in this subexpr context, it's string repeat */
+                                if (_left_num) {
+                                    /* but verify left side of * in recent buffer isn't a string literal */
+                                    int _j = pos - 1;
+                                    while (_j >= 0 && out[_j] != '"' && out[_j] != '(' && out[_j] != '+' && out[_j] != '*') _j--;
+                                    /* rough heuristic - if we see quote right before in same paren, string repeat */
+                                }
+                                _numeric_mul = _left_num;
+                            } else if ((_rtok.type == TOKEN_IDENT || token_is_name(_rtok)) && !is_bool_value(_rtok.value)) {
+                                char _rm[MAX_IDENTIFIER_LEN]; mangle_name(_rtok.value, _rm, MAX_IDENTIFIER_LEN);
+                                VarType _rvt = TYPE_NULL;
+                                if (symbol_table_has(table, _rm)) _rvt = symbol_table_get(table, _rm);
+                                if (_rvt == TYPE_INT || _rvt == TYPE_FLOAT || _rvt == TYPE_BOOL) {
+                                    /* right is numeric; check if left is also numeric */
+                                    int _left_num = 0;
+                                    if (pos >= 1) {
+                                        int _i = pos - 1;
+                                        while (_i >= 0 && (out[_i] == ' ' || out[_i] == '\t')) _i--;
+                                        if (_i >= 0 && (out[_i] == ')')) _left_num = 1;
+                                        /* check for numeric conversions */
+                                    }
+                                    if (!_left_num && pos >= 6) {
+                                        char _tail[32] = {0};
+                                        int _tl = pos < 30 ? pos : 30;
+                                        memcpy(_tail, out + pos - _tl, _tl);
+                                        if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1;
+                                    }
+                                    _numeric_mul = _left_num;
+                                }
+                            }
+                        }
+                        if (_numeric_mul) {
+                            pos += snprintf(out + pos, out_size - pos, " * ");
+                            arithmetic_used = 1;
+                            /* stay in numeric subexpr mode - result_type becomes numeric context */
+                            result_type = TYPE_INT;
+                        } else {
+                            pos += snprintf(out + pos, out_size - pos, " * ");
+                            arithmetic_used = 1;
+                            has_string_mult = 1;
+                        }
                     } else {
-                        error_state_add(parser_errors, tok.line, tok.col,
-                            "Cannot use arithmetic on a string");
-                        pos += snprintf(out + pos, out_size - pos, "0");
+                        /* -, /, % are never string operations. */
+                        int _in_str_sub = (paren_depth > 0 && paren_depth < 64 && depth_in_str_concat[paren_depth]);
+                        if (_in_str_sub) {
+                            /* Numeric subexpression inside string-concat context */
+                            const char *_ops = tok.type == TOKEN_MINUS ? " - " :
+                                tok.type == TOKEN_SLASH ? " / " : " % ";
+                            if (tok.type == TOKEN_PERCENT) pending_mod_op_pos = pos;
+                            else pending_mod_op_pos = -1;
+                            pos += snprintf(out + pos, out_size - pos, "%s", _ops);
+                            arithmetic_used = 1;
+                            /* switch to numeric mode for this subexpr */
+                            result_type = TYPE_INT;
+                            if (tok.type == TOKEN_SLASH || tok.type == TOKEN_PERCENT) {
+                                pending_divmod = 1;
+                                pending_divmod_is_mod = (tok.type == TOKEN_PERCENT);
+                                pending_divmod_line = tok.line;
+                                pending_divmod_col = tok.col;
+                            } else {
+                                pending_divmod = 0;
+                            }
+                        } else {
+                            error_state_add(parser_errors, tok.line, tok.col,
+                                "Cannot use arithmetic on a string");
+                            pos += snprintf(out + pos, out_size - pos, "0");
+                            pending_divmod = 0;
+                        }
                     }
-                    pending_divmod = 0;
                 } else {
                     {
                         const char *_ops = tok.type == TOKEN_PLUS ? "+" :
@@ -3736,7 +4064,26 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
             case TOKEN_AMP_AMP:
             case TOKEN_PIPE_PIPE: {
                 Token next_tok = lexer_peek(lexer);
-                if (result_type == TYPE_INT && token_is_int(next_tok, table)) {
+                /* Use logical &&/|| when the left side is a comparison/logical result,
+                   or when the right side is not a plain integer value (e.g. a comparison).
+                   Reserve bitwise &/| for explicit integer-to-integer contexts. */
+                int use_bitwise = 0;
+                if (!comparison_or_logical && result_type == TYPE_INT && token_is_int(next_tok, table)) {
+                    /* Both sides look like plain ints and left is not a comparison result.
+                       Peek further: if next is followed by comparison op, it's logical. */
+                    int saved_c = lexer->current;
+                    lexer_next(lexer); /* consume next token temporarily */
+                    Token after = lexer_peek(lexer);
+                    if (after.type == TOKEN_EQ_EQ || after.type == TOKEN_BANG_EQ ||
+                        after.type == TOKEN_LT || after.type == TOKEN_GT ||
+                        after.type == TOKEN_LT_EQ || after.type == TOKEN_GT_EQ) {
+                        use_bitwise = 0; /* right side is a comparison, use logical */
+                    } else {
+                        use_bitwise = 1;
+                    }
+                    lexer->current = saved_c;
+                }
+                if (use_bitwise) {
                     pos += snprintf(out + pos, out_size - pos, "%s",
                         (tok.type == TOKEN_AMP_AMP) ? " & " : " | ");
                 } else {
@@ -3837,7 +4184,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
             }
         }
         if (_has_cmp) {
-            normalize_mixed_expr(out, out_size, array_access_used);
+            normalize_mixed_expr(out, out_size, array_access_used, table);
             result_type = TYPE_INT;
             if (out_sl) *out_sl = sl;
             if (out_sc) *out_sc = sc;
@@ -3956,7 +4303,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 if (has_string_concat && has_string_mult) {
                     /* Resolve nested '+' (concat) and '*' (repeat) with correct
                        precedence, handling arbitrary parenthesis depth. */
-                    normalize_string_expr(out, out_size, array_access_used);
+                    normalize_string_expr(out, out_size, array_access_used, table);
                     result_type = TYPE_STRING;
                     nparts = -1;
                 }
@@ -3991,16 +4338,21 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         strncpy(cparts[i], unwrapped, sizeof(cparts[i]) - 1);
                         cparts[i][sizeof(cparts[i]) - 1] = 0;
                     } else if (!part_is_stringy(part)) {
-                        int has_dot = (strchr(part, '.') != NULL);
+                        int is_float_expr = (strchr(part, '.') != NULL ||
+                            strstr(part, "atof(") != NULL ||
+                            strstr(part, "(double)") != NULL ||
+                            strstr(part, "_LTNG_NZDIV_D") != NULL ||
+                            strstr(part, "_LTNG_NZMOD_D") != NULL ||
+                            strstr(part, "_LTNG_FMOD_D") != NULL);
                         snprintf(cparts[i], sizeof(cparts[i]),
                                  "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
-                                 has_dot ? "%g" : "%lld",
-                                 has_dot ? "double" : "long long",
+                                 is_float_expr ? "%g" : "%lld",
+                                 is_float_expr ? "double" : "long long",
                                  part);
                     } else {
                         strncpy(cparts[i], part, sizeof(cparts[i]) - 1);
                         cparts[i][sizeof(cparts[i]) - 1] = 0;
-                        normalize_string_expr(cparts[i], sizeof(cparts[i]), array_access_used);
+                        normalize_string_expr(cparts[i], sizeof(cparts[i]), array_access_used, table);
 
                     }
                 }
@@ -4053,15 +4405,20 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     all_stringy = 0; /* force _ltng_add_sn for runtime-correct behavior */
                 } else if (!part_is_stringy(part)) {
                     all_stringy = 0;
-                    int has_dot = (strchr(part, '.') != NULL);
+                    int is_float_expr = (strchr(part, '.') != NULL ||
+                        strstr(part, "atof(") != NULL ||
+                        strstr(part, "(double)") != NULL ||
+                        strstr(part, "_LTNG_NZDIV_D") != NULL ||
+                        strstr(part, "_LTNG_NZMOD_D") != NULL ||
+                        strstr(part, "_LTNG_FMOD_D") != NULL);
                     snprintf(cpart, sizeof(cpart), "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
-                             has_dot ? "%g" : "%lld",
-                             has_dot ? "double" : "long long",
+                             is_float_expr ? "%g" : "%lld",
+                             is_float_expr ? "double" : "long long",
                              part);
                 } else {
                     strncpy(cpart, part, sizeof(cpart) - 1);
                     cpart[sizeof(cpart) - 1] = 0;
-                    normalize_string_expr(cpart, sizeof(cpart), array_access_used);
+                    normalize_string_expr(cpart, sizeof(cpart), array_access_used, table);
 
                 }
                 if (i == 0) {
@@ -4085,7 +4442,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
         } else if (strstr(out, "*") != NULL) {
             /* Use normalize_string_expr for general multiply expressions
                (including nested/chained repeats like (("a"*2)*2)*2). */
-            normalize_string_expr(out, out_size, array_access_used);
+            normalize_string_expr(out, out_size, array_access_used, table);
             result_type = TYPE_STRING;
         }
     }
@@ -8047,7 +8404,7 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                     if (*_p == '+') _hp = 1;
                     if (*_p == '*') _hs = 1;
                 }
-                if (_hp || _hs) normalize_string_expr(cexpr, sizeof(cexpr), 0);
+                if (_hp || _hs) normalize_string_expr(cexpr, sizeof(cexpr), 0, table);
             }
 ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
             cnode->is_default = 0;
