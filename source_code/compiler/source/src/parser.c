@@ -8287,6 +8287,7 @@ static ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
     }
 
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after switch condition");
@@ -8411,6 +8412,7 @@ ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
             cnode->var_type = ctype;
 
             Token lb2 = lexer_next(lexer);
+            while (lb2.type == TOKEN_NEWLINE) lb2 = lexer_next(lexer);
             if (lb2.type != TOKEN_LBRACE) {
                 error_state_add(parser_errors, lb2.line, lb2.col,
                     "Expected '{' after case");
@@ -8438,6 +8440,7 @@ ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
             dnode->var_type = ctype;
 
             Token lb2 = lexer_next(lexer);
+            while (lb2.type == TOKEN_NEWLINE) lb2 = lexer_next(lexer);
             if (lb2.type != TOKEN_LBRACE) {
                 error_state_add(parser_errors, lb2.line, lb2.col,
                     "Expected '{' after default");
@@ -8627,6 +8630,7 @@ static ASTNode *parse_while(Lexer *lexer, SymbolTable *table) {
     }
 
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after while condition");
@@ -8650,6 +8654,7 @@ static ASTNode *parse_do_while(Lexer *lexer, SymbolTable *table) {
     Token kw = lexer_next(lexer);
 
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after do");
@@ -8790,6 +8795,7 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
             return NULL;
         }
         Token lb = lexer_next(lexer);
+        while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
         if (lb.type != TOKEN_LBRACE) {
             error_state_add(parser_errors, lb.line, lb.col,
                 "Expected '{' after for-in header");
@@ -8894,6 +8900,7 @@ static ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
     }
 
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after for loop header");
@@ -8950,6 +8957,7 @@ static ASTNode *parse_else_chain(Lexer *lexer, SymbolTable *table) {
             return parse_if_core(lexer, table);
         }
         Token lb = lexer_next(lexer);
+        while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
         if (lb.type != TOKEN_LBRACE) {
             error_state_add(parser_errors, lb.line, lb.col,
                 "Expected '{' after 'else'");
@@ -9025,6 +9033,7 @@ static ASTNode *parse_if_core(Lexer *lexer, SymbolTable *table) {
     }
 
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after if condition");
@@ -9116,6 +9125,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
 
     skip_newlines(lexer);
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after 'try'");
@@ -9173,6 +9183,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
 
         skip_newlines(lexer);
         Token clb = lexer_next(lexer);
+        while (clb.type == TOKEN_NEWLINE) clb = lexer_next(lexer);
         if (clb.type != TOKEN_LBRACE) {
             error_state_add(parser_errors, clb.line, clb.col,
                 "Expected '{' after 'catch'");
@@ -9221,6 +9232,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
         }
         skip_newlines(lexer);
         Token elb = lexer_next(lexer);
+        while (elb.type == TOKEN_NEWLINE) elb = lexer_next(lexer);
         if (elb.type != TOKEN_LBRACE) {
             error_state_add(parser_errors, elb.line, elb.col,
                 "Expected '{' after 'else'");
@@ -9236,6 +9248,7 @@ static ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
         have_finally = 1;
         skip_newlines(lexer);
         Token flb = lexer_next(lexer);
+        while (flb.type == TOKEN_NEWLINE) flb = lexer_next(lexer);
         if (flb.type != TOKEN_LBRACE) {
             error_state_add(parser_errors, flb.line, flb.col,
                 "Expected '{' after 'finally'");
@@ -10931,6 +10944,7 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     }
 
     Token lb = lexer_next(lexer);
+    while (lb.type == TOKEN_NEWLINE) lb = lexer_next(lexer);
     if (lb.type != TOKEN_LBRACE) {
         error_state_add(parser_errors, lb.line, lb.col,
             "Expected '{' after function header");
