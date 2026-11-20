@@ -913,6 +913,23 @@ if (true) {
 write(x)        # outer x
 ```
 
+### Ternary (Conditional) Expression
+
+Use the ternary operator `condition ? value_if_true : value_if_false` to choose between two expressions based on a condition.
+
+```
+let x = 1 < 2 ? 10 : 20      # 10
+let y = 1 > 2 ? 10 : 20      # 20
+write(x > 5 ? "big" : "small")
+
+# nested / chained
+let n = 1 < 2 ? 3 < 4 ? 1 : 2 : 3
+```
+
+- The condition follows the same truthiness rules as `if` conditions (including string truthiness in covered paths: `""`, `"0"`, `"f"`, and `"false"` are false).
+- Branch result types are inferred; numeric branches participate in promotion (e.g. `int`/`float` mixes produce `float` in covered cases).
+- Ternary expressions can be used in declarations, assignments, returns, arguments, conditions, and other expression contexts.
+
 ---
 
 ## Switch Statement
