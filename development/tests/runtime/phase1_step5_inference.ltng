@@ -3,6 +3,9 @@
 function id(x) { return x }
 function mk() { return "sf" }
 function sf() { return "abc" }
+function retfloat() { return 1.5 }
+function retint() { return 2 }
+function pick(a, b, c) { return a ? b : c }
 
 # bool inference and propagation
 let b = true
@@ -80,3 +83,86 @@ function condv(x) { if (x) { return 1 } else { return 0 } }
 write(condv("0"))
 write(condv("x"))
 
+# ternary/conditional expressions
+write(1 < 2 ? 10 : 20)
+write(1 > 2 ? 10 : 20)
+write(typeof(1 < 2 ? 1 : 2))
+write(typeof(1 < 2 ? 1.0 : 2))
+write(typeof(1 < 2 ? "a" : "b"))
+write(typeof(1 < 2 ? true : false))
+write(1 < 2 ? 3 < 4 ? 1 : 2 : 3)
+write(1 > 2 ? 1 : 3 < 4 ? 2 : 3)
+write(1 > 2 ? 1 : 3 > 4 ? 2 : 3)
+let tv = 1 < 2 ? 1 : 1.5
+write(tv)
+write(typeof(tv))
+let tv2 = 1 > 2 ? 1 : 1.5
+write(tv2)
+write(typeof(tv2))
+function terna(x) { return x > 0 ? 1 : 0 }
+write(terna(5))
+write(terna(-1))
+write(pick(true, 7, 8))
+write(pick(false, 7, 8))
+write(pick(1 < 2, "yes", "no"))
+write(pick(1 > 2, "yes", "no"))
+let ts = ""
+write(ts ? "bad" : "empty")
+let th = "hi"
+write(th ? "ok" : "bad")
+write((1 < 2 ? 3 : 4) + 1)
+write(1 > 2 ? 3 : 4 + 1)
+set tv = 1 > 2 ? 99 : 100
+write(tv)
+
+# numeric promotion matrix and mixed expressions
+write(1 + 1.5)
+write(typeof(1 + 1.5))
+write(1.5 + 1)
+write(2 * 1.5)
+write(typeof(2 * 1.5))
+write(1 - 0.25)
+write(typeof(1 - 0.25))
+write(typeof(1.0 / 2))
+write((1 < 2) + (3 > 2))
+write(typeof((1 < 2) * 1.5))
+
+# unary and conversions in expressions
+write(-1)
+write(typeof(-1))
+write(-1.5)
+write(typeof(-1.5))
+write(typeof(toint(1.5)))
+write(typeof(tofloat(1)))
+write(typeof(tostring(1)))
+write(typeof(tobool(1)))
+write(toint(1.9))
+write(tofloat(2))
+write(toint(1.5) + 0.5)
+let tc = toint(1.5) + 0.5
+write(typeof(tc))
+
+# nested/complex expressions
+write(1 + 2 * 3)
+write((1 + 2) * 0.5)
+write(typeof((1 + 2) * 0.5))
+write((1 < 2 ? 1 : 2) + (3 < 4 ? 0.5 : 1.5))
+write(typeof((1 < 2 ? 1 : 2) + (3 < 4 ? 0.5 : 1.5)))
+
+# inference in args/conditions/returns
+write(retfloat() + 1)
+write(typeof(retfloat() + 1))
+write(retint() + 0.5)
+write(typeof(retint() + 0.5))
+if (1.5) { write("nzf") } else { write("bad") }
+if (0.0) { write("bad") } else { write("zf") }
+write(id(1 < 2 ? 1.5 : 2))
+write(typeof(id(1 < 2 ? 1.5 : 2)))
+
+# edge numeric values
+write(0 + 0.0)
+write(typeof(0 + 0.0))
+write(-1 + 0.5)
+write(typeof(-1 + 0.5))
+write(1 < 2 ? -1 : -2)
+write(typeof(1 < 2 ? -1 : -2))
