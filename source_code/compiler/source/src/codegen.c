@@ -2128,6 +2128,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%lld\",v); return b[i]; }\n");
     fprintf(out, "static char *_ltng_from_double(char *buf, double v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
     fprintf(out, "static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit((unsigned char)*p)) h=1; else if(*p=='.'){} else return 0; } return h; }\n");
+    fprintf(out, "static int _ltng_str_truthy(const char *s){ if(!s||!s[0]) return 0; if(strcmp(s,\"0\")==0||strcmp(s,\"false\")==0||strcmp(s,\"f\")==0) return 0; return 1; }\n");
     fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char *buf[32]={0}; static int i=0; i=(i+1)%%32; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a?a:\"0\"),nb=atof(b?b:\"0\"); _ltng_ds_setfmt(&buf[i],\"%%g\",na+nb); } else { _ltng_ds_setfmt(&buf[i],\"%%s%%s\",a?a:\"\",b?b:\"\"); } return buf[i]; }\n");
     fprintf(out, "static long long _ltng_div0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Division by zero\", line, col); return 0; }\n");
     fprintf(out, "static long long _ltng_mod0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Modulo by zero\", line, col); return 0; }\n");

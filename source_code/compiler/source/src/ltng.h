@@ -82,7 +82,8 @@ typedef enum {
     TOKEN_LBRACKET,
     TOKEN_RBRACKET,
     TOKEN_ARROW,
-    TOKEN_ELLIPSIS
+    TOKEN_ELLIPSIS,
+    TOKEN_QUESTION
 } TokenType;
 
 typedef struct {

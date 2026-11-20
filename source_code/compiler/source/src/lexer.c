@@ -327,6 +327,10 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
             Token token = {TOKEN_COLON, ":", lexer->line, lexer->col};
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
+        } else if (c == '?') {
+            Token token = {TOKEN_QUESTION, "?", lexer->line, lexer->col};
+            lexer_advance(lexer);
+            lexer_add_token(lexer, token);
         } else if (c == ',') {
             Token token = {TOKEN_COMMA, ",", lexer->line, lexer->col};
             lexer_advance(lexer);

@@ -1,0 +1,82 @@
+# Phase 1 Step 5: type inference and numeric promotion
+
+function id(x) { return x }
+function mk() { return "sf" }
+function sf() { return "abc" }
+
+# bool inference and propagation
+let b = true
+let c = b
+write(typeof(b))
+write(typeof(c))
+write(c)
+write(typeof(true && false))
+write(typeof(!true))
+
+# comparison/logical in mixed numeric expressions (promotion)
+write((1 < 2) + 0.5)
+write(typeof((1 < 2) + 0.5))
+let p = (1 < 2) + 0.5
+write(p)
+write(typeof(p))
+write((2 > 3) + 1)
+write((true && true) + 0.25)
+write(typeof((true && true) + 0.25))
+
+# chained/nested expressions and calls
+write(id(5) + 0.5)
+write(typeof(id(5) + 0.5))
+write(id(3.5) + 1)
+write(typeof(id(3.5) + 1))
+write(mk()())
+let ch = mk()()
+write(ch)
+write(typeof(ch))
+write(id(id(2)) + 0.5)
+write(typeof(id(id(2)) + 0.5))
+
+# string condition truthiness
+let s0 = "0"
+if (s0) { write("bad") } else { write("ok0") }
+if ("") { write("bad") } else { write("okempty") }
+if ("false") { write("bad") } else { write("okfalse") }
+if ("f") { write("bad") } else { write("okf") }
+if ("hello") { write("okstr") } else { write("bad") }
+
+# typeof in interpolation with object field
+let o = { n = 1 }
+write("$[typeof(o.n)]")
+
+# inc/dec typing on string/bool
+let sn = "3"
+write(++sn)
+write(sn)
+let bb = true
+write(bb++)
+write(bb)
+
+# array/object access and mixed inference
+let ai = [1, 2, 3]
+write(ai[1] + 0.5)
+write(typeof(ai[1] + 0.5))
+let af = [1.5, 2]
+write(af[2] + 1)
+write(typeof(af[2] + 1))
+write(o.n + 0.5)
+write(typeof(o.n + 0.5))
+
+# declarations/assignments/returns/args/conditions in mixed contexts
+let m = 1 + 2.5
+write(m)
+write(typeof(m))
+let z = 1
+set z = z + 2.5
+write(z)
+write(typeof(z))
+function retm(a) { return a + 0.5 }
+write(retm(1))
+write(typeof(retm(1)))
+function condv(x) { if (x) { return 1 } else { return 0 } }
+write(condv("0"))
+write(condv("x"))
+
