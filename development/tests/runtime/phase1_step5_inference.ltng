@@ -166,3 +166,48 @@ write(-1 + 0.5)
 write(typeof(-1 + 0.5))
 write(1 < 2 ? -1 : -2)
 write(typeof(1 < 2 ? -1 : -2))
+
+# typeof with conversion expressions in larger expressions
+write(typeof(toint(3.7) + 1))
+write(typeof(toint(3) + 1.5))
+write(typeof(1.5 + toint(3)))
+write(typeof(tofloat(3) + 0.5))
+write(typeof(tobool(1) + 1.5))
+write(1.5 + toint(3))
+write(toint(3) + 1.5)
+write(tobool(1) + 1.5)
+
+# typeof in interpolation with complex expressions
+write("$[typeof(toint(3) + 1.5)]")
+write("$[typeof(1.5 + toint(3))]")
+write("$[typeof(1 + 1.5)]")
+write("$[typeof(toint(3) + 1)]")
+write("$[typeof(42)]")
+write("$[typeof(3.14)]")
+write("$[typeof(true && false)]")
+write("$[typeof(1 < 2)]")
+
+# compound assignment with ternary RHS
+let cy = 10
+set cy += 1 < 2 ? 5 : 0
+write(cy)
+set cy -= 1 > 2 ? 1 : 3
+write(cy)
+set cy *= 1 < 2 ? 2 : 1
+write(cy)
+
+# ternary in switch expression
+switch (1 < 2 ? 2 : 3) {
+    case 1: { write("one") }
+    case 2: { write("two") }
+    default: { write("other") }
+}
+
+# indirect call in mixed expression
+let idfn = id
+write(idfn(5) + 0.5)
+write(typeof(idfn(5) + 0.5))
+
+# nested typeof/conversion contexts
+write(typeof(toint(1.5) + tofloat(1)))
+write(typeof(toint(tofloat(3)) + 0.5))

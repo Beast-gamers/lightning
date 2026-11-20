@@ -2764,7 +2764,10 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         } else {
                             pos += snprintf(out + pos, out_size - pos, "(long long)atoll(%s)", inner_expr);
                         }
-                        if (!type_locked) result_type = TYPE_INT;
+                        if (!type_locked) {
+                            if (result_type == TYPE_FLOAT) { /* keep float promotion */ }
+                            else result_type = TYPE_INT;
+                        }
                     } else if (_ck_float) {
                         if (is_simple_str_lit) {
                             char sval[MAX_STRING_LEN]; int sp=0;
@@ -2824,7 +2827,13 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0&&strcmp(%s,\"f\")!=0?1:0)",
                                 inner_expr, inner_expr, inner_expr, inner_expr);
                         }
-                        if (!type_locked) result_type = TYPE_BOOL;
+                        if (!type_locked) {
+                            if (arithmetic_used || comparison_or_logical) {
+                                if (result_type != TYPE_FLOAT) result_type = TYPE_INT;
+                            } else {
+                                result_type = TYPE_BOOL;
+                            }
+                        }
                     } else if (_ck_char) {
                         if (is_simple_str_lit && ipos >= 3) {
                             char ch = inner[lit_start];
@@ -4144,48 +4153,52 @@ static int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
     memcpy(inner, vname + 7, ilen);
     inner[ilen] = '\0';
 
-    if (strncmp(inner, "toint(", 6) == 0 || strncmp(inner, "int(", 4) == 0) {
-        int prefix = (strncmp(inner, "toint(", 6) == 0) ? 6 : 4;
-        int il = (int)strlen(inner);
-        if (il > prefix + 2 && inner[prefix] == '"' && inner[il - 2] == '"' && inner[il - 1] == ')') {
-            char sv[MAX_STRING_LEN]; int sl = il - prefix - 3;
-            if (sl >= (int)sizeof(sv)) sl = (int)sizeof(sv) - 1;
-            memcpy(sv, inner + prefix + 1, sl); sv[sl] = '\0';
-            int ok = 0, k = 0; if (sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1;
-            for (; sv[k]; k++) { if (isdigit((unsigned char)sv[k])) digits=1; else if (sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} }
-            if (valid && digits) ok = 1;
-            if (!ok) {
-                char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %.*s", sv, prefix-1, inner);
-                error_state_add(parser_errors, line, col, msg);
+    /* Conversion calls: only fast-path when the call is the entire inner expression. */
+    {
+        int _conv_prefix = 0; const char *_conv_tname = NULL; const char *_conv_cname = NULL;
+        if (strncmp(inner, "toint(", 6) == 0)      { _conv_prefix = 6; _conv_tname = "int";    _conv_cname = "toint"; }
+        else if (strncmp(inner, "int(", 4) == 0)    { _conv_prefix = 4; _conv_tname = "int";    _conv_cname = "int"; }
+        else if (strncmp(inner, "tofloat(", 8) == 0){ _conv_prefix = 8; _conv_tname = "float";  _conv_cname = "tofloat"; }
+        else if (strncmp(inner, "float(", 6) == 0)  { _conv_prefix = 6; _conv_tname = "float";  _conv_cname = "float"; }
+        else if (strncmp(inner, "tostring(", 9) == 0){ _conv_prefix = 9; _conv_tname = "string"; _conv_cname = "tostring"; }
+        else if (strncmp(inner, "string(", 7) == 0) { _conv_prefix = 7; _conv_tname = "string"; _conv_cname = "string"; }
+        else if (strncmp(inner, "tochar(", 7) == 0)  { _conv_prefix = 7; _conv_tname = "char";   _conv_cname = "tochar"; }
+        else if (strncmp(inner, "char(", 5) == 0)    { _conv_prefix = 5; _conv_tname = "char";   _conv_cname = "char"; }
+        else if (strncmp(inner, "tobool(", 7) == 0)  { _conv_prefix = 7; _conv_tname = "bool";   _conv_cname = "tobool"; }
+        else if (strncmp(inner, "bool(", 5) == 0)    { _conv_prefix = 5; _conv_tname = "bool";   _conv_cname = "bool"; }
+        if (_conv_prefix > 0) {
+            /* Check if the conversion call spans the entire inner expression */
+            int _d = 0, _end = -1, _il = (int)strlen(inner), _inq = 0; char _qc = 0;
+            for (int _i = _conv_prefix - 1; _i < _il; _i++) {
+                char _ch = inner[_i];
+                if (_inq) { if (_ch == '\\' && _i + 1 < _il) { _i++; continue; } if (_ch == _qc) _inq = 0; continue; }
+                if (_ch == '"' || _ch == '\'') { _inq = 1; _qc = _ch; continue; }
+                if (_ch == '(') _d++;
+                else if (_ch == ')') { _d--; if (_d == 0) { _end = _i; break; } }
             }
-        }
-        append_resolved_text(resolved, rlen, "int"); return 1;
-    }
-    if (strncmp(inner, "tofloat(", 8) == 0 || strncmp(inner, "float(", 6) == 0) {
-        int prefix = (strncmp(inner, "tofloat(", 8) == 0) ? 8 : 6;
-        int il = (int)strlen(inner);
-        if (il > prefix + 2 && inner[prefix] == '"' && inner[il - 2] == '"' && inner[il - 1] == ')') {
-            char sv[MAX_STRING_LEN]; int sl = il - prefix - 3;
-            if (sl >= (int)sizeof(sv)) sl = (int)sizeof(sv) - 1;
-            memcpy(sv, inner + prefix + 1, sl); sv[sl] = '\0';
-            int ok = 0, k = 0; if (sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1;
-            for (; sv[k]; k++) { if (isdigit((unsigned char)sv[k])) digits=1; else if (sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} }
-            if (valid && digits) ok = 1;
-            if (!ok) {
-                char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %.*s", sv, prefix-1, inner);
-                error_state_add(parser_errors, line, col, msg);
+            if (_end == _il - 1) {
+                /* Sole conversion call: validate invalid literal numeric strings for toint/tofloat */
+                if (strcmp(_conv_tname, "int") == 0 || strcmp(_conv_tname, "float") == 0) {
+                    if (_il > _conv_prefix + 2 && inner[_conv_prefix] == '"' && inner[_il - 2] == '"') {
+                        char sv[MAX_STRING_LEN]; int sl = _il - _conv_prefix - 3;
+                        if (sl >= (int)sizeof(sv)) sl = (int)sizeof(sv) - 1;
+                        memcpy(sv, inner + _conv_prefix + 1, sl); sv[sl] = '\0';
+                        int ok = 0, k = 0; if (sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1;
+                        for (; sv[k]; k++) { if (isdigit((unsigned char)sv[k])) digits=1; else if (sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} }
+                        if (valid && digits) ok = 1;
+                        if (!ok) {
+                            char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %s", sv, _conv_cname);
+                            error_state_add(parser_errors, line, col, msg);
+                        }
+                    }
+                }
+                append_resolved_text(resolved, rlen, _conv_tname); return 1;
             }
+            /* Part of a larger expression: infer from full expression */
+            VarType t = infer_expression_text_type(inner, table);
+            append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+            return 1;
         }
-        append_resolved_text(resolved, rlen, "float"); return 1;
-    }
-    if (strncmp(inner, "tostring(", 9) == 0 || strncmp(inner, "string(", 7) == 0) {
-        append_resolved_text(resolved, rlen, "string"); return 1;
-    }
-    if (strncmp(inner, "tochar(", 7) == 0 || strncmp(inner, "char(", 5) == 0) {
-        append_resolved_text(resolved, rlen, "char"); return 1;
-    }
-    if (strncmp(inner, "tobool(", 7) == 0 || strncmp(inner, "bool(", 5) == 0) {
-        append_resolved_text(resolved, rlen, "bool"); return 1;
     }
 
     const char *p = inner;
@@ -4230,54 +4243,92 @@ static int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
         return 1;
     }
 
-    /* Member/property access inside typeof: typeof(o.n) */
-    if (strchr(inner, '.')) {
-        char base[MAX_IDENTIFIER_LEN];
+    /* Simple member/property access inside typeof: typeof(o.n) where base and field are identifiers. */
+    {
         const char *dot = strchr(inner, '.');
-        int blen = (int)(dot - inner);
-        if (blen <= 0 || dot[1] == '\0' || strchr(dot + 1, '.')) {
-            append_resolved_text(resolved, rlen, "string");
-            return 1;
-        }
-        if (blen >= (int)sizeof(base)) blen = (int)sizeof(base) - 1;
-        memcpy(base, inner, blen);
-        base[blen] = '\0';
-        char mvbase[MAX_IDENTIFIER_LEN];
-        mangle_name(base, mvbase, MAX_IDENTIFIER_LEN);
-        if (!symbol_table_has(table, mvbase)) {
-            char errmsg[256];
-            snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
-            error_state_add(parser_errors, line, col, errmsg);
-            return 1;
-        }
-        VarType ftype = TYPE_STRING;
-        ObjSchema *osc = obj_lookup(mvbase);
-        if (!osc) {
-            const char *cname = symbol_table_get_cname(table, mvbase);
-            if (cname) osc = obj_lookup(cname);
-        }
-        if (osc) {
-            for (int oi = 0; oi < osc->count; oi++) {
-                if (strcmp(osc->fields[oi].name, dot + 1) == 0) { ftype = osc->fields[oi].type; break; }
+        if (dot) {
+            char base[MAX_IDENTIFIER_LEN];
+            int blen = (int)(dot - inner);
+            const char *field = dot + 1;
+            int simple_member = 0;
+            if (blen > 0 && *field != '\0' && !strchr(field, '.')) {
+                int base_ok = 1, field_ok = 1;
+                if (!(isalpha((unsigned char)inner[0]) || inner[0] == '_')) base_ok = 0;
+                for (int bi = 0; base_ok && bi < blen; bi++) {
+                    if (!(isalnum((unsigned char)inner[bi]) || inner[bi] == '_')) base_ok = 0;
+                }
+                if (!(isalpha((unsigned char)field[0]) || field[0] == '_')) field_ok = 0;
+                for (const char *fp = field; field_ok && *fp; fp++) {
+                    if (!(isalnum((unsigned char)*fp) || *fp == '_')) field_ok = 0;
+                }
+                simple_member = base_ok && field_ok;
             }
+            if (simple_member) {
+                if (blen >= (int)sizeof(base)) blen = (int)sizeof(base) - 1;
+                memcpy(base, inner, blen);
+                base[blen] = '\0';
+                char mvbase[MAX_IDENTIFIER_LEN];
+                mangle_name(base, mvbase, MAX_IDENTIFIER_LEN);
+                if (!symbol_table_has(table, mvbase)) {
+                    char errmsg[256];
+                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
+                    error_state_add(parser_errors, line, col, errmsg);
+                    return 1;
+                }
+                VarType ftype = TYPE_STRING;
+                ObjSchema *osc = obj_lookup(mvbase);
+                if (!osc) {
+                    const char *cname = symbol_table_get_cname(table, mvbase);
+                    if (cname) osc = obj_lookup(cname);
+                }
+                if (osc) {
+                    for (int oi = 0; oi < osc->count; oi++) {
+                        if (strcmp(osc->fields[oi].name, field) == 0) { ftype = osc->fields[oi].type; break; }
+                    }
+                }
+                append_resolved_text(resolved, rlen, var_type_name(ftype));
+                return 1;
+            }
+            /* Complex expression containing '.' (e.g. float literals, method chains): infer */
+            VarType t = infer_expression_text_type(inner, table);
+            append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+            return 1;
         }
-        append_resolved_text(resolved, rlen, var_type_name(ftype));
-        return 1;
     }
 
-    char mvname[MAX_IDENTIFIER_LEN];
-    mangle_name(inner, mvname, MAX_IDENTIFIER_LEN);
-    if (!symbol_table_has(table, mvname) && !is_type_keyword(inner) && !is_bool_value(inner)) {
-        char errmsg[256];
-        snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
-        error_state_add(parser_errors, line, col, errmsg);
-    } else if (symbol_table_has(table, mvname)) {
-        append_resolved_text(resolved, rlen,
-            var_type_name(effective_param_default_type(inner, symbol_table_get(table, mvname))));
-    } else if (is_bool_value(inner)) {
-        append_resolved_text(resolved, rlen, "bool");
-    } else {
-        append_resolved_text(resolved, rlen, inner);
+    /* Simple identifier, literal keyword, or type keyword */
+    {
+        int simple_ident = 0;
+        if (is_bool_value(inner) || is_type_keyword(inner)) simple_ident = 1;
+        else if (isalpha((unsigned char)inner[0]) || inner[0] == '_') {
+            simple_ident = 1;
+            for (const char *cp = inner; *cp; cp++) {
+                if (!(isalnum((unsigned char)*cp) || *cp == '_')) { simple_ident = 0; break; }
+            }
+        }
+        if (simple_ident) {
+            char mvname[MAX_IDENTIFIER_LEN];
+            mangle_name(inner, mvname, MAX_IDENTIFIER_LEN);
+            if (!symbol_table_has(table, mvname) && !is_type_keyword(inner) && !is_bool_value(inner)) {
+                char errmsg[256];
+                snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
+                error_state_add(parser_errors, line, col, errmsg);
+            } else if (symbol_table_has(table, mvname)) {
+                append_resolved_text(resolved, rlen,
+                    var_type_name(effective_param_default_type(inner, symbol_table_get(table, mvname))));
+            } else if (is_bool_value(inner)) {
+                append_resolved_text(resolved, rlen, "bool");
+            } else {
+                append_resolved_text(resolved, rlen, inner);
+            }
+            return 1;
+        }
+    }
+
+    /* General expression fallback */
+    {
+        VarType t = infer_expression_text_type(inner, table);
+        append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
     }
     return 1;
 }
@@ -4471,9 +4522,11 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
     }
 
     /* Type conversion call inside typeof: typeof(toint(...)) → int,
-       typeof(tostring(...)) → string, typeof(tobool(...)) → bool */
+       typeof(tostring(...)) → string, typeof(tobool(...)) → bool.
+       Fast-path only when the conversion call is the sole typeof argument. */
     if (arg.type == TOKEN_IDENT && is_type_conversion(arg.value) &&
         lexer_peek(lexer).type == TOKEN_LPAREN) {
+        int conv_scan_saved = lexer->current; /* before consuming conversion '(' */
         lexer_next(lexer); /* consume ( */
         Token first_inner = lexer_peek(lexer);
         int inner_tokens = 0;
@@ -4490,50 +4543,51 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             else if (itok.type == TOKEN_RPAREN || itok.type == TOKEN_RBRACKET) { if (inner_depth > 0) inner_depth--; }
             lexer_next(lexer);
         }
-        if ((strcmp(arg.value, "toint") == 0 || strcmp(arg.value, "int") == 0 ||
-             strcmp(arg.value, "tofloat") == 0 || strcmp(arg.value, "float") == 0) &&
-            inner_tokens == 1 && first_inner.type == TOKEN_STRING) {
-            const char *sv = first_inner.value;
-            int slen = (int)strlen(sv);
-            int ok = 0;
-            if (slen > 0) {
-                int k = 0; if (sv[k]=='+'||sv[k]=='-') k++;
-                int digits = 0, dot = 0, valid = 1;
-                for (; k < slen; k++) {
-                    if (sv[k] >= '0' && sv[k] <= '9') digits = 1;
-                    else if (sv[k] == '.' && !dot) dot = 1;
-                    else { valid = 0; break; }
-                }
-                if (valid && digits) ok = 1;
-            }
-            if (!ok) {
-                char msg[256];
-                snprintf(msg, sizeof(msg), "Invalid conversion: cannot convert \"%s\" with %s", sv, arg.value);
-                error_state_add(parser_errors, arg.line, arg.col, msg);
-            }
-        }
         if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
-            lexer_next(lexer); /* consume inner ) */
+            lexer_next(lexer); /* consume inner ) of conversion */
         }
-        Token close = lexer_next(lexer); /* consume outer ) */
-        if (close.type != TOKEN_RPAREN) {
-            error_state_add(parser_errors, arg.line, arg.col,
-                "Expected ')' after typeof argument");
-            lexer->current = saved_pos;
-            return 0;
+        /* Sole argument only if next token closes typeof */
+        if (lexer->current < lexer->count && lexer_peek(lexer).type == TOKEN_RPAREN) {
+            if ((strcmp(arg.value, "toint") == 0 || strcmp(arg.value, "int") == 0 ||
+                 strcmp(arg.value, "tofloat") == 0 || strcmp(arg.value, "float") == 0) &&
+                inner_tokens == 1 && first_inner.type == TOKEN_STRING) {
+                const char *sv = first_inner.value;
+                int slen = (int)strlen(sv);
+                int ok = 0;
+                if (slen > 0) {
+                    int k = 0; if (sv[k]=='+'||sv[k]=='-') k++;
+                    int digits = 0, dot = 0, valid = 1;
+                    for (; k < slen; k++) {
+                        if (sv[k] >= '0' && sv[k] <= '9') digits = 1;
+                        else if (sv[k] == '.' && !dot) dot = 1;
+                        else { valid = 0; break; }
+                    }
+                    if (valid && digits) ok = 1;
+                }
+                if (!ok) {
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid conversion: cannot convert \"%s\" with %s", sv, arg.value);
+                    error_state_add(parser_errors, arg.line, arg.col, msg);
+                }
+            }
+            lexer_next(lexer); /* consume outer ) of typeof */
+            VarType cvt;
+            if (strcmp(arg.value, "toint") == 0 || strcmp(arg.value, "int") == 0) cvt = TYPE_INT;
+            else if (strcmp(arg.value, "tofloat") == 0 || strcmp(arg.value, "float") == 0) cvt = TYPE_FLOAT;
+            else if (strcmp(arg.value, "tostring") == 0 || strcmp(arg.value, "string") == 0) cvt = TYPE_STRING;
+            else if (strcmp(arg.value, "tochar") == 0 || strcmp(arg.value, "char") == 0) cvt = TYPE_CHAR;
+            else cvt = TYPE_BOOL; /* tobool/bool */
+            result->type = TOKEN_STRING;
+            strncpy(result->value, var_type_name(cvt), MAX_STRING_LEN - 1);
+            result->value[MAX_STRING_LEN - 1] = '\0';
+            result->line = typeof_tok.line;
+            result->col = typeof_tok.col;
+            return 1;
         }
-        VarType cvt;
-        if (strcmp(arg.value, "toint") == 0 || strcmp(arg.value, "int") == 0) cvt = TYPE_INT;
-        else if (strcmp(arg.value, "tofloat") == 0 || strcmp(arg.value, "float") == 0) cvt = TYPE_FLOAT;
-        else if (strcmp(arg.value, "tostring") == 0 || strcmp(arg.value, "string") == 0) cvt = TYPE_STRING;
-        else if (strcmp(arg.value, "tochar") == 0 || strcmp(arg.value, "char") == 0) cvt = TYPE_CHAR;
-        else cvt = TYPE_BOOL; /* tobool/bool */
-        result->type = TOKEN_STRING;
-        strncpy(result->value, var_type_name(cvt), MAX_STRING_LEN - 1);
-        result->value[MAX_STRING_LEN - 1] = '\0';
-        result->line = typeof_tok.line;
-        result->col = typeof_tok.col;
-        return 1;
+        /* Not a sole conversion-call argument (e.g. typeof(toint(x) + 1));
+           restore and let general expression parsing handle it. */
+        lexer->current = conv_scan_saved;
+        goto typeof_general_expr;
     }
 
     /* User-defined function call inside typeof: typeof(add(1, 2)) */
@@ -4669,6 +4723,7 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
     }
 
     /* General expression argument: typeof(expr) */
+typeof_general_expr:
     {
         int expr_saved = saved_pos + 2; /* position after typeof and ( */
         lexer->current = expr_saved;
@@ -7181,7 +7236,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
         }
         expr_rhs_src[rpos] = '\0';
         char full_expr[MAX_STRING_LEN];
-        snprintf(full_expr, sizeof(full_expr), "%s %c %s", name.value, opchar, expr_rhs_src);
+        snprintf(full_expr, sizeof(full_expr), "%s %c (%s)", name.value, opchar, expr_rhs_src);
         char expr_out[MAX_STRING_LEN];
         VarType etype = parse_expression_from_string(full_expr, table, expr_out, sizeof(expr_out));
         if (!check_set_type_immutable(table, mangled, etype, set_tok.line, set_tok.col, lexer))
