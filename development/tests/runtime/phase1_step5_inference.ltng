@@ -211,3 +211,19 @@ write(typeof(idfn(5) + 0.5))
 # nested typeof/conversion contexts
 write(typeof(toint(1.5) + tofloat(1)))
 write(typeof(toint(tofloat(3)) + 0.5))
+
+# array length in comparisons and expressions
+let la = [1, 2, 3]
+write(la.length == 3)
+write(la.length == 2)
+write(la.length != 3)
+write(3 == la.length)
+write(la.length > 2)
+write(la.length < 4)
+write(typeof(la.length == 3))
+write(typeof(la.length))
+let lb = [1, 2]
+write(la.length == lb.length)
+write(la.length > lb.length)
+if (la.length == 3 && lb.length == 2) { write("ok") } else { write("bad") }
+write("len=$[la.length]")

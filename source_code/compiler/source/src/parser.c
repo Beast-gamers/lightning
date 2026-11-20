@@ -2995,7 +2995,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             char tlenname[MAX_IDENTIFIER_LEN];
                             snprintf(tlenname, sizeof(tlenname), "%s_len", tcname);
                             pos += snprintf(out + pos, out_size - pos,
-                                "%s", tlenname);
+                                "(int)(%s)", tlenname);
                             result_type = TYPE_INT;
                             break;
                         }
@@ -3247,7 +3247,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             strcmp(mname.value, "length") == 0 &&
                                             lexer_peek(lexer).type != TOKEN_LPAREN) {
                                             pos += snprintf(out + pos, out_size - pos,
-                                                "%s", lenname);
+                                                "(int)(%s)", lenname);
                                             result_type = TYPE_INT;
                                             return result_type;
                                         }
