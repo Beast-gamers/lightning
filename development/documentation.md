@@ -867,7 +867,7 @@ if (score >= 90) {
 
 ### Conditions
 
-A condition may be a comparison, a logical expression, a boolean variable, or a number. Any nonzero number and `true` are treated as true; `0` and `false` are false.
+A condition may be a comparison, a logical expression, a boolean variable, a number, or a string. Numeric `0` and boolean `false` are false; nonzero numbers and `true` are true. String conditions use `tobool`-style truthiness in covered paths: `""`, `"0"`, `"f"`, and `"false"` are false, while other non-empty strings are true.
 
 ```
 let n = 3
