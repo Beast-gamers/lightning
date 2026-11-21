@@ -1093,8 +1093,11 @@ static ASTNode *cg_find_fn_by_cname(const char *cname) {
 
 /* Emit the C string expression for a single call argument. */
 static void emit_arg_expr(FILE *out, ASTNode *a) {
-    if (a->var_type == TYPE_ARRAY && a->is_variable && a->value[0] != '\0') {
-        fprintf(out, "_ltng_ah_pack(%s_data, %s_len, %s_cap)", a->value, a->value, a->value);
+    if (a->var_type == TYPE_ARRAY && a->value[0] != '\0') {
+        if (a->is_variable)
+            fprintf(out, "_ltng_ah_pack(%s_data, %s_len, %s_cap)", a->value, a->value, a->value);
+        else
+            fputs(a->value, out);
     } else if (a->var_type == TYPE_STRING && a->value[0] == '"') {
         fputs(a->value, out);
     } else if (a->is_variable && a->value[0] != '\0') {

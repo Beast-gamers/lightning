@@ -3846,6 +3846,19 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         lexer->current = saved_dot;
                                     }
                                 }
+                                /* Plain array variable reference: emit ah handle for expression contexts.
+                                   But if followed by [index] or unrecognized .method, let later handlers deal with it. */
+                                {
+                                    Token _nxt2 = lexer_peek(lexer);
+                                    if (_nxt2.type == TOKEN_LBRACKET) {
+                                        /* let array-access handler below handle it */
+                                        break;
+                                    }
+                                }
+                                pos += snprintf(out + pos, out_size - pos,
+                                    "_ltng_ah_pack(%s_data, %s_len, %s_cap)", cname, cname, cname);
+                                if (!type_locked) result_type = TYPE_ARRAY;
+                                pending_divmod = 0; pending_mod_op_pos = -1;
                                 break;
                         }
                     }
@@ -6078,8 +6091,11 @@ static FuncInfo *find_funcinfo_by_cname(const char *cname) {
 static void append_arg_expr(char *out, int *pos, int out_size, ASTNode *a) {
     int rem = out_size - *pos;
     if (rem <= 1) return;
-    if (a->var_type == TYPE_ARRAY && a->is_variable && a->value[0] != '\0') {
-        *pos += snprintf(out + *pos, rem, "_ltng_ah_pack(%s_data, %s_len, %s_cap)", a->value, a->value, a->value);
+    if (a->var_type == TYPE_ARRAY && a->value[0] != '\0') {
+        if (a->is_variable)
+            *pos += snprintf(out + *pos, rem, "_ltng_ah_pack(%s_data, %s_len, %s_cap)", a->value, a->value, a->value);
+        else
+            *pos += snprintf(out + *pos, rem, "%s", a->value);
     } else if (a->var_type == TYPE_STRING && a->value[0] == '"') {
         *pos += snprintf(out + *pos, rem, "%s", a->value);
     } else if (a->is_variable && a->value[0] != '\0') {
@@ -11622,37 +11638,47 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     saved_enc[MAX_IDENTIFIER_LEN - 1] = 0;
     strncpy(g_enclosing_cname, cname, MAX_IDENTIFIER_LEN - 1);
     g_enclosing_cname[MAX_IDENTIFIER_LEN - 1] = 0;
-    /* Detect if base param is used as array in function body. */
-    if (params && strcmp(params->for_var, "base") == 0) {
-        int scan = lexer->current;
-        int depth = 1;
-        int base_as_array = 0;
-        while (scan < lexer->count && depth > 0) {
-            Token t = lexer->tokens[scan];
-            if (t.type == TOKEN_LBRACE) { depth++; scan++; continue; }
-            if (t.type == TOKEN_RBRACE) { depth--; if (depth == 0) break; scan++; continue; }
-            if ((t.type == TOKEN_IDENT || token_is_name(t)) && strcmp(t.value, "base") == 0) {
-                Token n1 = (scan + 1 < lexer->count) ? lexer->tokens[scan + 1] : t;
-                if (n1.type == TOKEN_DOT) {
-                    Token n2 = (scan + 2 < lexer->count) ? lexer->tokens[scan + 2] : t;
-                    if ((n2.type == TOKEN_IDENT || token_is_name(n2)) &&
-                        (strcmp(n2.value,"push")==0||strcmp(n2.value,"pop")==0||strcmp(n2.value,"insert")==0||
-                         strcmp(n2.value,"remove")==0||strcmp(n2.value,"contains")==0||strcmp(n2.value,"index_of")==0||
-                         strcmp(n2.value,"sort")==0||strcmp(n2.value,"reverse")==0||strcmp(n2.value,"copy")==0||
-                         strcmp(n2.value,"slice")==0||strcmp(n2.value,"length")==0)) {
-                        base_as_array = 1; break;
+    /* Detect params used as arrays in function body (including base). */
+    {
+        ASTNode *pp_scan = params;
+        while (pp_scan) {
+            if (pp_scan->for_var[0]) {
+                int scan = lexer->current;
+                int depth = 1;
+                int param_as_array = 0;
+                while (scan < lexer->count && depth > 0) {
+                    Token t = lexer->tokens[scan];
+                    if (t.type == TOKEN_LBRACE) { depth++; scan++; continue; }
+                    if (t.type == TOKEN_RBRACE) { depth--; if (depth == 0) break; scan++; continue; }
+                    if ((t.type == TOKEN_IDENT || token_is_name(t)) && strcmp(t.value, pp_scan->for_var) == 0) {
+                        Token n1 = (scan + 1 < lexer->count) ? lexer->tokens[scan + 1] : t;
+                        Token p1 = (scan - 1 >= 0) ? lexer->tokens[scan - 1] : t;
+                        if (n1.type == TOKEN_DOT) {
+                            Token n2 = (scan + 2 < lexer->count) ? lexer->tokens[scan + 2] : t;
+                            if ((n2.type == TOKEN_IDENT || token_is_name(n2)) &&
+                                (strcmp(n2.value,"push")==0||strcmp(n2.value,"pop")==0||strcmp(n2.value,"insert")==0||
+                                 strcmp(n2.value,"remove")==0||strcmp(n2.value,"contains")==0||strcmp(n2.value,"index_of")==0||
+                                 strcmp(n2.value,"sort")==0||strcmp(n2.value,"reverse")==0||strcmp(n2.value,"copy")==0||
+                                 strcmp(n2.value,"slice")==0||strcmp(n2.value,"length")==0)) {
+                                param_as_array = 1; break;
+                            }
+                        } else if (n1.type == TOKEN_LBRACKET) {
+                            param_as_array = 1; break;
+                        } else if (p1.type == TOKEN_IN) {
+                            param_as_array = 1; break;
+                        }
                     }
-                } else if (n1.type == TOKEN_LBRACKET) {
-                    base_as_array = 1; break;
+                    scan++;
+                }
+                if (param_as_array) {
+                    pp_scan->var_type = TYPE_ARRAY;
+                    symbol_table_update(func_scope, pp_scan->name, TYPE_ARRAY);
+                    symbol_table_set_array_elem_type(func_scope, pp_scan->name, TYPE_NULL);
+                    if (pp_scan == params && strcmp(pp_scan->for_var, "base") == 0)
+                        fn->base_is_array = 1;
                 }
             }
-            scan++;
-        }
-        if (base_as_array) {
-            fn->base_is_array = 1;
-            params->var_type = TYPE_ARRAY;
-            symbol_table_update(func_scope, params->name, TYPE_ARRAY);
-            symbol_table_set_array_elem_type(func_scope, params->name, TYPE_NULL);
+            pp_scan = pp_scan->next;
         }
     }
     g_in_function++;
