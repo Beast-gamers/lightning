@@ -7310,6 +7310,126 @@ static void parse_const(Lexer *lexer, SymbolTable *table) {
         return;
     }
 
+    /* const b = a        (array copy/alias)
+       const b = a.copy() (array copy via method)
+       const b = a.slice(s, e) (array slice via method) */
+    {
+        Token src_tok = lexer_peek(lexer);
+        if (src_tok.type == TOKEN_IDENT && !is_type_keyword(src_tok.value) && !is_bool_value(src_tok.value)) {
+            char sm[MAX_IDENTIFIER_LEN];
+            mangle_name(src_tok.value, sm, MAX_IDENTIFIER_LEN);
+            if (symbol_table_has(table, sm) && symbol_table_get(table, sm) == TYPE_ARRAY) {
+                Token n2 = lexer->tokens[lexer->current + 1];
+                if (n2.type == TOKEN_NEWLINE || n2.type == TOKEN_EOF || n2.type == TOKEN_RBRACE) {
+                    /* const b = a - plain alias/copy */
+                    lexer_next(lexer); /* consume src ident */
+                    const char *scname = symbol_table_get_cname(table, sm);
+                    int *src_dims = NULL; int src_dim_count = 0;
+                    if (symbol_table_get_array_dims(table, sm, &src_dims, &src_dim_count))
+                        symbol_table_set_array_dims(table, mangled, src_dim_count, src_dims);
+                    symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                    symbol_table_set_const(table, mangled, 1);
+                    if (src_dim_count > 0) symbol_table_set_array_dims(table, mangled, src_dim_count, src_dims);
+                    symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
+                    const char *dcname = symbol_table_get_cname(table, mangled);
+                    ASTNode *node = create_node(NODE_CONST, dcname, "");
+                    node->var_type = TYPE_ARRAY;
+                    node->array_elem_type = symbol_table_get_array_elem_type(table, sm);
+                    node->is_expr = 0;
+                    emit(node);
+                    ASTNode *cp = create_node(NODE_ARRAY_COPY, dcname, (char *)scname);
+                    cp->is_expr = 1;
+                    emit(cp);
+                    return;
+                } else if (n2.type == TOKEN_DOT) {
+                    Token n3 = lexer->tokens[lexer->current + 2];
+                    if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
+                        strcmp(n3.value, "copy") == 0) {
+                        /* const b = a.copy() */
+                        lexer_next(lexer); /* consume src ident */
+                        lexer_next(lexer); /* consume . */
+                        lexer_next(lexer); /* consume copy */
+                        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            error_state_add(parser_errors, n3.line, n3.col, "Expected '(' after 'copy'");
+                            skip_to_newline(lexer); return;
+                        }
+                        lexer_next(lexer); /* consume ( */
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after 'copy()'");
+                            skip_to_newline(lexer); return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        const char *scname = symbol_table_get_cname(table, sm);
+                        int *src_dims2 = NULL; int src_dim_count2 = 0;
+                        if (symbol_table_get_array_dims(table, sm, &src_dims2, &src_dim_count2))
+                            symbol_table_set_array_dims(table, mangled, src_dim_count2, src_dims2);
+                        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        symbol_table_set_const(table, mangled, 1);
+                        if (src_dim_count2 > 0) symbol_table_set_array_dims(table, mangled, src_dim_count2, src_dims2);
+                        symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        ASTNode *node = create_node(NODE_CONST, dcname, "");
+                        node->var_type = TYPE_ARRAY;
+                        node->array_elem_type = symbol_table_get_array_elem_type(table, sm);
+                        node->is_expr = 0;
+                        emit(node);
+                        ASTNode *cp = create_node(NODE_ARRAY_COPY, dcname, (char *)scname);
+                        cp->is_expr = 1;
+                        emit(cp);
+                        /* Support chaining: const b = a.copy().sort().reverse() */
+                        emit_chained_methods_on_array_var(lexer, table, name.value, mangled);
+                        return;
+                    } else if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
+                               strcmp(n3.value, "slice") == 0) {
+                        /* const b = a.slice(s, e) */
+                        lexer_next(lexer); /* consume src ident */
+                        lexer_next(lexer); /* consume . */
+                        lexer_next(lexer); /* consume slice */
+                        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+                            error_state_add(parser_errors, n3.line, n3.col, "Expected '(' after 'slice'");
+                            skip_to_newline(lexer); return;
+                        }
+                        lexer_next(lexer); /* consume ( */
+                        char start_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, start_expr, sizeof(start_expr), 1, 1, NULL, NULL, NULL, NULL);
+                        if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ',' after slice start");
+                            skip_to_newline(lexer); return;
+                        }
+                        lexer_next(lexer); /* consume , */
+                        char end_expr[MAX_STRING_LEN];
+                        collect_expression(lexer, table, end_expr, sizeof(end_expr), 1, 0, NULL, NULL, NULL, NULL);
+                        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                            error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after slice end");
+                            skip_to_newline(lexer); return;
+                        }
+                        lexer_next(lexer); /* consume ) */
+                        const char *scname = symbol_table_get_cname(table, sm);
+                        symbol_table_add_locked(table, mangled, TYPE_ARRAY);
+                        symbol_table_set_const(table, mangled, 1);
+                        symbol_table_set_array_elem_type(table, mangled, symbol_table_get_array_elem_type(table, sm));
+                        const char *dcname = symbol_table_get_cname(table, mangled);
+                        ASTNode *node = create_node(NODE_CONST, dcname, "");
+                        node->var_type = TYPE_ARRAY;
+                        node->array_elem_type = symbol_table_get_array_elem_type(table, sm);
+                        node->is_expr = 0;
+                        emit(node);
+                        char slrange[MAX_STRING_LEN];
+                        snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
+                        ASTNode *sl = create_node(NODE_ARRAY_SLICE, dcname, (char *)scname);
+                        strncpy(sl->array_index, slrange, MAX_STRING_LEN - 1);
+                        sl->array_index[MAX_STRING_LEN - 1] = '\0';
+                        sl->is_expr = 1;
+                        emit(sl);
+                        /* Support chaining: const b = a.slice(1,3).sort() */
+                        emit_chained_methods_on_array_var(lexer, table, name.value, mangled);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     Token next = lexer_peek(lexer);
     VarType vtype;
     Token value;
