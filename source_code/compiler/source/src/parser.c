@@ -6370,6 +6370,169 @@ static int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *ma
     return 1;
 }
 
+/* Parse and emit chained array methods (and scoped user-defined methods) on a known array variable.
+   Called after copy/slice in let/set contexts, e.g. let b = a.copy().sort().reverse()
+   target_src is the original source name (for UDM receiver construction),
+   target_rm is the mangled name used for array method nodes. */
+static void emit_chained_methods_on_array_var(Lexer *lexer, SymbolTable *table,
+                                               const char *target_src, const char *target_rm) {
+    while (lexer_peek(lexer).type == TOKEN_DOT) {
+        int saved_chain = lexer->current;
+        lexer_next(lexer); /* consume . */
+        Token mname = lexer_peek(lexer);
+        if (!(mname.type == TOKEN_IDENT || token_is_name(mname))) {
+            lexer->current = saved_chain;
+            return;
+        }
+        lexer_next(lexer); /* consume method name */
+        if (lexer_peek(lexer).type != TOKEN_LPAREN) {
+            lexer->current = saved_chain;
+            return;
+        }
+
+        int is_array_method = (strcmp(mname.value, "push") == 0 ||
+                               strcmp(mname.value, "pop") == 0 ||
+                               strcmp(mname.value, "insert") == 0 ||
+                               strcmp(mname.value, "remove") == 0 ||
+                               strcmp(mname.value, "sort") == 0 ||
+                               strcmp(mname.value, "reverse") == 0 ||
+                               strcmp(mname.value, "contains") == 0 ||
+                               strcmp(mname.value, "index_of") == 0);
+
+        if (is_array_method) {
+            lexer_next(lexer); /* consume ( */
+            if (strcmp(mname.value, "push") == 0) {
+                char arg_expr[MAX_STRING_LEN];
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after push argument");
+                    skip_to_newline(lexer); return;
+                }
+                lexer_next(lexer);
+                {
+                    VarType cur_et = symbol_table_get_array_elem_type(table, target_rm);
+                    VarType new_et = arg_type;
+                    if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
+                        new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
+                        new_et = TYPE_NULL;
+                    if (cur_et == TYPE_NULL || new_et == TYPE_NULL) cur_et = TYPE_NULL;
+                    else if (cur_et == new_et) { }
+                    else if ((cur_et == TYPE_INT && new_et == TYPE_FLOAT) || (cur_et == TYPE_FLOAT && new_et == TYPE_INT)) cur_et = TYPE_FLOAT;
+                    else cur_et = TYPE_NULL;
+                    symbol_table_set_array_elem_type(table, target_rm, cur_et);
+                }
+                ASTNode *node = create_node(NODE_ARRAY_PUSH, (char *)target_rm, arg_expr);
+                node->var_type = arg_type; node->is_expr = 1; emit(node);
+            } else if (strcmp(mname.value, "insert") == 0) {
+                char idx_expr[MAX_STRING_LEN];
+                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1, NULL, NULL, NULL, NULL);
+                if (lexer_peek(lexer).type != TOKEN_COMMA) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ',' after insert index");
+                    skip_to_newline(lexer); return;
+                }
+                lexer_next(lexer);
+                char arg_expr[MAX_STRING_LEN];
+                VarType arg_type = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after insert argument");
+                    skip_to_newline(lexer); return;
+                }
+                lexer_next(lexer);
+                {
+                    VarType cur_et = symbol_table_get_array_elem_type(table, target_rm);
+                    VarType new_et = arg_type;
+                    if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
+                        new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
+                        new_et = TYPE_NULL;
+                    if (cur_et == TYPE_NULL || new_et == TYPE_NULL) cur_et = TYPE_NULL;
+                    else if (cur_et == new_et) { }
+                    else if ((cur_et == TYPE_INT && new_et == TYPE_FLOAT) || (cur_et == TYPE_FLOAT && new_et == TYPE_INT)) cur_et = TYPE_FLOAT;
+                    else cur_et = TYPE_NULL;
+                    symbol_table_set_array_elem_type(table, target_rm, cur_et);
+                }
+                ASTNode *node = create_node(NODE_ARRAY_INSERT, (char *)target_rm, idx_expr);
+                strncpy(node->array_index, arg_expr, MAX_STRING_LEN - 1);
+                node->array_index[MAX_STRING_LEN - 1] = '\0';
+                node->var_type = arg_type; node->is_expr = 1; emit(node);
+            } else if (strcmp(mname.value, "remove") == 0) {
+                char idx_expr[MAX_STRING_LEN];
+                collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after remove index");
+                    skip_to_newline(lexer); return;
+                }
+                lexer_next(lexer);
+                ASTNode *node = create_node(NODE_ARRAY_REMOVE, (char *)target_rm, idx_expr);
+                node->var_type = TYPE_STRING; node->is_expr = 1; emit(node);
+            } else if (strcmp(mname.value, "sort") == 0) {
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after sort");
+                    skip_to_newline(lexer); return;
+                }
+                lexer_next(lexer);
+                ASTNode *node = create_node(NODE_ARRAY_SORT, (char *)target_rm, "");
+                node->var_type = TYPE_STRING; node->is_expr = 1; emit(node);
+            } else if (strcmp(mname.value, "reverse") == 0) {
+                if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after reverse");
+                    skip_to_newline(lexer); return;
+                }
+                lexer_next(lexer);
+                ASTNode *node = create_node(NODE_ARRAY_REVERSE, (char *)target_rm, "");
+                node->var_type = TYPE_STRING; node->is_expr = 1; emit(node);
+            } else if (strcmp(mname.value, "pop") == 0) {
+                if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                    lexer_next(lexer);
+                    ASTNode *node = create_node(NODE_ARRAY_POP, (char *)target_rm, "");
+                    node->var_type = TYPE_STRING; node->is_expr = 1; emit(node);
+                } else {
+                    char idx_expr[MAX_STRING_LEN];
+                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
+                    if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                        error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after pop index");
+                        skip_to_newline(lexer); return;
+                    }
+                    lexer_next(lexer);
+                    ASTNode *node = create_node(NODE_ARRAY_POP, (char *)target_rm, idx_expr);
+                    node->var_type = TYPE_STRING; node->is_expr = 1; emit(node);
+                }
+            } else {
+                /* contains / index_of as statements - result discarded */
+                if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                    lexer_next(lexer);
+                } else {
+                    char dummy[MAX_STRING_LEN];
+                    collect_expression(lexer, table, dummy, sizeof(dummy), 1, 0, NULL, NULL, NULL, NULL);
+                    if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
+                }
+            }
+        } else if (is_function_name_scoped(table, mname.value)) {
+            /* Chained user-defined method on target */
+            lexer_next(lexer); /* consume ( */
+            ASTNode *recv = create_node(NODE_PARAM, "", "");
+            if (symbol_table_has(table, target_rm)) {
+                recv->is_variable = 1;
+                strncpy(recv->value, target_rm, MAX_STRING_LEN - 1);
+                recv->var_type = symbol_table_get(table, target_rm);
+            } else if (symbol_table_has(table, target_src)) {
+                recv->is_variable = 1;
+                strncpy(recv->value, target_src, MAX_STRING_LEN - 1);
+                recv->var_type = symbol_table_get(table, target_src);
+            } else {
+                recv->is_expr = 1;
+                strncpy(recv->value, target_src, MAX_STRING_LEN - 1);
+                recv->var_type = TYPE_FLOAT;
+            }
+            ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
+            emit(call);
+        } else {
+            lexer->current = saved_chain;
+            return;
+        }
+    }
+}
+
+
 static void parse_let(Lexer *lexer, SymbolTable *table) {
     Token let_tok = lexer_next(lexer);
 
@@ -6588,6 +6751,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         ASTNode *cp = create_node(NODE_ARRAY_COPY, dcname, (char *)scname);
                         cp->is_expr = 1;
                         emit(cp);
+                        /* Support chaining: let b = a.copy().sort().reverse() */
+                        emit_chained_methods_on_array_var(lexer, table, name.value, mangled);
                         return;
                     } else if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
                                strcmp(n3.value, "slice") == 0) {
@@ -6637,6 +6802,8 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         sl->array_index[MAX_STRING_LEN - 1] = '\0';
                         sl->is_expr = 1;
                         emit(sl);
+                        /* Support chaining: let b = a.slice(1,3).sort() */
+                        emit_chained_methods_on_array_var(lexer, table, name.value, mangled);
                         return;
                     }
                 }
@@ -7775,6 +7942,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         ASTNode *cp = create_node(NODE_ARRAY_COPY, (char *)cname, (char *)scname);
                         cp->is_expr = 1;
                         emit(cp);
+                        /* Support chaining: set b = a.copy().sort() */
+                        emit_chained_methods_on_array_var(lexer, table, name.value, mangled);
                         return;
                     } else if ((n3.type == TOKEN_IDENT || token_is_name(n3)) &&
                                strcmp(n3.value, "slice") == 0) {
@@ -7816,6 +7985,8 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         sl->array_index[MAX_STRING_LEN - 1] = '\0';
                         sl->is_expr = 1;
                         emit(sl);
+                        /* Support chaining: set b = a.slice(1,3).sort() */
+                        emit_chained_methods_on_array_var(lexer, table, name.value, mangled);
                         return;
                     }
                 }
