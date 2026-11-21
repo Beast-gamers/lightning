@@ -194,7 +194,8 @@
 
 ### Notes / remaining limitations
 - **Arrays of objects / jagged nested arrays:** not supported as first-class dynamic collections due to the current string-buffer/object runtime model; rectangular multidimensional arrays remain supported. (Likely requires broader runtime/object-model changes in later phases.)
-- **`copy()` / `slice()` as general array-producing expressions:** supported in `let`/`set` array assignment forms, but not in all expression contexts (arrays are not first-class expression values in the current runtime).
+- **`copy()` / `slice()` and array-returning expressions (partial):** `copy()`/`slice()` work in `let`/`set` and in general value-consumed expressions on temp arrays (scalar/formatted-string results). Function-returned arrays are supported via ah handle packing/unpacking, enabling assignment, return, and chaining (e.g. `getArray().sort()`), but arrays are still not fully first-class in all expression/parameter contexts.
+- **Base-parameter UDMs on array receivers (partial):** supported when parser pre-scan detects array usage on `base`; uses ah handle pass/writeback. Functions with `base` not detected as array-used still treat `base` as string.
 - **Element semantics:** values remain string-buffer formatted. `sort` now uses numeric-aware comparison when both compared elements are fully numeric (otherwise string comparison), improving numeric array sorting; `contains`/`index_of` still compare formatted string values. Full value/type semantics remain tied to the runtime/type-system model.
 - **Memory validation:** runtime helpers free/replace elements on mutation/copy/slice paths, but no sanitizer/valgrind/leak-stress runs were recorded in this environment.
 - **Dedicated aliasing (shared storage identity):** current array assignment/copy operations use copy semantics for safety in the existing ownership model; true shared-reference aliasing semantics would require deeper runtime/ownership redesign.

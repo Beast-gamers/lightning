@@ -116,8 +116,9 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Arrays are auto-locked (dtype-immutable) after declaration:** preserved behavior; dynamic dtype/homogeneity evolution is not provided by Phase 3.
 
 #### API and expression-context limitations
-- **`copy()` / `slice()` not available in all expression contexts:** supported in `let` and `set` array assignment forms, but not as general array-producing expressions/temporaries in arbitrary expression positions.
-- **Arrays are not first-class expression values:** limits chaining, passing/returning array-producing expressions, and general expression-context array operations under the current codegen/runtime model.
+- **`copy()` / `slice()` in general expression contexts (partial):** `copy()` and `slice()` work in `let`/`set` array assignment forms and also in general/value-consumed expressions on temp arrays (including chaining and returning scalar or formatted string results). However, they do not produce first-class array values that can be directly assigned as arrays outside supported `let`/`set` forms.
+- **Arrays are not fully first-class expression values (reduced):** function-returned arrays are supported via runtime array-handle packing/unpacking, enabling `let/set a = getArray()`, `return arr`, `return getArray()`, and chaining on array-returning calls (e.g. `getArray().sort()`, `getArray().copy()`) in value-consumed contexts. Arrays still cannot be passed as general array-typed parameters in all contexts, and general array-producing temporary values remain limited by the non-first-class array model.
+- **Base-parameter UDMs on array receivers (partial):** supported for statement/value-consumed calls when the function body uses array operations on `base` (detected by parser pre-scan), using ah handle passing/writeback. Functions whose `base` param is not detected as array-used still treat `base` as a string value.
 
 #### Semantics tied to current runtime/type model
 - **String-buffer element representation:** array elements are stored/formatted as string-backed runtime values.

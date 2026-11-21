@@ -1,0 +1,63 @@
+function getArray() {
+    let a = [3, 1, 2]
+    return a
+}
+
+function getArray2() {
+    let b = [5, 4]
+    return b
+}
+
+# basic return and assignment
+let a = getArray()
+write(a)
+write(getArray())
+
+# chaining on function-returned array
+write(getArray().sort())
+write(getArray().reverse())
+write(getArray().copy())
+write(getArray().push(9))
+write(getArray().pop())
+
+# original not affected by value-consumed chains
+let c = getArray()
+write(c.sort())
+write(c)
+
+# array-returning call in set
+let d = [0]
+set d = getArray()
+write(d)
+
+# base-param method on array receiver
+function mypush(base, val) {
+    base.push(val)
+}
+let e = [1, 2]
+e.mypush(3)
+write(e)
+
+function myreverse(base) {
+    base.reverse()
+}
+let fa = [1, 2, 3]
+fa.myreverse()
+write(fa)
+
+# base-param method value-consumed
+function mypushlen(base, val) {
+    base.push(val)
+    return base.length
+}
+let g = [10, 20]
+write(g.mypushlen(30))
+write(g)
+
+# return array from function and chain
+function make() {
+    let x = [9, 7, 8]
+    return x
+}
+write(make().sort())
+write(make())

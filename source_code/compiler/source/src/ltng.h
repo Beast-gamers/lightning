@@ -163,6 +163,7 @@ typedef struct ASTNode {
     int is_expr;
     int is_default;
     int is_base_assign; /* UFCS call whose return value is assigned to receiver (base param) */
+    int base_is_array;  /* NODE_FUNCTION: first 'base' param used as array */
     int has_catch;      /* NODE_TRY: catch clause present */
     int has_else;       /* NODE_TRY: else (success) clause present */
     int has_finally;    /* NODE_TRY: finally clause present */
