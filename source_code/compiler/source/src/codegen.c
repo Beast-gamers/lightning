@@ -1618,17 +1618,20 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             }
             break;
         }
-        case NODE_ARRAY_POP:
+        case NODE_ARRAY_POP: {
+            char arrname[MAX_IDENTIFIER_LEN];
+            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
             pad(out, indent);
             if (node->value[0] == '\0') {
                 /* pop() - no args, discard result */
-                fprintf(out, "_ltng_arr_pop(%s, &%s_len);\n", node->name, node->name);
+                fprintf(out, "_ltng_arr_pop(%s, &%s_len);\n", arrname, node->name);
             } else {
                 /* pop(index) - discard result */
                 fprintf(out, "{ int __pi = (int)(%s); _ltng_arr_pop_index(%s, &%s_len, __pi); }\n",
-                    node->value, node->name, node->name);
+                    node->value, arrname, node->name);
             }
             break;
+        }
         case NODE_ARRAY_SET: {
             char arrname[MAX_IDENTIFIER_LEN];
             snprintf(arrname, sizeof(arrname), "%s_data", node->name);
