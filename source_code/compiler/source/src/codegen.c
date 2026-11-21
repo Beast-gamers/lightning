@@ -2169,6 +2169,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static int _ltng_idx2(int i0, int i1, int d1) { return i0 * d1 + i1; }\n");
     fprintf(out, "static int _ltng_idx3(int i0, int i1, int i2, int d1, int d2) { return (i0 * d1 + i1) * d2 + i2; }\n");
     fprintf(out, "static char *_ltng_retbuf(void){ static char *b[32]={0}; static int i; i=(i+1)%%32; if(!b[i]) b[i]=_ltng_ds_new(\"\"); else b[i][0]=0; return b[i]; }\n");
+    fprintf(out, "static char *_ltng_retbuf_fmt(const char *fmt, ...){ static char *b[32]={0}; static int i; i=(i+1)%%32; va_list ap; va_start(ap,fmt); char *p=_ltng_ds_vfmt(fmt,ap); va_end(ap); if(b[i]) free(b[i]); b[i]=p; return b[i]; }\n");
     fprintf(out, "static char *_ltng_ad(double v){ static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
     fprintf(out, "static char *_ltng_as(const char *s){ static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_set(&b[i],s); return b[i]; }\n");
     fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%lld\",v); return b[i]; }\n");
