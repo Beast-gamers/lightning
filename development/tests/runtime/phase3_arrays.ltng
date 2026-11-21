@@ -16,19 +16,30 @@ write(arr[6])
 write(arr[7])
 write(arr.length)
 
-# --- Pop ---
+# --- Pop (value-consumed: no mutation, returns value) ---
 write(arr.pop())
 write(arr.pop())
 write(arr.length)
 write(arr[6])
+# statement form mutates
+arr.pop()
+arr.pop()
+write(arr.length)
+write(arr[6])
 
-# --- Pop with index ---
+# --- Pop with index (value-consumed: no mutation) ---
 let pa3 = [10, 20, 30, 40, 50]
 write(pa3.pop(2))
 write(pa3[2])
 write(pa3[4])
 write(pa3.pop(-1))
 write(pa3[4])
+# statement form mutates
+pa3.pop(2)
+write(pa3[2])
+write(pa3[4])
+pa3.pop(-1)
+write(pa3.length)
 
 # --- Insert ---
 let ins = [10, 20, 30]
@@ -47,17 +58,29 @@ write(ins[5])
 write(ins[6])
 write(ins.length)
 
-# --- Remove ---
+# --- Remove (value-consumed: no mutation) ---
 let rem = [10, 20, 30, 40, 50]
-write(rem.remove(3))  # remove position 3 (=30), returns 30
+write(rem.remove(3))  # returns 30, rem unchanged
 write(rem[1])
 write(rem[2])
 write(rem[3])
 write(rem[4])
 write(rem.length)
-write(rem.remove(-1)) # remove last (=50), returns 50
+write(rem.remove(-1)) # returns 50, rem unchanged
 write(rem.length)
-write(rem.remove(1))  # remove first (=10), returns 10
+write(rem.remove(1))  # returns 10, rem unchanged
+write(rem[1])
+write(rem.length)
+# statement form mutates
+rem.remove(3)
+write(rem[1])
+write(rem[2])
+write(rem[3])
+write(rem[4])
+write(rem.length)
+rem.remove(-1)
+write(rem.length)
+rem.remove(1)
 write(rem[1])
 write(rem.length)
 

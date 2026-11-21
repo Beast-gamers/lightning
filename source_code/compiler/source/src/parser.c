@@ -3191,11 +3191,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         ASTNode *recv = make_receiver_arg(table, tok);
                         ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
                         if (call->is_base_assign) {
-                            error_state_add(parser_errors, mname.line, mname.col,
-                                "method call with 'base' parameter cannot be used as an expression");
-                            skip_to_newline(lexer);
-                            pos += snprintf(out + pos, out_size - pos, "0");
-                            break;
+                            /* Value-consumed context: keep receiver intact, use return value */
+                            call->is_base_assign = 0;
                         }
                         char cexpr[MAX_STRING_LEN];
                         build_call_cexpr(call, cexpr, sizeof(cexpr));
@@ -3469,7 +3466,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 pos += snprintf(out + pos, out_size - pos, "0");
                                                 break;
                                             }
-                                            /* Array method call(s) with chaining support */
+                                            /* Array method call(s) with chaining support.
+                                               Value-consumed context: operate on a temp copy to keep
+                                               the original receiver intact, return method result. */
                                             char _chain_prefix[16384] = {0};
                                             int _cp = 0;
                                             int _chain_step = 0;
@@ -3477,6 +3476,13 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             int _is_chained = 0;
                                             int _chain_err = 0;
                                             Token _cm = mname;
+                                            /* Copy original array into temp working array */
+                                            _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                "char **__td=NULL; int __tl=0; int __tc=0; _ltng_arr_copy(%s, &__td, &__tl, &__tc, %s); ",
+                                                arrname, lenname);
+                                            const char *_wa = "__td"; /* working array data */
+                                            const char *_wl = "__tl"; /* working array len */
+                                            const char *_wc = "__tc"; /* working array cap */
                                             for (;;) {
                                                 _chain_step++;
                                                 if (lexer_peek(lexer).type != TOKEN_LPAREN) {
@@ -3496,15 +3502,15 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (arg_type == TYPE_INT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __apv%d[256]; snprintf(__apv%d,256,\"%%lld\",(long long)(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, arrname, lenname, capname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _wa, _wl, _wc, _chain_step);
                                                     } else if (arg_type == TYPE_FLOAT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __apv%d[256]; snprintf(__apv%d,256,\"%%g\",(double)(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, arrname, lenname, capname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _wa, _wl, _wc, _chain_step);
                                                     } else {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __apv%d[256]; snprintf(__apv%d,256,\"%%s\",%s); _ltng_arr_push(&%s,&%s,&%s,__apv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, arrname, lenname, capname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _wa, _wl, _wc, _chain_step);
                                                     }
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ char *__r=_ltng_retbuf(); snprintf(__r,256,\"%%s\",__apv%d); __r; })", _chain_step);
@@ -3513,7 +3519,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (lexer_peek(lexer).type == TOKEN_RPAREN) {
                                                         lexer_next(lexer);
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
-                                                            "char *__pv%d = _ltng_arr_pop(%s, &%s); ", _chain_step, arrname, lenname);
+                                                            "char *__pv%d = _ltng_arr_pop(%s, &%s); ", _chain_step, _wa, _wl);
                                                         snprintf(_final_expr, sizeof(_final_expr), "__pv%d", _chain_step);
                                                     } else {
                                                         char idx_expr[MAX_STRING_LEN];
@@ -3525,13 +3531,13 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         lexer_next(lexer);
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char *__pv%d = _ltng_arr_pop_index(%s, &%s, (int)(%s)); ",
-                                                            _chain_step, arrname, lenname, idx_expr);
+                                                            _chain_step, _wa, _wl, idx_expr);
                                                         snprintf(_final_expr, sizeof(_final_expr), "__pv%d", _chain_step);
                                                     }
                                                     result_type = TYPE_STRING;
                                                 } else if (strcmp(_cm.value, "insert") == 0) {
                                                     char idx_expr[MAX_STRING_LEN];
-                                                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 0, NULL, NULL, NULL, NULL);
+                                                    collect_expression(lexer, table, idx_expr, sizeof(idx_expr), 1, 1, NULL, NULL, NULL, NULL);
                                                     if (lexer_peek(lexer).type != TOKEN_COMMA) {
                                                         error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ',' after insert index");
                                                         skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); _chain_err = 1; break;
@@ -3547,15 +3553,15 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (arg_type == TYPE_INT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __aiv%d[256]; snprintf(__aiv%d,256,\"%%lld\",(long long)(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, arrname, lenname, capname, idx_expr, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _wa, _wl, _wc, idx_expr, _chain_step);
                                                     } else if (arg_type == TYPE_FLOAT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __aiv%d[256]; snprintf(__aiv%d,256,\"%%g\",(double)(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, arrname, lenname, capname, idx_expr, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _wa, _wl, _wc, idx_expr, _chain_step);
                                                     } else {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __aiv%d[256]; snprintf(__aiv%d,256,\"%%s\",%s); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, arrname, lenname, capname, idx_expr, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _wa, _wl, _wc, idx_expr, _chain_step);
                                                     }
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ char *__r=_ltng_retbuf(); snprintf(__r,256,\"%%s\",__aiv%d); __r; })", _chain_step);
@@ -3570,7 +3576,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     lexer_next(lexer);
                                                     _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                         "char *__rv%d = _ltng_arr_pop_index(%s, &%s, (int)(%s)); ",
-                                                        _chain_step, arrname, lenname, idx_expr);
+                                                        _chain_step, _wa, _wl, idx_expr);
                                                     snprintf(_final_expr, sizeof(_final_expr), "__rv%d", _chain_step);
                                                     result_type = TYPE_STRING;
                                                 } else if (strcmp(_cm.value, "contains") == 0) {
@@ -3584,15 +3590,15 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (arg_type == TYPE_INT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __cv%d[256]; snprintf(__cv%d,256,\"%%lld\",(long long)(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, _chain_step, arrname, lenname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _chain_step, _wa, _wl, _chain_step);
                                                     } else if (arg_type == TYPE_FLOAT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __cv%d[256]; snprintf(__cv%d,256,\"%%g\",(double)(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, _chain_step, arrname, lenname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _chain_step, _wa, _wl, _chain_step);
                                                     } else {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __cv%d[256]; snprintf(__cv%d,256,\"%%s\",%s); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, _chain_step, arrname, lenname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _chain_step, _wa, _wl, _chain_step);
                                                     }
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ char *__r=_ltng_retbuf(); snprintf(__r,256,\"%%s\",__cr%d?\"true\":\"false\"); __r; })", _chain_step);
@@ -3608,15 +3614,15 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (arg_type == TYPE_INT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __iv%d[256]; snprintf(__iv%d,256,\"%%lld\",(long long)(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, _chain_step, arrname, lenname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _chain_step, _wa, _wl, _chain_step);
                                                     } else if (arg_type == TYPE_FLOAT) {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __iv%d[256]; snprintf(__iv%d,256,\"%%g\",(double)(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, _chain_step, arrname, lenname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _chain_step, _wa, _wl, _chain_step);
                                                     } else {
                                                         _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
                                                             "char __iv%d[256]; snprintf(__iv%d,256,\"%%s\",%s); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); ",
-                                                            _chain_step, _chain_step, arg_expr, _chain_step, arrname, lenname, _chain_step);
+                                                            _chain_step, _chain_step, arg_expr, _chain_step, _wa, _wl, _chain_step);
                                                     }
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ char *__r=_ltng_retbuf(); snprintf(__r,256,\"%%d\",__ir%d); __r; })", _chain_step);
@@ -3628,7 +3634,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     }
                                                     lexer_next(lexer);
                                                     _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
-                                                        "_ltng_arr_sort(%s, %s); ", arrname, lenname);
+                                                        "_ltng_arr_sort(%s, %s); ", _wa, _wl);
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ char *__r=_ltng_retbuf(); snprintf(__r,256,\"true\"); __r; })");
                                                     result_type = TYPE_STRING;
@@ -3639,7 +3645,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     }
                                                     lexer_next(lexer);
                                                     _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
-                                                        "_ltng_arr_reverse(%s, %s); ", arrname, lenname);
+                                                        "_ltng_arr_reverse(%s, %s); ", _wa, _wl);
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ char *__r=_ltng_retbuf(); snprintf(__r,256,\"true\"); __r; })");
                                                     result_type = TYPE_STRING;
@@ -3669,13 +3675,16 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 break;
                                             }
                                             if (!_chain_err) {
-                                                if (_is_chained) {
-                                                    pos += snprintf(out + pos, out_size - pos, "({ %s%s; })", _chain_prefix, _final_expr);
-                                                } else {
-                                                    /* Single method: emit as before for compatibility */
-                                                    pos += snprintf(out + pos, out_size - pos, "({ %s%s; })", _chain_prefix, _final_expr);
-                                                }
+                                                /* Capture final result, free temp array copy, return result */
+                                                pos += snprintf(out + pos, out_size - pos,
+                                                    "({ %schar *__fres = (char *)(%s); for(int _fi=0;_fi<__tl;_fi++){if(__td[_fi])free(__td[_fi]);} free(__td); __fres; })",
+                                                    _chain_prefix, _final_expr);
                                                 /* result_type already set by last method */
+                                            } else {
+                                                /* On error, still emit cleanup if possible */
+                                                pos += snprintf(out + pos, out_size - pos,
+                                                    "({ %sfor(int _fi=0;_fi<__tl;_fi++){if(__td[_fi])free(__td[_fi]);} free(__td); (char *)\"0\"; })",
+                                                    _chain_prefix);
                                             }
                                             goto _arr_method_result_done;
                                         }
@@ -5188,39 +5197,9 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             snprintf(lenname, sizeof(lenname), "%s_len", rm);
             char capname[MAX_IDENTIFIER_LEN];
             snprintf(capname, sizeof(capname), "%s_cap", rm);
-            /* If chained array methods follow, fall through to general expression parsing
-               which now supports chaining. Detect by scanning past this method call. */
-            {
-                int _wscan = lexer->current;
-                /* arr, ., method, ( */
-                _wscan += 4;
-                int _wdepth = 1;
-                int _is_chain = 0;
-                while (_wscan < lexer->count && _wdepth > 0) {
-                    TokenType _wt = lexer->tokens[_wscan].type;
-                    if (_wt == TOKEN_LPAREN) _wdepth++;
-                    else if (_wt == TOKEN_RPAREN) _wdepth--;
-                    _wscan++;
-                }
-                /* _wscan now points just after method's closing ) */
-                if (_wdepth == 0 && _wscan < lexer->count && lexer->tokens[_wscan].type == TOKEN_DOT) {
-                    int _wscan2 = _wscan + 1;
-                    if (_wscan2 < lexer->count) {
-                        Token _wnm = lexer->tokens[_wscan2];
-                        if ((_wnm.type == TOKEN_IDENT || token_is_name(_wnm)) &&
-                            (strcmp(_wnm.value, "push") == 0 || strcmp(_wnm.value, "pop") == 0 ||
-                             strcmp(_wnm.value, "insert") == 0 || strcmp(_wnm.value, "remove") == 0 ||
-                             strcmp(_wnm.value, "contains") == 0 || strcmp(_wnm.value, "index_of") == 0 ||
-                             strcmp(_wnm.value, "sort") == 0 || strcmp(_wnm.value, "reverse") == 0) &&
-                            _wscan2 + 1 < lexer->count && lexer->tokens[_wscan2 + 1].type == TOKEN_LPAREN) {
-                            _is_chain = 1;
-                        }
-                    }
-                }
-                if (_is_chain) {
-                    goto _write_array_method_fallback;
-                }
-            }
+            /* Value-consumed context: use general expression parsing so array
+               methods operate on a temp copy and do not mutate the original. */
+            goto _write_array_method_fallback;
             /* current points to arr; consume arr, ., method, ( */
             lexer_next(lexer); /* consume arr (already peeked as first) */
             lexer_next(lexer); /* consume . */
@@ -5780,10 +5759,8 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                 ASTNode *recv = make_receiver_arg(table, arg);
                 ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
                 if (call->is_base_assign) {
-                    error_state_add(parser_errors, mname.line, mname.col,
-                        "method call with 'base' parameter cannot be used as an expression");
-                    skip_to_newline(lexer);
-                    return;
+                    /* Value-consumed context (write arg): keep receiver intact, use return value */
+                    call->is_base_assign = 0;
                 }
                 char cexpr[MAX_STRING_LEN];
                 build_call_cexpr(call, cexpr, sizeof(cexpr));
@@ -6019,77 +5996,110 @@ static void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size) {
 
 static int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size) {
     int chained = 0;
-    while (lexer_peek(lexer).type == TOKEN_LPAREN) {
-        chained = 1;
-        if ((int)strlen(cexpr) > 2000) {
-            error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col,
-                "Chained call expression too deep/complex");
-            /* consume remaining chained call groups */
-            while (lexer_peek(lexer).type == TOKEN_LPAREN) {
-                int d = 0;
-                do {
-                    Token t = lexer_next(lexer);
-                    if (t.type == TOKEN_LPAREN) d++;
-                    else if (t.type == TOKEN_RPAREN) d--;
-                    else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) { d = 0; break; }
-                } while (d > 0);
+    while (1) {
+        if (lexer_peek(lexer).type == TOKEN_LPAREN) {
+            chained = 1;
+            if ((int)strlen(cexpr) > 2000) {
+                error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col,
+                    "Chained call expression too deep/complex");
+                /* consume remaining chained call groups */
+                while (lexer_peek(lexer).type == TOKEN_LPAREN) {
+                    int d = 0;
+                    do {
+                        Token t = lexer_next(lexer);
+                        if (t.type == TOKEN_LPAREN) d++;
+                        else if (t.type == TOKEN_RPAREN) d--;
+                        else if (t.type == TOKEN_NEWLINE || t.type == TOKEN_EOF) { d = 0; break; }
+                    } while (d > 0);
+                }
+                return chained;
             }
-            return chained;
-        }
-        int cline = lexer_peek(lexer).line, ccol = lexer_peek(lexer).col;
-        lexer_next(lexer); /* consume ( */
-        ASTNode *args = NULL, *last = NULL;
-        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
-            while (1) {
-                char arg_expr[MAX_STRING_LEN];
-                VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 1, NULL, NULL, NULL, NULL);
-                ASTNode *an = create_node(NODE_PARAM, "", arg_expr);
-                an->var_type = at; an->is_expr = 1;
-                an->v_sl = g_expr_sl; an->v_sc = g_expr_sc; an->v_el = g_expr_el; an->v_ec = g_expr_ec;
-                if (!args) args = last = an; else { last->next = an; last = an; }
-                Token sep = lexer_peek(lexer);
-                if (sep.type == TOKEN_COMMA) { lexer_next(lexer); continue; }
+            int cline = lexer_peek(lexer).line, ccol = lexer_peek(lexer).col;
+            lexer_next(lexer); /* consume ( */
+            ASTNode *args = NULL, *last = NULL;
+            if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                while (1) {
+                    char arg_expr[MAX_STRING_LEN];
+                    VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 1, NULL, NULL, NULL, NULL);
+                    ASTNode *an = create_node(NODE_PARAM, "", arg_expr);
+                    an->var_type = at; an->is_expr = 1;
+                    an->v_sl = g_expr_sl; an->v_sc = g_expr_sc; an->v_el = g_expr_el; an->v_ec = g_expr_ec;
+                    if (!args) args = last = an; else { last->next = an; last = an; }
+                    Token sep = lexer_peek(lexer);
+                    if (sep.type == TOKEN_COMMA) { lexer_next(lexer); continue; }
+                    break;
+                }
+            }
+            if (lexer_peek(lexer).type != TOKEN_RPAREN) {
+                error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col,
+                    "Expected ')' in chained call");
+                return chained;
+            }
+            lexer_next(lexer); /* consume ) */
+            int argc = 0; for (ASTNode *a = args; a; a = a->next) argc++;
+            char next_expr[MAX_STRING_LEN]; int p = 0;
+            static int _chain_id = 0; int cid = _chain_id++;
+            p += snprintf(next_expr + p, sizeof(next_expr) - p,
+                "({ char __ct%d[256]; snprintf(__ct%d,256,\"%%s\",%s); __ltng_call_indirect(__ct%d,_ltng_retbuf(),%d,%d,%d",
+                cid, cid, cexpr, cid, cline > 0 ? cline : 1, ccol > 0 ? ccol : 1, argc);
+            if (p >= (int)sizeof(next_expr)) p = (int)sizeof(next_expr) - 1;
+            for (ASTNode *a = args; a && p < (int)sizeof(next_expr) - 1; a = a->next) {
+                int rem = (int)sizeof(next_expr) - p;
+                if (a->var_type == TYPE_STRING && a->value[0] == '"')
+                    p += snprintf(next_expr + p, rem, ",%s", a->value);
+                else if (a->is_variable && a->value[0] != '\0')
+                    p += snprintf(next_expr + p, rem, ",%s", a->value);
+                else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT || a->var_type == TYPE_CHAR) && a->value[0] != '\0')
+                    p += snprintf(next_expr + p, rem, ",%s", a->value);
+                else if (a->var_type == TYPE_BOOL && a->value[0] != '\0')
+                    p += snprintf(next_expr + p, rem, ",((%s)?\"true\":\"false\")", a->value);
+                else if (a->value[0] == '\0')
+                    p += snprintf(next_expr + p, rem, ",\"\"");
+                else
+                    p += snprintf(next_expr + p, rem, ",_ltng_ad((double)(%s))", a->value);
+                if (p >= (int)sizeof(next_expr)) p = (int)sizeof(next_expr) - 1;
+            }
+            if (p < (int)sizeof(next_expr) - 1)
+                p += snprintf(next_expr + p, (int)sizeof(next_expr) - p, "); })");
+            next_expr[sizeof(next_expr) - 1] = '\0';
+            if (p >= (int)sizeof(next_expr) - 1) {
+                error_state_add(parser_errors, cline, ccol, "Chained call expression too deep/complex");
+                return chained;
+            }
+            strncpy(cexpr, next_expr, cexpr_size - 1);
+            cexpr[cexpr_size - 1] = '\0';
+            continue;
+        } else if (lexer_peek(lexer).type == TOKEN_DOT) {
+            /* UFCS method chain on expression result: expr.method(args)
+               Value-consumed context: keep receiver intact, use return value. */
+            int saved_dot = lexer->current;
+            lexer_next(lexer); /* consume . */
+            Token mname = lexer_peek(lexer);
+            if (!((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
+                  is_function_name_scoped(table, mname.value) &&
+                  lexer->current + 1 < lexer->count &&
+                  lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN)) {
+                lexer->current = saved_dot;
                 break;
             }
+            lexer_next(lexer); /* consume method name */
+            lexer_next(lexer); /* consume ( */
+            /* Build receiver arg from current cexpr string */
+            ASTNode *recv = create_node(NODE_PARAM, "", "");
+            recv->is_expr = 1;
+            recv->var_type = TYPE_STRING;
+            strncpy(recv->value, cexpr, MAX_STRING_LEN - 1);
+            recv->value[MAX_STRING_LEN - 1] = '\0';
+            ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
+            if (call->is_base_assign) {
+                /* Value-consumed context: keep receiver intact, use return value */
+                call->is_base_assign = 0;
+            }
+            build_call_cexpr(call, cexpr, cexpr_size);
+            chained = 1;
+            continue;
         }
-        if (lexer_peek(lexer).type != TOKEN_RPAREN) {
-            error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col,
-                "Expected ')' in chained call");
-            return chained;
-        }
-        lexer_next(lexer); /* consume ) */
-        int argc = 0; for (ASTNode *a = args; a; a = a->next) argc++;
-        char next_expr[MAX_STRING_LEN]; int p = 0;
-        static int _chain_id = 0; int cid = _chain_id++;
-        p += snprintf(next_expr + p, sizeof(next_expr) - p,
-            "({ char __ct%d[256]; snprintf(__ct%d,256,\"%%s\",%s); __ltng_call_indirect(__ct%d,_ltng_retbuf(),%d,%d,%d",
-            cid, cid, cexpr, cid, cline > 0 ? cline : 1, ccol > 0 ? ccol : 1, argc);
-        if (p >= (int)sizeof(next_expr)) p = (int)sizeof(next_expr) - 1;
-        for (ASTNode *a = args; a && p < (int)sizeof(next_expr) - 1; a = a->next) {
-            int rem = (int)sizeof(next_expr) - p;
-            if (a->var_type == TYPE_STRING && a->value[0] == '"')
-                p += snprintf(next_expr + p, rem, ",%s", a->value);
-            else if (a->is_variable && a->value[0] != '\0')
-                p += snprintf(next_expr + p, rem, ",%s", a->value);
-            else if ((a->var_type == TYPE_STRING || a->var_type == TYPE_OBJECT || a->var_type == TYPE_CHAR) && a->value[0] != '\0')
-                p += snprintf(next_expr + p, rem, ",%s", a->value);
-            else if (a->var_type == TYPE_BOOL && a->value[0] != '\0')
-                p += snprintf(next_expr + p, rem, ",((%s)?\"true\":\"false\")", a->value);
-            else if (a->value[0] == '\0')
-                p += snprintf(next_expr + p, rem, ",\"\"");
-            else
-                p += snprintf(next_expr + p, rem, ",_ltng_ad((double)(%s))", a->value);
-            if (p >= (int)sizeof(next_expr)) p = (int)sizeof(next_expr) - 1;
-        }
-        if (p < (int)sizeof(next_expr) - 1)
-            p += snprintf(next_expr + p, (int)sizeof(next_expr) - p, "); })");
-        next_expr[sizeof(next_expr) - 1] = '\0';
-        if (p >= (int)sizeof(next_expr) - 1) {
-            error_state_add(parser_errors, cline, ccol, "Chained call expression too deep/complex");
-            return chained;
-        }
-        strncpy(cexpr, next_expr, cexpr_size - 1);
-        cexpr[cexpr_size - 1] = '\0';
+        break;
     }
     return chained;
 }
@@ -6178,10 +6188,10 @@ static int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexp
         return 0;
     }
 
-    if (call->is_base_assign && !allow_base_assign) {
-        lexer->current = saved; return 0;
+    if (call->is_base_assign) {
+        /* Value-consumed sole-call context: keep receiver intact, use return value */
+        call->is_base_assign = 0;
     }
-    if (allow_base_assign) call->is_base_assign = 0;
 
     /* handle chained immediate calls: expr()(args)... */
     char cur_expr[MAX_STRING_LEN];
@@ -9788,8 +9798,8 @@ static int try_parse_call_arg(Lexer *lexer, SymbolTable *table, char *cexpr, int
     lexer_next(lexer); /* consume ( */
     ASTNode *call = parse_call_node(lexer, table, fname.value, fname.line, fname.col, NULL);
     if (call->is_base_assign) {
-        lexer->current = saved;
-        return 0;
+        /* Value-consumed call-arg context: keep receiver intact, use return value */
+        call->is_base_assign = 0;
     }
     Token after = lexer_peek(lexer);
     if (after.type != TOKEN_COMMA && after.type != TOKEN_RPAREN) {
@@ -10917,7 +10927,7 @@ static void parse_return(Lexer *lexer, SymbolTable *table) {
                strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
             char sole_call_cname[MAX_IDENTIFIER_LEN] = "";
             VarType sole_call_type = TYPE_STRING;
-            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 0, &sole_call_type, sole_call_cname, sizeof(sole_call_cname))) {
+            if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &sole_call_type, sole_call_cname, sizeof(sole_call_cname))) {
                 etype = sole_call_type;
                 if (etype == TYPE_NULL || etype == TYPE_VOID) etype = TYPE_STRING;
                 ASTNode *node = create_node(NODE_RETURN, "", expr);

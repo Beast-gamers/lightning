@@ -1,13 +1,17 @@
 # UFCS / method-style calls
 # A function can be called as: receiver.func(args...) which is equivalent
-# to func(receiver, args...). When used as a statement, the return value
-# is discarded.
+# to func(receiver, args...).
 #
-# A function whose first parameter is named "base" is special:
-#   * receiver.baseFunc(args) assigns the return value back to receiver.
-#   * It cannot be called as a plain function: baseFunc(receiver, args) is an error.
-#   * It cannot be used in an expression: write(receiver.baseFunc(args)) or
-#     let c = receiver.baseFunc(args) is an error.
+# Base-parameter UDMs (first parameter named "base") and predefined/array
+# methods follow this rule:
+#   * Statement form (result discarded): apply to the receiver/base.
+#   * Value-consumed context (let/set, args, conditions, write, return, ...):
+#     keep the original receiver intact and use the method's return value.
+# For chained calls in value-consumed contexts, operate on a temp/working value
+# through the chain and use the final method's return value.
+#
+# Base-parameter UDMs cannot be called as plain functions:
+#   baseFunc(receiver, args) is an error; use receiver.baseFunc(args).
 
 function a(p) {
     return p + 1
@@ -45,9 +49,13 @@ write(b)            # 15
 b.inc(3)            # b = 15 + 3 = 18
 write(b)            # 18
 
+# --- base parameter in value-consumed context: receiver unchanged, return value used ---
+let before = b
+let c = b.inc(2)    # b unchanged, c = 20
+write(b)            # 18
+write(c)            # 20
+write(b.inc(1))     # 19 (b still unchanged)
+write(b)            # 18
+
 # --- base parameter: plain call is rejected (compile error) ---
 # inc(b, 5)         # error: must use method syntax
-
-# --- base parameter: expression use is rejected (compile error) ---
-# write(b.inc(2))   # error: cannot be used as an expression
-# let c = b.inc(2)  # error: cannot be used as an expression

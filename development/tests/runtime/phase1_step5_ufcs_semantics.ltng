@@ -1,0 +1,81 @@
+# UFCS/base-param and predefined array method semantics:
+# - statement form (result discarded): mutate/write back receiver
+# - value-consumed context: keep original receiver intact, use return value
+
+function add1(base) { return base + "1" }
+function add2(base) { return base + "2" }
+
+# base-param UDM: statement mutates
+let s = "x"
+s.add1()
+write(s)
+s.add1().add2()
+write(s)
+
+# base-param UDM: value-consumed keeps receiver intact
+let s2 = "a"
+let r1 = s2.add1()
+write(s2)
+write(r1)
+write(s2.add1())
+write(s2)
+let r2 = s2.add1().add2()
+write(s2)
+write(r2)
+
+# base-param UDM in args/conditions/return
+function id(x) { return x }
+function wrap(base) { return "[" + base + "]" }
+let s3 = "z"
+write(id(s3.wrap()))
+write(s3)
+if (s3.wrap() == "[z]") { write("ok") } else { write("bad") }
+write(s3)
+function ret_udm(x) { return x.add1() }
+let s4 = "q"
+write(ret_udm(s4))
+write(s4)
+
+# array methods: statement mutates
+let a = [3, 1, 2]
+a.sort()
+write(a)
+a.reverse()
+write(a)
+
+# array methods: value-consumed keeps receiver intact
+let b = [3, 1, 2]
+let bv = b.sort()
+write(b)
+write(bv)
+let c = [3, 1, 2]
+let cv = c.sort().reverse()
+write(c)
+write(cv)
+let d = [1, 2]
+let dv = d.push(3)
+write(d)
+write(dv)
+let e = [1, 2, 3]
+let ev = e.pop()
+write(e)
+write(ev)
+let m = [1, 3]
+let mv = m.insert(2, 2)
+write(m)
+write(mv)
+let g = [1, 2, 3]
+let gv = g.remove(2)
+write(g)
+write(gv)
+
+# array methods in write/conditions/args keep receiver intact
+let h = [3, 1, 2]
+write(h.sort())
+write(h)
+if (h.contains("2") == "true") { write("yes") } else { write("no") }
+write(h)
+function echo(x) { return x }
+let k = [2, 1]
+write(echo(k.sort()))
+write(k)
