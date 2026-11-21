@@ -1,4 +1,5 @@
 #include "ltng.h"
+#include <stdarg.h>
 
 static ErrorState *parser_errors = NULL;
 static int g_break_depth = 0;
@@ -6,6 +7,19 @@ static ASTNode *g_list = NULL;
 static int g_stmt_line = 0;
 static int g_stmt_col = 0;
 static int g_expr_sl=0,g_expr_sc=0,g_expr_el=0,g_expr_ec=0;
+
+static char *_ltng_cfmt(const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int n = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    if (n < 0) { char *p = (char*)malloc(1); if(p) p[0]=0; return p; }
+    char *p = (char*)malloc((size_t)n + 1);
+    if (!p) return NULL;
+    va_start(ap, fmt);
+    vsnprintf(p, (size_t)n + 1, fmt, ap);
+    va_end(ap);
+    return p;
+}
 
 #define MAX_FUNCS 256
 #define MAX_FUNC_PARAMS 32
@@ -1301,27 +1315,26 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                 else { int hd = 0; for (; *lsp; lsp++) { if (isdigit((unsigned char)*lsp)) hd = 1; else if (*lsp == '.') {} else { left_is_num = 0; break; } } if (!hd) left_is_num = 0; }
             }
             char str_operand[4096];
-            char countbuf[256];
+            char *countbuf = NULL;
             if (left_is_num && !right_is_num) {
                 /* number * "string" (or number * string-expr) */
                 strncpy(str_operand, right, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
                 normalize_string_expr(str_operand, sizeof(str_operand), array_access_used, table);
-                snprintf(countbuf, sizeof(countbuf), "%s", left);
+                countbuf = _ltng_cfmt("%s", left);
             } else if (right_is_num) {
                 strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
                 normalize_string_expr(str_operand, sizeof(str_operand), array_access_used, table);
-                snprintf(countbuf, sizeof(countbuf), "%s", right);
+                countbuf = _ltng_cfmt("%s", right);
             } else {
                 /* variable * variable: assume left is string, right is count */
                 strncpy(str_operand, left, sizeof(str_operand)-1); str_operand[sizeof(str_operand)-1]=0;
                 normalize_string_expr(str_operand, sizeof(str_operand), array_access_used, table);
-                snprintf(countbuf, sizeof(countbuf), "atoll(%s)", right);
+                countbuf = _ltng_cfmt("atoll(%s)", right);
             }
-            char rep[8192];
-            snprintf(rep, sizeof(rep), "_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf);
-            char nb[8192];
-            snprintf(nb, sizeof(nb), "%.*s%s%s", bs, work, rep, work + be + 1);
+            char *rep = _ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf ? countbuf : "0");
+            char *nb = _ltng_cfmt("%.*s%s%s", bs, work, rep, work + be + 1);
             strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+            free(countbuf); free(rep); free(nb);
         }
     }
 
@@ -1376,7 +1389,7 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
     int replaced = 0;
 
     while (*src && (int)(dst - result) < 4095) {
-        char left[256], right[256];
+        char left[4096], right[4096];
 
         if (is_add_operand(src, left, sizeof(left))) {
             const char *after_left = src;
@@ -2871,9 +2884,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             if (valid && digits) ok = 1;
                         }
                         if (!ok) {
-                            char msg[256];
-                            snprintf(msg, sizeof(msg), "Invalid conversion: cannot convert \"%.*s\" with %s", slen, sv, tok.value);
-                            error_state_add(parser_errors, tok.line, tok.col, msg);
+                            char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%.*s\" with %s", slen, sv, tok.value);
+                            error_state_add(parser_errors, tok.line, tok.col, msg ? msg : "");
+                            free(msg);
                         }
                     }
 
@@ -3329,9 +3342,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "\"%s\"", fndef->name);
                             if (!type_locked) result_type = TYPE_STRING;
                         } else {
-                            char errmsg[256];
-                            snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", tok.value);
-                            error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                            char *errmsg = _ltng_cfmt("Variable '%s' not declared", tok.value);
+                            error_state_add(parser_errors, tok.line, tok.col, errmsg ? errmsg : "");
+                            free(errmsg);
                             pos += snprintf(out + pos, out_size - pos, "0");
                         }
                     } else {
@@ -3473,11 +3486,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                              strcmp(mname.value, "sort") == 0 ||
                                              strcmp(mname.value, "reverse") == 0)) {
                                             if (lexer_peek(lexer).type != TOKEN_LPAREN) {
-                                                char errmsg[256];
-                                                snprintf(errmsg, sizeof(errmsg),
-                                                    "Expected '(' after '%s'", mname.value);
-                                                error_state_add(parser_errors, mname.line, mname.col,
-                                                    errmsg);
+                                                char *errmsg = _ltng_cfmt("Expected '(' after '%s'", mname.value);
+                                                error_state_add(parser_errors, mname.line, mname.col, errmsg ? errmsg : "");
+                                                free(errmsg);
                                                 skip_to_newline(lexer);
                                                 pos += snprintf(out + pos, out_size - pos, "0");
                                                 break;
@@ -3947,11 +3958,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 }
 
                                 if (index_count != dim_count) {
-                                    char errmsg[256];
-                                    snprintf(errmsg, sizeof(errmsg),
-                                        "Array '%s' has %d dimension(s) but %d index(es) were given",
-                                        tok.value, dim_count, index_count);
-                                    error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                                    char *errmsg = _ltng_cfmt("Array '%s' has %d dimension(s) but %d index(es) were given", tok.value, dim_count, index_count);
+                                    error_state_add(parser_errors, tok.line, tok.col, errmsg ? errmsg : "");
+                                    free(errmsg);
                                     pos += snprintf(out + pos, out_size - pos, "0");
                                 } else {
                                     char arrname[MAX_IDENTIFIER_LEN];
@@ -4026,9 +4035,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 pos += snprintf(out + pos, out_size - pos, "0");
                             }
                         } else {
-                            char errmsg[256];
-                            snprintf(errmsg, sizeof(errmsg), "Variable '%s' is not an array", tok.value);
-                            error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                            char *errmsg = _ltng_cfmt("Variable '%s' is not an array", tok.value);
+                            error_state_add(parser_errors, tok.line, tok.col, errmsg ? errmsg : "");
+                            free(errmsg);
                             pos += snprintf(out + pos, out_size - pos, "0");
                             /* Consume remaining index brackets so parsing stays in sync. */
                             while (lexer_peek(lexer).type == TOKEN_LBRACKET) {
@@ -4295,9 +4304,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 char mangled[MAX_IDENTIFIER_LEN];
                 mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
                 if (!symbol_table_has(table, mangled)) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", tok.value);
-                    error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Variable '%s' not declared", tok.value);
+                    error_state_add(parser_errors, tok.line, tok.col, errmsg ? errmsg : "");
+                    free(errmsg);
                     pos += snprintf(out + pos, out_size - pos, "0");
                 } else {
                     VarType vtype = symbol_table_get(table, mangled);
@@ -4317,10 +4326,9 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
             default:
                 /* Unexpected token in expression context: report instead of silently dropping. */
                 if (tok.type != TOKEN_EOF && tok.type != TOKEN_NEWLINE) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Unexpected token '%s' in expression",
-                        tok.value[0] ? tok.value : "?");
-                    error_state_add(parser_errors, tok.line, tok.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Unexpected token '%s' in expression", tok.value[0] ? tok.value : "?");
+                    error_state_add(parser_errors, tok.line, tok.col, errmsg ? errmsg : "");
+                    free(errmsg);
                 }
                 break;
         }
@@ -4716,8 +4724,9 @@ static int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                         for (; sv[k]; k++) { if (isdigit((unsigned char)sv[k])) digits=1; else if (sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} }
                         if (valid && digits) ok = 1;
                         if (!ok) {
-                            char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %s", sv, _conv_cname);
-                            error_state_add(parser_errors, line, col, msg);
+                            char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%s\" with %s", sv, _conv_cname);
+                            error_state_add(parser_errors, line, col, msg ? msg : "");
+                            free(msg);
                         }
                     }
                 }
@@ -4799,9 +4808,9 @@ static int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 char mvbase[MAX_IDENTIFIER_LEN];
                 mangle_name(base, mvbase, MAX_IDENTIFIER_LEN);
                 if (!symbol_table_has(table, mvbase)) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
-                    error_state_add(parser_errors, line, col, errmsg);
+                    char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in typeof)", inner);
+                    error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
+                    free(errmsg);
                     return 1;
                 }
                 VarType ftype = TYPE_STRING;
@@ -4839,9 +4848,9 @@ static int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
             char mvname[MAX_IDENTIFIER_LEN];
             mangle_name(inner, mvname, MAX_IDENTIFIER_LEN);
             if (!symbol_table_has(table, mvname) && !is_type_keyword(inner) && !is_bool_value(inner)) {
-                char errmsg[256];
-                snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared (used in typeof)", inner);
-                error_state_add(parser_errors, line, col, errmsg);
+                char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in typeof)", inner);
+                error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
+                free(errmsg);
             } else if (symbol_table_has(table, mvname)) {
                 append_resolved_text(resolved, rlen,
                     var_type_name(effective_param_default_type(inner, symbol_table_get(table, mvname))));
@@ -4902,10 +4911,9 @@ static void resolve_string_interpolation(Token *tok, SymbolTable *table, int lin
                         char mvname[MAX_IDENTIFIER_LEN];
                         mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
                         if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                            char errmsg[256];
-                            snprintf(errmsg, sizeof(errmsg),
-                                "Variable '%s' not declared (used in string interpolation)", vname);
-                            error_state_add(parser_errors, line, col, errmsg);
+                            char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in string interpolation)", vname);
+                            error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
+                            free(errmsg);
                         }
                         int voff = (int)(vstart - 2 - tok->value);
                         int vtotal = (int)(sp - (vstart - 2) + 1);
@@ -5094,9 +5102,9 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                     if (valid && digits) ok = 1;
                 }
                 if (!ok) {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg), "Invalid conversion: cannot convert \"%s\" with %s", sv, arg.value);
-                    error_state_add(parser_errors, arg.line, arg.col, msg);
+                    char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%s\" with %s", sv, arg.value);
+                    error_state_add(parser_errors, arg.line, arg.col, msg ? msg : "");
+                    free(msg);
                 }
             }
             lexer_next(lexer); /* consume outer ) of typeof */
@@ -5174,11 +5182,9 @@ static int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                 int dim_count = 0;
                 int have_dims = symbol_table_get_array_dims(table, mangled_arr, &dims, &dim_count);
                 if (have_dims && index_count != dim_count) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg),
-                        "Array '%s' has %d dimension(s) but %d index(es) were given",
-                        arg.value, dim_count, index_count);
-                    error_state_add(parser_errors, typeof_tok.line, typeof_tok.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Array '%s' has %d dimension(s) but %d index(es) were given", arg.value, dim_count, index_count);
+                    error_state_add(parser_errors, typeof_tok.line, typeof_tok.col, errmsg ? errmsg : "");
+                    free(errmsg);
                 }
                 VarType aet = symbol_table_get_array_elem_type(table, mangled_arr);
                 if (aet == TYPE_NULL) aet = TYPE_STRING;
@@ -5308,17 +5314,17 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
             char rm[MAX_IDENTIFIER_LEN];
             mangle_name(first.value, rm, MAX_IDENTIFIER_LEN);
             if (!symbol_table_has(table, rm)) {
-                char errmsg[256];
-                snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", first.value);
-                error_state_add(parser_errors, first.line, first.col, errmsg);
+                char *errmsg = _ltng_cfmt("Variable '%s' not declared", first.value);
+                error_state_add(parser_errors, first.line, first.col, errmsg ? errmsg : "");
+                free(errmsg);
                 skip_to_newline(lexer);
                 return;
             }
             VarType vt = symbol_table_get(table, rm);
             if (vt != TYPE_ARRAY) {
-                char errmsg[256];
-                snprintf(errmsg, sizeof(errmsg), "Variable '%s' is not an array", first.value);
-                error_state_add(parser_errors, first.line, first.col, errmsg);
+                char *errmsg = _ltng_cfmt("Variable '%s' is not an array", first.value);
+                error_state_add(parser_errors, first.line, first.col, errmsg ? errmsg : "");
+                free(errmsg);
                 skip_to_newline(lexer);
                 return;
             }
@@ -5843,10 +5849,9 @@ static void parse_write(Lexer *lexer, SymbolTable *table) {
                                 char mvname[MAX_IDENTIFIER_LEN];
                                 mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
                                 if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
-                                    char errmsg[256];
-                                    snprintf(errmsg, sizeof(errmsg),
-                                        "Variable '%s' not declared (used in string interpolation)", vname);
-                                    error_state_add(parser_errors, arg.line, arg.col, errmsg);
+                                    char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in string interpolation)", vname);
+                                    error_state_add(parser_errors, arg.line, arg.col, errmsg ? errmsg : "");
+                                    free(errmsg);
                                 }
                             } else {
                                 char check[MAX_STRING_LEN];
@@ -7151,7 +7156,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                 if (arg.type == TOKEN_STRING && (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0 || strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0)) {
                     const char *sv = arg.value; int slen = (int)strlen(sv), ok = 0;
                     if (slen > 0) { int k=0; if(sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1; for(;k<slen;k++){ if(sv[k]>='0'&&sv[k]<='9') digits=1; else if(sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} } if(valid&&digits) ok=1; }
-                    if (!ok) { char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %s", sv, conv.value); error_state_add(parser_errors, conv.line, conv.col, msg); }
+                    if (!ok) { char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%s\" with %s", sv, conv.value); error_state_add(parser_errors, conv.line, conv.col, msg ? msg : ""); free(msg); }
                 }
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
@@ -7925,11 +7930,9 @@ static int check_set_type_immutable(SymbolTable *table, const char *mangled,
         }
         /* A locked variable cannot change dtype arbitrarily. */
         if (symbol_table_get_locked(table, mangled)) {
-            char msg[256];
-            snprintf(msg, sizeof(msg),
-                "Cannot change type of locked variable '%s' from %s to %s",
-                mangled, type_name_str(existing), type_name_str(new_type));
-            error_state_add(parser_errors, line, col, msg);
+            char *msg = _ltng_cfmt("Cannot change type of locked variable '%s' from %s to %s", mangled, type_name_str(existing), type_name_str(new_type));
+            error_state_add(parser_errors, line, col, msg ? msg : "");
+            free(msg);
             skip_to_newline(lexer);
             return 0;
         }
@@ -8040,11 +8043,9 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             int chave = symbol_table_get_array_dims(table, mangled, &cdims, &ccount);
             if (!chave || ccount <= 0) { ccount = 1; cdims = malloc(sizeof(int)); if (cdims) cdims[0] = 0; chave = 0; }
             if (ccount != index_count) {
-                char errmsg[256];
-                snprintf(errmsg, sizeof(errmsg),
-                    "Array '%s' has %d dimension(s) but %d index(es) were given",
-                    name.value, ccount, index_count);
-                error_state_add(parser_errors, name.line, name.col, errmsg);
+                char *errmsg = _ltng_cfmt("Array '%s' has %d dimension(s) but %d index(es) were given", name.value, ccount, index_count);
+                error_state_add(parser_errors, name.line, name.col, errmsg ? errmsg : "");
+                free(errmsg);
                 if (!chave) free(cdims);
                 return;
             }
@@ -8155,11 +8156,9 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
             have_dims = 0;
         }
         if (index_count != dim_count) {
-            char errmsg[256];
-            snprintf(errmsg, sizeof(errmsg),
-                "Array '%s' has %d dimension(s) but %d index(es) were given",
-                name.value, dim_count, index_count);
-            error_state_add(parser_errors, name.line, name.col, errmsg);
+            char *errmsg = _ltng_cfmt("Array '%s' has %d dimension(s) but %d index(es) were given", name.value, dim_count, index_count);
+            error_state_add(parser_errors, name.line, name.col, errmsg ? errmsg : "");
+            free(errmsg);
             if (!have_dims) free(dims);
             return;
         }
@@ -8620,7 +8619,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                 if (arg.type == TOKEN_STRING && (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0 || strcmp(conv.value, "tofloat") == 0 || strcmp(conv.value, "float") == 0)) {
                     const char *sv = arg.value; int slen = (int)strlen(sv), ok = 0;
                     if (slen > 0) { int k=0; if(sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1; for(;k<slen;k++){ if(sv[k]>='0'&&sv[k]<='9') digits=1; else if(sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} } if(valid&&digits) ok=1; }
-                    if (!ok) { char msg[256]; snprintf(msg,sizeof(msg),"Invalid conversion: cannot convert \"%s\" with %s", sv, conv.value); error_state_add(parser_errors, conv.line, conv.col, msg); }
+                    if (!ok) { char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%s\" with %s", sv, conv.value); error_state_add(parser_errors, conv.line, conv.col, msg ? msg : ""); free(msg); }
                 }
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
@@ -10269,42 +10268,32 @@ static void validate_function_return_types(ASTNode *fn) {
         if (fn->return_type == TYPE_VOID) {
             for (int i = 0; i < count; i++) {
                 if (!(nodes[i]->value[0] == '\0' && !nodes[i]->is_expr)) {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg),
-                        "Void function '%s' cannot return a value",
-                        fn->for_var[0] ? fn->for_var : fn->name);
-                    error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg);
+                    char *msg = _ltng_cfmt("Void function '%s' cannot return a value", fn->for_var[0] ? fn->for_var : fn->name);
+                    error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg ? msg : "");
+                    free(msg);
                     return;
                 }
             }
             return;
         }
         if (count == 0) {
-            char msg[256];
-            snprintf(msg, sizeof(msg),
-                "Function '%s' is declared to return '%s' but has no return statement",
-                fn->for_var[0] ? fn->for_var : fn->name,
-                type_name_str(fn->return_type));
-            error_state_add(parser_errors, fn->line, fn->col, msg);
+            char *msg = _ltng_cfmt("Function '%s' is declared to return '%s' but has no return statement", fn->for_var[0] ? fn->for_var : fn->name, type_name_str(fn->return_type));
+            error_state_add(parser_errors, fn->line, fn->col, msg ? msg : "");
+            free(msg);
             return;
         }
         for (int i = 0; i < count; i++) {
             if (!return_type_matches_annotation(nodes[i], fn->return_type)) {
-                char msg[256];
-                snprintf(msg, sizeof(msg),
-                    "Return type mismatch in function '%s': expected '%s'",
-                    fn->for_var[0] ? fn->for_var : fn->name,
-                    type_name_str(fn->return_type));
-                error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg);
+                char *msg = _ltng_cfmt("Return type mismatch in function '%s': expected '%s'", fn->for_var[0] ? fn->for_var : fn->name, type_name_str(fn->return_type));
+                error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg ? msg : "");
+                free(msg);
                 return;
             }
         }
         if (!block_always_exits(fn->body)) {
-            char msg[256];
-            snprintf(msg, sizeof(msg),
-                "Function '%s' may not return a value on all control paths",
-                fn->for_var[0] ? fn->for_var : fn->name);
-            error_state_add(parser_errors, fn->line, fn->col, msg);
+            char *msg = _ltng_cfmt("Function '%s' may not return a value on all control paths", fn->for_var[0] ? fn->for_var : fn->name);
+            error_state_add(parser_errors, fn->line, fn->col, msg ? msg : "");
+            free(msg);
         }
         return;
     }
@@ -10312,9 +10301,9 @@ static void validate_function_return_types(ASTNode *fn) {
     if (count <= 1) return;
     for (int i = 1; i < count; i++) {
         if (!var_types_return_compatible_nodes(nodes[0], nodes[i])) {
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Inconsistent return types in function '%s'", fn->for_var[0] ? fn->for_var : fn->name);
-            error_state_add(parser_errors, fn->line, fn->col, msg);
+            char *msg = _ltng_cfmt("Inconsistent return types in function '%s'", fn->for_var[0] ? fn->for_var : fn->name);
+            error_state_add(parser_errors, fn->line, fn->col, msg ? msg : "");
+            free(msg);
             return;
         }
         /* also ensure pairwise consistency against accumulated base? first vs all is enough if compat is transitive in this model */
@@ -10592,9 +10581,9 @@ static FuncInfo *resolve_overload(const char *src, ASTNode *args, int line, int 
         }
     }
     if (best && ambiguous) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Ambiguous call to overloaded function '%s'", src);
-        error_state_add(parser_errors, line, col, msg);
+        char *msg = _ltng_cfmt("Ambiguous call to overloaded function '%s'", src);
+        error_state_add(parser_errors, line, col, msg ? msg : "");
+        free(msg);
     }
     return best;
 }
@@ -10638,13 +10627,13 @@ static ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
             if (pname[0] && strcmp(pname, a->for_var) == 0) { found = p; break; }
         }
         if (found < 0) {
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Unknown argument '%s' in call to '%s'", a->for_var, fname);
-            error_state_add(parser_errors, line, col, msg);
+            char *msg = _ltng_cfmt("Unknown argument '%s' in call to '%s'", a->for_var, fname);
+            error_state_add(parser_errors, line, col, msg ? msg : "");
+            free(msg);
         } else if (provided[found]) {
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Duplicate argument '%s' in call to '%s'", a->for_var, fname);
-            error_state_add(parser_errors, line, col, msg);
+            char *msg = _ltng_cfmt("Duplicate argument '%s' in call to '%s'", a->for_var, fname);
+            error_state_add(parser_errors, line, col, msg ? msg : "");
+            free(msg);
         } else {
             provided[found] = 1;
             chosen[found] = a;
@@ -10685,11 +10674,9 @@ static ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
                         outn->var_type = dvt;
                     }
                 } else {
-                    char msg[256];
-                    snprintf(msg, sizeof(msg), "Missing required argument '%s' in call to '%s'",
-                        param_node[p] ? param_node[p]->for_var :
-                        (fi ? fi->param_names[p] : "?"), fname);
-                    error_state_add(parser_errors, line, col, msg);
+                    char *msg = _ltng_cfmt("Missing required argument '%s' in call to '%s'", param_node[p] ? param_node[p]->for_var : (fi ? fi->param_names[p] : "?"), fname);
+                    error_state_add(parser_errors, line, col, msg ? msg : "");
+                    free(msg);
                     outn = create_node(NODE_PARAM, "", "\"\"");
                     outn->var_type = TYPE_STRING;
                     outn->is_expr = 1;
@@ -10713,9 +10700,9 @@ static ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
             }
             *out_rest = rest;
         } else {
-            char msg[256];
-            snprintf(msg, sizeof(msg), "Too many arguments in call to '%s'", fname);
-            error_state_add(parser_errors, line, col, msg);
+            char *msg = _ltng_cfmt("Too many arguments in call to '%s'", fname);
+            error_state_add(parser_errors, line, col, msg ? msg : "");
+            free(msg);
         }
     }
     return eff;
@@ -10915,11 +10902,9 @@ static ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fn
             if (group > 1) {
                 int supplied = 0;
                 for (ASTNode *a = args; a; a = a->next) supplied++;
-                char msg[256];
-                snprintf(msg, sizeof(msg),
-                    "No matching overload for '%s' with %d argument(s)",
-                    fname_tok_val, supplied);
-                error_state_add(parser_errors, line, col, msg);
+                char *msg = _ltng_cfmt("No matching overload for '%s' with %d argument(s)", fname_tok_val, supplied);
+                error_state_add(parser_errors, line, col, msg ? msg : "");
+                free(msg);
             }
             no_match = 1;
             /* Pick the first candidate so codegen can continue after an error. */
@@ -11408,9 +11393,9 @@ static ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enc
     if (!is_anon && g_program_ref) {
         for (ASTNode *ex = g_program_ref->functions; ex; ex = ex->next) {
             if (strcmp(ex->name, cname) == 0) {
-                char msg[256];
-                snprintf(msg, sizeof(msg), "Function '%s' already defined", name.value);
-                error_state_add(parser_errors, name.line, name.col, msg);
+                char *msg = _ltng_cfmt("Function '%s' already defined", name.value);
+                error_state_add(parser_errors, name.line, name.col, msg ? msg : "");
+                free(msg);
                 skip_to_newline(lexer);
                 return NULL;
             }
@@ -11877,19 +11862,17 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 (strcmp(mname.value, "lock") == 0 ||
                  strcmp(mname.value, "unlock") == 0)) {
                 if (lexer_peek(lexer).type != TOKEN_LPAREN) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Expected '(' after '%s'", mname.value);
-                    error_state_add(parser_errors, mname.line, mname.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Expected '(' after '%s'", mname.value);
+                    error_state_add(parser_errors, mname.line, mname.col, errmsg ? errmsg : "");
+                    free(errmsg);
                     skip_to_newline(lexer);
                     return;
                 }
                 lexer_next(lexer); /* consume ( */
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg),
-                        "Expected ')' with no arguments for '%s()'", mname.value);
-                    error_state_add(parser_errors, lexer_peek(lexer).line,
-                        lexer_peek(lexer).col, errmsg);
+                    char *errmsg = _ltng_cfmt("Expected ')' with no arguments for '%s()'", mname.value);
+                    error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, errmsg ? errmsg : "");
+                    free(errmsg);
                     skip_to_newline(lexer);
                     return;
                 }
@@ -11898,17 +11881,16 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 char rm[MAX_IDENTIFIER_LEN];
                 mangle_name(t.value, rm, MAX_IDENTIFIER_LEN);
                 if (!symbol_table_has(table, rm)) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", t.value);
-                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Variable '%s' not declared", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg ? errmsg : "");
+                    free(errmsg);
                     return;
                 }
                 VarType vt = symbol_table_get(table, rm);
                 if (vt == TYPE_NULL) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg),
-                        "Cannot lock/unlock variable '%s' with null dtype", t.value);
-                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Cannot lock/unlock variable '%s' with null dtype", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg ? errmsg : "");
+                    free(errmsg);
                     return;
                 }
                 int want_locked = (strcmp(mname.value, "lock") == 0);
@@ -11937,17 +11919,17 @@ static void parse_statement(Lexer *lexer, SymbolTable *table) {
                 char rm[MAX_IDENTIFIER_LEN];
                 mangle_name(t.value, rm, MAX_IDENTIFIER_LEN);
                 if (!symbol_table_has(table, rm)) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' not declared", t.value);
-                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Variable '%s' not declared", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg ? errmsg : "");
+                    free(errmsg);
                     skip_to_newline(lexer);
                     return;
                 }
                 VarType vt = symbol_table_get(table, rm);
                 if (vt != TYPE_ARRAY) {
-                    char errmsg[256];
-                    snprintf(errmsg, sizeof(errmsg), "Variable '%s' is not an array", t.value);
-                    error_state_add(parser_errors, t.line, t.col, errmsg);
+                    char *errmsg = _ltng_cfmt("Variable '%s' is not an array", t.value);
+                    error_state_add(parser_errors, t.line, t.col, errmsg ? errmsg : "");
+                    free(errmsg);
                     skip_to_newline(lexer);
                     return;
                 }
@@ -12442,11 +12424,9 @@ static void prescan_functions(Lexer *lexer) {
             if (g_funcs[a].param_count == g_funcs[b].param_count &&
                 g_funcs[a].required_count == g_funcs[b].required_count &&
                 g_funcs[a].is_variadic == g_funcs[b].is_variadic) {
-                char msg[256];
-                snprintf(msg, sizeof(msg),
-                    "Function '%s' with the same parameter list is already defined",
-                    g_funcs[a].src);
-                error_state_add(parser_errors, g_funcs[a].line, g_funcs[a].col, msg);
+                char *msg = _ltng_cfmt("Function '%s' with the same parameter list is already defined", g_funcs[a].src);
+                error_state_add(parser_errors, g_funcs[a].line, g_funcs[a].col, msg ? msg : "");
+                free(msg);
             }
         }
     }

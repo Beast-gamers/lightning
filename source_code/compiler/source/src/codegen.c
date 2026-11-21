@@ -825,12 +825,13 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
                 const char *arg_start = start + 7;
                 const char *arg_end = q - 1;
                 int arg_len = (int)(arg_end - arg_start);
-                char argname[256];
-                if (arg_len >= 256) arg_len = 255;
+                char *argname = (char*)malloc((size_t)arg_len + 1);
+                if (!argname) { p = q + 1; continue; }
                 memcpy(argname, arg_start, arg_len);
                 argname[arg_len] = '\0';
-                char margname[256];
-                mangle_name(argname, margname, sizeof(margname));
+                char *margname = (char*)malloc((size_t)arg_len + 16);
+                if (!margname) { free(argname); p = q + 1; continue; }
+                mangle_name(argname, margname, (size_t)arg_len + 16);
                 const char *type_str = "unknown";
                 int found = 0;
 
@@ -853,6 +854,7 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
                 }
                 const char *ts = type_str;
                 while (*ts) *w++ = *ts++;
+                free(argname); free(margname);
                 p = q + 1;
             } else {
                 *w++ = '$'; *w++ = '[';
@@ -1350,7 +1352,7 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
     pad(out, indent);
     fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", cname);
     pad(out, indent);
-    fprintf(out, "_ltng_ds_setfmt(&%s, \"%%s: %%s\", _ltng_exc_type, _ltng_exc_msg);\n",
+    fprintf(out, "_ltng_exc_ensure(); _ltng_ds_setfmt(&%s, \"%%s: %%s\", _ltng_exc_s(_ltng_exc_type), _ltng_exc_s(_ltng_exc_msg));\n",
         cname);
 
     if (!sc) return;
@@ -1443,7 +1445,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
             pad(out, indent + 4); fprintf(out, "_ltng_try_top = %s.prev;\n", ef);
             pad(out, indent + 4); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", ef);
             if (g_cleanup_count > base) g_cleanup_count--;
-            pad(out, indent + 4); fprintf(out, "LtngExcSaved %s;\n", ee);
+            pad(out, indent + 4); fprintf(out, "LtngExcSaved %s; _ltng_exc_saved_init(&%s);\n", ee, ee);
             pad(out, indent + 4); fprintf(out, "_ltng_exc_save_to(&%s);\n", ee);
             {
                 int saved = g_cleanup_count;
@@ -1451,7 +1453,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
                 emit_block(out, node->cases, table, indent + 4);
                 g_cleanup_count = saved;
             }
-            pad(out, indent + 4); fprintf(out, "_ltng_exc_restore_from(&%s);\n", ee);
+            pad(out, indent + 4); fprintf(out, "_ltng_exc_restore_from(&%s); _ltng_exc_saved_free(&%s);\n", ee, ee);
             pad(out, indent + 4); fprintf(out, "_ltng_rethrow();\n");
             pad(out, indent + 3); fprintf(out, "}\n");
             pad(out, indent + 2); fprintf(out, "}\n");
@@ -1503,7 +1505,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
             pad(out, indent + 2); fprintf(out, "} else {\n");
             pad(out, indent + 3); fprintf(out, "_ltng_try_top = %s.prev;\n", cf);
             pad(out, indent + 3); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", cf);
-            pad(out, indent + 3); fprintf(out, "LtngExcSaved %s;\n", ec);
+            pad(out, indent + 3); fprintf(out, "LtngExcSaved %s; _ltng_exc_saved_init(&%s);\n", ec, ec);
             pad(out, indent + 3); fprintf(out, "_ltng_exc_save_to(&%s);\n", ec);
             {
                 int saved = g_cleanup_count;
@@ -1511,7 +1513,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
                 if (node->cases) emit_block(out, node->cases, table, indent + 3);
                 g_cleanup_count = saved;
             }
-            pad(out, indent + 3); fprintf(out, "_ltng_exc_restore_from(&%s);\n", ec);
+            pad(out, indent + 3); fprintf(out, "_ltng_exc_restore_from(&%s); _ltng_exc_saved_free(&%s);\n", ec, ec);
             pad(out, indent + 3); fprintf(out, "_ltng_rethrow();\n");
             pad(out, indent + 2); fprintf(out, "}\n");
         } else {
@@ -1519,7 +1521,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
             if (node->orelse) emit_block(out, node->orelse, table, indent + 2);
         }
     } else {
-        pad(out, indent + 2); fprintf(out, "LtngExcSaved %s;\n", es);
+        pad(out, indent + 2); fprintf(out, "LtngExcSaved %s; _ltng_exc_saved_init(&%s);\n", es, es);
         pad(out, indent + 2); fprintf(out, "_ltng_exc_save_to(&%s);\n", es);
         {
             int saved = g_cleanup_count;
@@ -1527,7 +1529,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
             if (node->cases) emit_block(out, node->cases, table, indent + 2);
             g_cleanup_count = saved;
         }
-        pad(out, indent + 2); fprintf(out, "_ltng_exc_restore_from(&%s);\n", es);
+        pad(out, indent + 2); fprintf(out, "_ltng_exc_restore_from(&%s); _ltng_exc_saved_free(&%s);\n", es, es);
         pad(out, indent + 2); fprintf(out, "_ltng_rethrow();\n");
     }
 
@@ -2034,99 +2036,6 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static const char *_ltng_src_file = \"");
     write_c_string_raw(out, (errors && errors->filename) ? errors->filename : "<input>");
     fprintf(out, "\";\n");
-    fputs(
-        "typedef struct LtngTryFrame {\n"
-        "    jmp_buf env;\n"
-        "    struct LtngTryFrame *prev;\n"
-        "    int stack_depth;\n"
-        "} LtngTryFrame;\n"
-        "static LtngTryFrame *_ltng_try_top = NULL;\n"
-        "#define LTNG_FN_MAX 256\n"
-        "static const char *_ltng_fn_name[LTNG_FN_MAX];\n"
-        "static int _ltng_fn_line[LTNG_FN_MAX];\n"
-        "static int _ltng_fn_col[LTNG_FN_MAX];\n"
-        "static int _ltng_stack_depth = 0;\n"
-        "static char _ltng_exc_type[128] = \"\";\n"
-        "static char _ltng_exc_msg[1024] = \"\";\n"
-        "static char _ltng_exc_value[2048] = \"\";\n"
-        "static char _ltng_exc_trace[8192] = \"\";\n"
-        "static int _ltng_exc_line = 0;\n"
-        "static int _ltng_exc_col = 0;\n"
-        "static char _ltng_exc_func[256] = \"\";\n"
-        "typedef struct {\n"
-        "    char type[128];\n"
-        "    char msg[1024];\n"
-        "    char value[2048];\n"
-        "    char trace[8192];\n"
-        "    int line;\n"
-        "    int col;\n"
-        "    char func[256];\n"
-        "} LtngExcSaved;\n"
-        "static void _ltng_fn_push(const char *name, int line, int col) {\n"
-        "    if (_ltng_stack_depth < LTNG_FN_MAX) {\n"
-        "        _ltng_fn_name[_ltng_stack_depth] = name ? name : \"?\";\n"
-        "        _ltng_fn_line[_ltng_stack_depth] = line;\n"
-        "        _ltng_fn_col[_ltng_stack_depth] = col;\n"
-        "        _ltng_stack_depth++;\n"
-        "    }\n"
-        "}\n"
-        "static void _ltng_fn_pop(void) { if (_ltng_stack_depth > 0) _ltng_stack_depth--; }\n"
-        "static void _ltng_capture_trace(int line, int col) {\n"
-        "    char ln[512];\n"
-        "    _ltng_exc_line = line;\n"
-        "    _ltng_exc_col = col;\n"
-        "    _ltng_exc_func[0] = 0;\n"
-        "    _ltng_exc_trace[0] = 0;\n"
-        "    if (_ltng_stack_depth > 0) {\n"
-        "        snprintf(_ltng_exc_func, sizeof(_ltng_exc_func), \"%s\", _ltng_fn_name[_ltng_stack_depth - 1]);\n"
-        "        snprintf(ln, sizeof(ln), \"  at %s (%s:%d:%d)\\n\", _ltng_fn_name[_ltng_stack_depth - 1], _ltng_src_file, line, col);\n"
-        "        strncat(_ltng_exc_trace, ln, sizeof(_ltng_exc_trace) - strlen(_ltng_exc_trace) - 1);\n"
-        "        for (int i = _ltng_stack_depth - 2; i >= 0; i--) {\n"
-        "            snprintf(ln, sizeof(ln), \"  at %s (%s:%d:%d)\\n\", _ltng_fn_name[i], _ltng_src_file, _ltng_fn_line[i + 1], _ltng_fn_col[i + 1]);\n"
-        "            strncat(_ltng_exc_trace, ln, sizeof(_ltng_exc_trace) - strlen(_ltng_exc_trace) - 1);\n"
-        "        }\n"
-        "    } else {\n"
-        "        snprintf(ln, sizeof(ln), \"  at <top-level> (%s:%d:%d)\\n\", _ltng_src_file, line, col);\n"
-        "        strncat(_ltng_exc_trace, ln, sizeof(_ltng_exc_trace) - strlen(_ltng_exc_trace) - 1);\n"
-        "    }\n"
-        "}\n"
-        "static void _ltng_exc_save_to(LtngExcSaved *s) {\n"
-        "    snprintf(s->type, sizeof(s->type), \"%s\", _ltng_exc_type);\n"
-        "    snprintf(s->msg, sizeof(s->msg), \"%s\", _ltng_exc_msg);\n"
-        "    snprintf(s->value, sizeof(s->value), \"%s\", _ltng_exc_value);\n"
-        "    snprintf(s->trace, sizeof(s->trace), \"%s\", _ltng_exc_trace);\n"
-        "    s->line = _ltng_exc_line; s->col = _ltng_exc_col;\n"
-        "    snprintf(s->func, sizeof(s->func), \"%s\", _ltng_exc_func);\n"
-        "}\n"
-        "static void _ltng_exc_restore_from(const LtngExcSaved *s) {\n"
-        "    snprintf(_ltng_exc_type, sizeof(_ltng_exc_type), \"%s\", s->type);\n"
-        "    snprintf(_ltng_exc_msg, sizeof(_ltng_exc_msg), \"%s\", s->msg);\n"
-        "    snprintf(_ltng_exc_value, sizeof(_ltng_exc_value), \"%s\", s->value);\n"
-        "    snprintf(_ltng_exc_trace, sizeof(_ltng_exc_trace), \"%s\", s->trace);\n"
-        "    _ltng_exc_line = s->line; _ltng_exc_col = s->col;\n"
-        "    snprintf(_ltng_exc_func, sizeof(_ltng_exc_func), \"%s\", s->func);\n"
-        "}\n"
-        "static void _ltng_uncaught(void) {\n"
-        "    if (_ltng_exc_msg[0]) fprintf(stderr, \"%s: %s\\n\", _ltng_exc_type[0] ? _ltng_exc_type : \"Error\", _ltng_exc_msg);\n"
-        "    else fprintf(stderr, \"%s\\n\", _ltng_exc_type[0] ? _ltng_exc_type : \"Error\");\n"
-        "    if (_ltng_exc_trace[0]) fputs(_ltng_exc_trace, stderr);\n"
-        "    fflush(stderr);\n"
-        "    exit(1);\n"
-        "}\n"
-        "static void _ltng_throw_value(const char *type, const char *msg, int line, int col) {\n"
-        "    snprintf(_ltng_exc_type, sizeof(_ltng_exc_type), \"%s\", (type && type[0]) ? type : \"Error\");\n"
-        "    snprintf(_ltng_exc_msg, sizeof(_ltng_exc_msg), \"%s\", msg ? msg : \"\");\n"
-        "    snprintf(_ltng_exc_value, sizeof(_ltng_exc_value), \"%s\", msg ? msg : \"\");\n"
-        "    _ltng_capture_trace(line, col);\n"
-        "    if (!_ltng_try_top) _ltng_uncaught();\n"
-        "    longjmp(_ltng_try_top->env, 1);\n"
-        "}\n"
-        "static void _ltng_rethrow(void) {\n"
-        "    if (!_ltng_try_top) _ltng_uncaught();\n"
-        "    longjmp(_ltng_try_top->env, 1);\n"
-        "}\n",
-        out);
-    fprintf(out, "\n");
     /* Dynamic string/value runtime helpers (no fixed 256-byte truncation for values). */
     fprintf(out, "static char *_ltng_ds_new(const char *s){ if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=(char*)malloc(n); if(!p) return NULL; memcpy(p,s,n); return p; }\n");
     fprintf(out, "static void _ltng_ds_set(char **dst, const char *s){ if(!dst) return; if(!s) s=\"\"; size_t n=strlen(s)+1; char *p=(char*)realloc(*dst,n); if(!p){ p=(char*)malloc(n); if(!p) return; } memcpy(p,s,n); *dst=p; }\n");
@@ -2141,6 +2050,113 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_concat_dyn(int n, ...) { static char *slot[32]={0}; static int si=0; si=(si+1)%%32; va_list ap; va_start(ap,n); size_t total=1; va_list ap2; va_copy(ap2,ap); for(int i=0;i<n;i++){ const char *s=va_arg(ap2,const char*); if(s) total+=strlen(s); } va_end(ap2); char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p){ va_end(ap); return \"\"; } slot[si]=p; p[0]=0; for(int i=0;i<n;i++){ const char *s=va_arg(ap,const char*); if(s) strcat(p,s); } va_end(ap); return p; }\n");
     fprintf(out, "static char *_ltng_repeat(char *buf, size_t sz, const char *s, long long n) { (void)buf; (void)sz; static char *slot[32]={0}; static int si=0; si=(si+1)%%32; if(!s) s=\"\"; if(n<0) n=0; size_t sl=strlen(s); size_t total=(size_t)n*sl+1; char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p) return \"\"; slot[si]=p; for(long long i=0;i<n;i++){ memcpy(p + (size_t)i*sl, s, sl); } p[(size_t)n*sl]=0; return p; }\n");
     fprintf(out, "static char *_ltng_repeat_dyn(const char *s, long long n) { static char *slot[32]={0}; static int si=0; si=(si+1)%%32; if(!s) s=\"\"; if(n<0) n=0; size_t sl=strlen(s); size_t total=(size_t)n*sl+1; char *p=(char*)realloc(slot[si],total); if(!p) p=(char*)malloc(total); if(!p) return \"\"; slot[si]=p; for(long long i=0;i<n;i++){ memcpy(p + (size_t)i*sl, s, sl); } p[(size_t)n*sl]=0; return p; }\n");
+    fputs(
+        "typedef struct LtngTryFrame {\n"
+        "    jmp_buf env;\n"
+        "    struct LtngTryFrame *prev;\n"
+        "    int stack_depth;\n"
+        "} LtngTryFrame;\n"
+        "static LtngTryFrame *_ltng_try_top = NULL;\n"
+        "static const char **_ltng_fn_name = NULL;\n"
+        "static int *_ltng_fn_line = NULL;\n"
+        "static int *_ltng_fn_col = NULL;\n"
+        "static int _ltng_stack_depth = 0;\n"
+        "static int _ltng_stack_cap = 0;\n"
+        "static char *_ltng_exc_type = NULL;\n"
+        "static char *_ltng_exc_msg = NULL;\n"
+        "static char *_ltng_exc_value = NULL;\n"
+        "static char *_ltng_exc_trace = NULL;\n"
+        "static int _ltng_exc_line = 0;\n"
+        "static int _ltng_exc_col = 0;\n"
+        "static char *_ltng_exc_func = NULL;\n"
+        "static const char *_ltng_exc_s(const char *s){ return s ? s : \"\"; }\n"
+        "static void _ltng_exc_ensure(void){ if(!_ltng_exc_type) _ltng_exc_type=_ltng_ds_new(\"\"); if(!_ltng_exc_msg) _ltng_exc_msg=_ltng_ds_new(\"\"); if(!_ltng_exc_value) _ltng_exc_value=_ltng_ds_new(\"\"); if(!_ltng_exc_trace) _ltng_exc_trace=_ltng_ds_new(\"\"); if(!_ltng_exc_func) _ltng_exc_func=_ltng_ds_new(\"\"); }\n"
+        "typedef struct {\n"
+        "    char *type;\n"
+        "    char *msg;\n"
+        "    char *value;\n"
+        "    char *trace;\n"
+        "    int line;\n"
+        "    int col;\n"
+        "    char *func;\n"
+        "} LtngExcSaved;\n"
+        "static void _ltng_exc_saved_init(LtngExcSaved *s){ if(!s) return; s->type=_ltng_ds_new(\"\"); s->msg=_ltng_ds_new(\"\"); s->value=_ltng_ds_new(\"\"); s->trace=_ltng_ds_new(\"\"); s->func=_ltng_ds_new(\"\"); s->line=0; s->col=0; }\n"
+        "static void _ltng_exc_saved_free(LtngExcSaved *s){ if(!s) return; if(s->type) free(s->type); if(s->msg) free(s->msg); if(s->value) free(s->value); if(s->trace) free(s->trace); if(s->func) free(s->func); s->type=s->msg=s->value=s->trace=s->func=NULL; }\n"
+        "static void _ltng_fn_push(const char *name, int line, int col) {\n"
+        "    if (_ltng_stack_depth >= _ltng_stack_cap) {\n"
+        "        int nc = _ltng_stack_cap ? _ltng_stack_cap * 2 : 16;\n"
+        "        const char **nn = (const char**)realloc(_ltng_fn_name, sizeof(const char*) * nc);\n"
+        "        int *nl = (int*)realloc(_ltng_fn_line, sizeof(int) * nc);\n"
+        "        int *nc2 = (int*)realloc(_ltng_fn_col, sizeof(int) * nc);\n"
+        "        if (!nn || !nl || !nc2) return;\n"
+        "        _ltng_fn_name = nn; _ltng_fn_line = nl; _ltng_fn_col = nc2; _ltng_stack_cap = nc;\n"
+        "    }\n"
+        "    _ltng_fn_name[_ltng_stack_depth] = name ? name : \"?\";\n"
+        "    _ltng_fn_line[_ltng_stack_depth] = line;\n"
+        "    _ltng_fn_col[_ltng_stack_depth] = col;\n"
+        "    _ltng_stack_depth++;\n"
+        "}\n"
+        "static void _ltng_fn_pop(void) { if (_ltng_stack_depth > 0) _ltng_stack_depth--; }\n"
+        "static void _ltng_capture_trace(int line, int col) {\n"
+        "    _ltng_exc_ensure();\n"
+        "    _ltng_exc_line = line;\n"
+        "    _ltng_exc_col = col;\n"
+        "    _ltng_ds_set(&_ltng_exc_func, \"\");\n"
+        "    _ltng_ds_set(&_ltng_exc_trace, \"\");\n"
+        "    if (_ltng_stack_depth > 0) {\n"
+        "        _ltng_ds_set(&_ltng_exc_func, _ltng_fn_name[_ltng_stack_depth - 1]);\n"
+        "        char *ln = _ltng_ds_fmt(\"  at %s (%s:%d:%d)\\n\", _ltng_fn_name[_ltng_stack_depth - 1], _ltng_src_file, line, col);\n"
+        "        _ltng_ds_append(&_ltng_exc_trace, ln); free(ln);\n"
+        "        for (int i = _ltng_stack_depth - 2; i >= 0; i--) {\n"
+        "            ln = _ltng_ds_fmt(\"  at %s (%s:%d:%d)\\n\", _ltng_fn_name[i], _ltng_src_file, _ltng_fn_line[i + 1], _ltng_fn_col[i + 1]);\n"
+        "            _ltng_ds_append(&_ltng_exc_trace, ln); free(ln);\n"
+        "        }\n"
+        "    } else {\n"
+        "        char *ln = _ltng_ds_fmt(\"  at <top-level> (%s:%d:%d)\\n\", _ltng_src_file, line, col);\n"
+        "        _ltng_ds_append(&_ltng_exc_trace, ln); free(ln);\n"
+        "    }\n"
+        "}\n"
+        "static void _ltng_exc_save_to(LtngExcSaved *s) {\n"
+        "    _ltng_exc_ensure();\n"
+        "    _ltng_ds_set(&s->type, _ltng_exc_type);\n"
+        "    _ltng_ds_set(&s->msg, _ltng_exc_msg);\n"
+        "    _ltng_ds_set(&s->value, _ltng_exc_value);\n"
+        "    _ltng_ds_set(&s->trace, _ltng_exc_trace);\n"
+        "    s->line = _ltng_exc_line; s->col = _ltng_exc_col;\n"
+        "    _ltng_ds_set(&s->func, _ltng_exc_func);\n"
+        "}\n"
+        "static void _ltng_exc_restore_from(const LtngExcSaved *s) {\n"
+        "    _ltng_exc_ensure();\n"
+        "    _ltng_ds_set(&_ltng_exc_type, _ltng_exc_s(s->type));\n"
+        "    _ltng_ds_set(&_ltng_exc_msg, _ltng_exc_s(s->msg));\n"
+        "    _ltng_ds_set(&_ltng_exc_value, _ltng_exc_s(s->value));\n"
+        "    _ltng_ds_set(&_ltng_exc_trace, _ltng_exc_s(s->trace));\n"
+        "    _ltng_exc_line = s->line; _ltng_exc_col = s->col;\n"
+        "    _ltng_ds_set(&_ltng_exc_func, _ltng_exc_s(s->func));\n"
+        "}\n"
+        "static void _ltng_uncaught(void) {\n"
+        "    _ltng_exc_ensure();\n"
+        "    if (_ltng_exc_msg[0]) fprintf(stderr, \"%s: %s\\n\", _ltng_exc_type[0] ? _ltng_exc_type : \"Error\", _ltng_exc_msg);\n"
+        "    else fprintf(stderr, \"%s\\n\", _ltng_exc_type[0] ? _ltng_exc_type : \"Error\");\n"
+        "    if (_ltng_exc_trace[0]) fputs(_ltng_exc_trace, stderr);\n"
+        "    fflush(stderr);\n"
+        "    exit(1);\n"
+        "}\n"
+        "static void _ltng_throw_value(const char *type, const char *msg, int line, int col) {\n"
+        "    _ltng_exc_ensure();\n"
+        "    _ltng_ds_set(&_ltng_exc_type, (type && type[0]) ? type : \"Error\");\n"
+        "    _ltng_ds_set(&_ltng_exc_msg, msg ? msg : \"\");\n"
+        "    _ltng_ds_set(&_ltng_exc_value, msg ? msg : \"\");\n"
+        "    _ltng_capture_trace(line, col);\n"
+        "    if (!_ltng_try_top) _ltng_uncaught();\n"
+        "    longjmp(_ltng_try_top->env, 1);\n"
+        "}\n"
+        "static void _ltng_rethrow(void) {\n"
+        "    if (!_ltng_try_top) _ltng_uncaught();\n"
+        "    longjmp(_ltng_try_top->env, 1);\n"
+        "}\n",
+        out);
+    fprintf(out, "\n");
     /* Dynamic array runtime helpers. Arrays are represented as char **data plus
        int len and int cap. Each element is a strdup'd char buffer. Indexing is
        1-based for positive indices, counts from the end for negative indices,
@@ -2219,8 +2235,9 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
 
     /* Emit function prototypes and definitions */
     if (program->functions) {
-        ASTNode *fns[256]; int fncount = 0;
-        for (ASTNode *fn = program->functions; fn && fncount < 256; fn = fn->next) fns[fncount++] = fn;
+        int fncount = 0; for (ASTNode *fn = program->functions; fn; fn = fn->next) fncount++;
+        ASTNode **fns = (ASTNode**)malloc(sizeof(ASTNode*) * (fncount > 0 ? fncount : 1));
+        int fni = 0; for (ASTNode *fn = program->functions; fn; fn = fn->next) fns[fni++] = fn;
         /* prototypes */
         for (int i = fncount - 1; i >= 0; i--) {
             ASTNode *fn = fns[i];
@@ -2326,6 +2343,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         }
         g_codegen_current_fn = NULL;
         g_codegen_all_fns = NULL;
+        free(fns);
     }
 
     /* Indirect call dispatcher for dynamic function values */
@@ -2343,8 +2361,9 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "    char *_sep = strchr(_tname, 1);\n");
     fprintf(out, "    if (_sep) { *_sep = 0; char *_p = _sep + 1; while (_p && *_p && _ncaps < 8) { char *_n = strchr(_p, 1); if (_n) { *_n = 0; _caps[_ncaps++] = _p; _p = _n + 1; } else { _caps[_ncaps++] = _p; break; } } }\n");
     if (program->functions) {
-        ASTNode *fns_d[256]; int fncount_d = 0;
-        for (ASTNode *fn = program->functions; fn && fncount_d < 256; fn = fn->next) fns_d[fncount_d++] = fn;
+        int fncount_d = 0; for (ASTNode *fn = program->functions; fn; fn = fn->next) fncount_d++;
+        ASTNode **fns_d = (ASTNode**)malloc(sizeof(ASTNode*) * (fncount_d > 0 ? fncount_d : 1));
+        int fnj = 0; for (ASTNode *fn = program->functions; fn; fn = fn->next) fns_d[fnj++] = fn;
         for (int i = fncount_d - 1; i >= 0; i--) {
             ASTNode *fn = fns_d[i];
             int pc = 0;
@@ -2370,6 +2389,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 fprintf(out, "    }\n");
             }
         }
+        free(fns_d);
     }
     fprintf(out, "    free(_tname_buf);\n");
     fprintf(out, "    _ltng_throw_value(\"Error\", \"Unknown function in indirect call\", _ltng_cl, _ltng_cc);\n");
