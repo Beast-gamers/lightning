@@ -1660,8 +1660,10 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
     int depth = 1;                 /* nesting level, outer '[' already consumed */
     int max_depth = 1;             /* deepest nesting level seen */
     int elem_count = 0;
-    char values[4096] = "";
+    int vcap = 4096;
+    char *values = (char*)calloc(1, (size_t)vcap);
     int vpos = 0;
+    if (!values) return -1;
 
     /* Dynamically sized counters, grown as needed for arbitrary depth. */
     int cap_depth = 16;
@@ -1820,10 +1822,12 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
             }
         }
         int vlen = (int)strlen(val);
-        if (vpos + vlen + 1 < (int)sizeof(values) - 1) {
+        { int need = vpos + vlen + 2; if (need >= vcap) { int nc = vcap; while (nc <= need) nc *= 2; char *nv = (char*)realloc(values, (size_t)nc); if (nv) { values = nv; vcap = nc; } }
+          if (vpos + vlen + 1 < vcap) {
             if (vpos > 0) values[vpos++] = '|';
             memcpy(values + vpos, val, vlen);
             vpos += vlen;
+          }
         }
         values[vpos] = '\0';
         elem_count++;
@@ -1860,6 +1864,7 @@ static int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) 
     node->array_elem_type = elem_type_set ? elem_type : TYPE_NULL;
     strncpy(node->value, values, MAX_STRING_LEN - 1);
     node->value[MAX_STRING_LEN - 1] = '\0';
+    free(values);
 
     return 1;
 }
@@ -1893,9 +1898,9 @@ static int expr_is_string_value(const char *expr) {
         }
         break;
     }
-    char inner_buf[4096];
+    size_t _ibsz = (size_t)(pend - p); char *inner_buf = (char*)malloc(_ibsz + 1); if(!inner_buf) return 0;
     size_t ilen = (size_t)(pend - p);
-    if (ilen >= sizeof(inner_buf)) ilen = sizeof(inner_buf) - 1;
+    /* ilen already bounded by alloc */
     memcpy(inner_buf, p, ilen);
     inner_buf[ilen] = '\0';
     p = inner_buf;
@@ -1916,20 +1921,20 @@ static int expr_is_string_value(const char *expr) {
     }
     /* Known numeric conversion wrappers / casts => numeric */
     if (strncmp(p, "atoi(", 5) == 0 || strncmp(p, "atoll(", 6) == 0 || strncmp(p, "atof(", 5) == 0)
-        return 0;
+        { free(inner_buf); return 0; }
     if (strncmp(p, "(long long)", 11) == 0 || strncmp(p, "(int)", 5) == 0 ||
         strncmp(p, "(double)", 8) == 0 || strncmp(p, "(float)", 7) == 0)
-        return 0;
+        { free(inner_buf); return 0; }
     if (strncmp(p, "_ltng_from_double(", 18) == 0 || strncmp(p, "_ltng_from_int(", 15) == 0 ||
         strncmp(p, "_ltng_ad(", 9) == 0)
-        return 0;
+        { free(inner_buf); return 0; }
     /* Bool numeric forms */
     if (strstr(p, "[0]=='t'") != NULL || strstr(p, "[0]=='T'") != NULL) return 0;
     /* Known string-producing helpers/exprs (not generic buffers like _ltng_retbuf/_ltng_ad) */
     if (strstr(p, "_ltng_add_sn(") || strstr(p, "_ltng_repeat(") ||
         strstr(p, "_ltng_as(") || strstr(p, "_ltng_concat(") ||
         strstr(p, "_ltng_oret_"))
-        return 1;
+        { free(inner_buf); return 1; }
     /* Statement expression that builds strings */
     if (strncmp(p, "({", 2) == 0) {
         if (strstr(p, "_ltng_add_sn") || strstr(p, "_ltng_repeat") ||
@@ -1938,7 +1943,7 @@ static int expr_is_string_value(const char *expr) {
             return 1;
         if (strstr(p, "char _ltc") || strstr(p, "char _ltm"))
             return 1;
-        return 0;
+        { free(inner_buf); return 0; }
     }
     /* Bare identifier => char buffer (string var emitted raw, numeric as atoi/atoll/atof) */
     {
@@ -1952,12 +1957,12 @@ static int expr_is_string_value(const char *expr) {
     /* Numeric conversion calls/wrappers anywhere => numeric expression */
     if (strstr(p, "atof(") || strstr(p, "atoi(") || strstr(p, "atoll(") ||
         strstr(p, "_ltng_from_double(") || strstr(p, "_ltng_from_int(") || strstr(p, "_ltng_ad("))
-        return 0;
+        { free(inner_buf); return 0; }
     /* Contains C string literals => string expression */
     if (strchr(p, '"') != NULL) return 1;
     /* Other specific string helpers */
     if (strstr(p, "_ltng_add_sn") || strstr(p, "_ltng_repeat") || strstr(p, "_ltng_oret_"))
-        return 1;
+        { free(inner_buf); return 1; }
     /* No string indicators: detect string concat/repeat of bare identifiers */
     {
         int has_op = 0, has_ident = 0;
@@ -1980,7 +1985,7 @@ static int expr_is_string_value(const char *expr) {
         if (all_num_expr && has_num_char) return 0;
     }
     /* Generic function calls / unknown => not treated as string by default */
-    return 0;
+    { free(inner_buf); return 0; }
 }
 static void trim_c_expr(char *s) {
     char *p = s;
@@ -2056,24 +2061,27 @@ static int split_top_level(const char *s, const char *op, char *left, int lsz, c
 static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table);
 
 static void normalize_or_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
-    char left[4096], right[4096];
-    if (split_top_level(buf, "||", left, sizeof(left), right, sizeof(right))) {
-        normalize_mixed_expr(left, sizeof(left), array_access_used, table);
-        normalize_mixed_expr(right, sizeof(right), array_access_used, table);
+    char *left = (char*)malloc(4096); char *right = (char*)malloc(4096);
+    if(!left||!right){free(left);free(right);return;}
+    if (split_top_level(buf, "||", left, 4096, right, 4096)) {
+        normalize_mixed_expr(left, 4096, array_access_used, table);
+        normalize_mixed_expr(right, 4096, array_access_used, table);
         snprintf(buf, buf_size, "(%s) || (%s)", left, right);
+        free(left); free(right);
         return;
     }
     /* try && */
-    if (split_top_level(buf, "&&", left, sizeof(left), right, sizeof(right))) {
-        normalize_mixed_expr(left, sizeof(left), array_access_used, table);
-        normalize_mixed_expr(right, sizeof(right), array_access_used, table);
+    if (split_top_level(buf, "&&", left, 4096, right, 4096)) {
+        normalize_mixed_expr(left, 4096, array_access_used, table);
+        normalize_mixed_expr(right, 4096, array_access_used, table);
         snprintf(buf, buf_size, "(%s) && (%s)", left, right);
+        free(left); free(right);
         return;
     }
     /* comparisons: == != <= >= < > (check two-char first) */
     const char *ops[] = {"==", "!=", "<=", ">=", "<", ">", NULL};
     for (int i = 0; ops[i]; i++) {
-        if (split_top_level(buf, ops[i], left, sizeof(left), right, sizeof(right))) {
+        if (split_top_level(buf, ops[i], left, 4096, right, 4096)) {
             int is_str_cmp = 0;
             if (strcmp(ops[i], "==") == 0 || strcmp(ops[i], "!=") == 0) {
                 char ltmp[4096], rtmp[4096];
@@ -2119,8 +2127,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                     int lnl = (*lq2=='-'||*lq2=='+'||isdigit((unsigned char)*lq2));
                     int rnl = (*rq2=='-'||*rq2=='+'||isdigit((unsigned char)*rq2));
                     if ((lnumh && (rnumh || rnl)) || (rnumh && (lnumh || lnl))) {
-                        normalize_value_expr(left, sizeof(left), array_access_used, table);
-                        normalize_value_expr(right, sizeof(right), array_access_used, table);
+                        normalize_value_expr(left, 4096, array_access_used, table);
+                        normalize_value_expr(right, 4096, array_access_used, table);
                         snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
                         return;
                     }
@@ -2130,15 +2138,15 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                 {
                     int hp=0,hs=0,in=0; char qc=0;
                     for(const char *p=left;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
-                    if(hp||hs) normalize_string_expr(left,sizeof(left),array_access_used, table);
+                    if(hp||hs) normalize_string_expr(left,4096,array_access_used, table);
                 }
                 {
                     int hp=0,hs=0,in=0; char qc=0;
                     for(const char *p=right;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
-                    if(hp||hs) normalize_string_expr(right,sizeof(right),array_access_used, table);
+                    if(hp||hs) normalize_string_expr(right,4096,array_access_used, table);
                 }
-                normalize_value_expr(left, sizeof(left), array_access_used, table);
-                normalize_value_expr(right, sizeof(right), array_access_used, table);
+                normalize_value_expr(left, 4096, array_access_used, table);
+                normalize_value_expr(right, 4096, array_access_used, table);
                 /* Ensure numeric literals are quoted for strcmp */
                 {
                     char lq[4096], rq[4096];
@@ -2232,8 +2240,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                     }
                 }
             } else {
-                normalize_value_expr(left, sizeof(left), array_access_used, table);
-                normalize_value_expr(right, sizeof(right), array_access_used, table);
+                normalize_value_expr(left, 4096, array_access_used, table);
+                normalize_value_expr(right, 4096, array_access_used, table);
                 /* Unwrap numeric-string helper results for numeric comparisons */
                 {
                     char *sides[2] = {left, right};
@@ -2245,28 +2253,28 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                             const char *inner = p + 34;
                             const char *end = s + strlen(s);
                             if (end > p && *(end-1) == ')') {
-                                char tmp[4096]; size_t n = (size_t)((end-1) - inner);
-                                if (n >= sizeof(tmp)) n = sizeof(tmp)-1;
-                                memcpy(tmp, inner, n); tmp[n] = 0;
-                                memmove(s, tmp, strlen(tmp)+1);
+                                size_t n = (size_t)((end-1) - inner);
+                                char *tmp = (char*)malloc(n+1);
+                                if(tmp){ memcpy(tmp, inner, n); tmp[n] = 0;
+                                memmove(s, tmp, strlen(tmp)+1); free(tmp); }
                             }
                         } else if (strncmp(p, "_ltng_from_int(_ltng_retbuf(), ", 32) == 0) {
                             const char *inner = p + 32;
                             const char *end = s + strlen(s);
                             if (end > p && *(end-1) == ')') {
-                                char tmp[4096]; size_t n = (size_t)((end-1) - inner);
-                                if (n >= sizeof(tmp)) n = sizeof(tmp)-1;
-                                memcpy(tmp, inner, n); tmp[n] = 0;
-                                memmove(s, tmp, strlen(tmp)+1);
+                                size_t n = (size_t)((end-1) - inner);
+                                char *tmp = (char*)malloc(n+1);
+                                if(tmp){ memcpy(tmp, inner, n); tmp[n] = 0;
+                                memmove(s, tmp, strlen(tmp)+1); free(tmp); }
                             }
                         } else if (strncmp(p, "_ltng_ad(", 9) == 0) {
                             const char *inner = p + 9;
                             const char *end = s + strlen(s);
                             if (end > p && *(end-1) == ')') {
-                                char tmp[4096]; size_t n = (size_t)((end-1) - inner);
-                                if (n >= sizeof(tmp)) n = sizeof(tmp)-1;
-                                memcpy(tmp, inner, n); tmp[n] = 0;
-                                memmove(s, tmp, strlen(tmp)+1);
+                                size_t n = (size_t)((end-1) - inner);
+                                char *tmp = (char*)malloc(n+1);
+                                if(tmp){ memcpy(tmp, inner, n); tmp[n] = 0;
+                                memmove(s, tmp, strlen(tmp)+1); free(tmp); }
                             }
                         }
                     }
@@ -2332,11 +2340,13 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                 }
                 snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
             }
+            free(left); free(right);
             return;
         }
     }
     /* No top-level logical/comparison op: treat as value expr */
     normalize_value_expr(buf, buf_size, array_access_used, table);
+    free(left); free(right);
 }
 
 static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
