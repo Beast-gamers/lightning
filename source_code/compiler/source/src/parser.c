@@ -2135,7 +2135,8 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
             if (is_str_cmp) {
                 /* But if it's actually a numeric-conversion helper vs numeric literal/value, compare numerically */
                 {
-                    char lt[4096], rt[4096]; strncpy(lt,left,sizeof(lt)-1); lt[sizeof(lt)-1]=0; strncpy(rt,right,sizeof(rt)-1); rt[sizeof(rt)-1]=0; trim_c_expr(lt); trim_c_expr(rt);
+                    char *lt = (char*)malloc(4096); char *rt = (char*)malloc(4096);
+                    if(lt&&rt){ strncpy(lt,left,4095); lt[4095]=0; strncpy(rt,right,4095); rt[4095]=0; trim_c_expr(lt); trim_c_expr(rt);
                     int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("))!=NULL;
                     int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("))!=NULL;
                     const char *lq2=lt; while(*lq2==' '||*lq2=='\t') lq2++; const char *rq2=rt; while(*rq2==' '||*rq2=='\t') rq2++;
@@ -2145,8 +2146,10 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                         normalize_value_expr(left, 4096, array_access_used, table);
                         normalize_value_expr(right, 4096, array_access_used, table);
                         snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], right);
+                        free(lt); free(rt); free(left); free(right);
                         return;
                     }
+                    } free(lt); free(rt);
                 }
                 /* Normalize both sides as string expressions (handle + / * concat/repeat) */
                 /* In string comparison context, +/* on bare-buffer operands are string ops */
@@ -2348,13 +2351,17 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                         }
                     }
                     if ((ln && rc) || (rn && lc)) {
-                        char lq[4096], rq[4096];
-                        if (ln) snprintf(lq, 4096, "\"%s\"", left); else { strncpy(lq,left,4096-1); lq[4096-1]=0; }
-                        if (rn) snprintf(rq, 4096, "\"%s\"", right); else { strncpy(rq,right,4096-1); rq[4096-1]=0; }
+                        char *lq = (char*)malloc(4096); char *rq = (char*)malloc(4096);
+                        if(lq&&rq){
+                        if (ln) snprintf(lq, 4096, "\"%s\"", left); else { strncpy(lq,left,4095); lq[4095]=0; }
+                        if (rn) snprintf(rq, 4096, "\"%s\"", right); else { strncpy(rq,right,4095); rq[4095]=0; }
                         if (strcmp(ops[i], "==") == 0)
                             snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lq, rq);
                         else
                             snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lq, rq);
+                        }
+                        free(lq); free(rq);
+                        free(left); free(right);
                         return;
                     }
                 }
