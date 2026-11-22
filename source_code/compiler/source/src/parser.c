@@ -1395,15 +1395,18 @@ static int is_add_operand(const char *p, char *content, int content_size) {
 
 static int optimize_add_concat(char *out, int out_size, int pos) {
     (void)pos;
-    char result[4096] = {0};
+    char *result = (char*)calloc(1,4096);
+    char *left = (char*)malloc(4096);
+    char *right = (char*)malloc(4096);
+    if(!result||!left||!right){free(result);free(left);free(right);return 0;}
     const char *src = out;
     char *dst = result;
     int replaced = 0;
 
     while (*src && (int)(dst - result) < 4095) {
-        char left[4096], right[4096];
+        left[0]=0; right[0]=0;
 
-        if (is_add_operand(src, left, sizeof(left))) {
+        if (is_add_operand(src, left, 4096)) {
             const char *after_left = src;
             while (*after_left && (isalnum((unsigned char)*after_left) || *after_left == '_' ||
                                    *after_left == '(' || *after_left == ')' || *after_left == ',' ||
@@ -1412,7 +1415,7 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
             if (*after_left == '+') {
                 const char *after_plus = after_left + 1;
                 while (*after_plus == ' ' || *after_plus == '\t') after_plus++;
-                if (is_add_operand(after_plus, right, sizeof(right))) {
+                if (is_add_operand(after_plus, right, 4096)) {
                     const char *after_right = after_plus;
                     while (*after_right && (isalnum((unsigned char)*after_right) || *after_right == '_' ||
                                             *after_right == '(' || *after_right == ')' ||
@@ -1446,8 +1449,10 @@ static int optimize_add_concat(char *out, int out_size, int pos) {
         if (newlen < out_size) {
             memcpy(out, result, newlen + 1);
         }
+        free(result); free(left); free(right);
         return 1;
     }
+    free(result); free(left); free(right);
     return 0;
 }
 
@@ -1480,9 +1485,9 @@ static int part_is_stringy(const char *part) {
             while (*after == ' ' || *after == '\t') after++;
             if (*after == '\0') {
                 /* whole part is wrapped in (...) - analyze inside */
-                char inner[4096];
+                char *inner = (char*)malloc(4096); if(!inner) return 0;
                 size_t ilen = (size_t)(end - (q + 1));
-                if (ilen >= sizeof(inner)) ilen = sizeof(inner) - 1;
+                if (ilen >= 4096) ilen = 4096 - 1;
                 memcpy(inner, q + 1, ilen);
                 inner[ilen] = '\0';
                 /* Trim */
@@ -1504,11 +1509,11 @@ static int part_is_stringy(const char *part) {
                         /* Definitely stringy if it has string literals or string helpers */
                         if (strchr(is, '"') || strstr(is, "_ltng_concat") != NULL ||
                             strstr(is, "_ltng_repeat") != NULL || strstr(is, "_ltng_as(") != NULL)
-                            return 1;
+                            { free(inner); return 1; }
                         /* _ltng_add_sn can appear in mixed contexts; if also has string indicators treat as stringy */
                         if (strstr(is, "_ltng_add_sn") != NULL) {
                             /* could be numeric runtime add or string concat - treat as stringy for concat processing */
-                            return 1;
+                            { free(inner); return 1; }
                         }
                         /* If it looks like a pure numeric arithmetic expression (numbers, atoll/atof/atoi
                            conversions, arithmetic ops, parens, casts), treat as NOT stringy so it gets
@@ -1557,13 +1562,13 @@ static int part_is_stringy(const char *part) {
                                 }
                             }
                         }
-                        if (looks_numeric) return 0; /* numeric expression, not stringy */
-                        return 1;
+                        if (looks_numeric) { free(inner); return 0; } /* numeric expression, not stringy */
+                        { free(inner); return 1; }
                     }
                 }
                 if (strstr(is, "_ltng_add_sn") != NULL || strstr(is, "_ltng_concat") != NULL)
-                    return 1;
-                return part_is_stringy(is);
+                    { free(inner); return 1; }
+                { int __ps = part_is_stringy(is); free(inner); return __ps; }
             }
         }
     }
@@ -2753,10 +2758,10 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         for (int _i = pos - 1; _i >= 0; _i--) { if (out[_i] == '%') { _mop = _i; break; } }
                     }
                     if (_is_fmod && _mop >= 0 && _mop < pos && out[_mop] == '%') {
-                        char _left[4096]; int _llen = _mop; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                        char *_left = (char*)malloc(4096); if(_left){ int _llen = _mop; if (_llen >= 4096) _llen = 4095;
                         memcpy(_left, out, _llen); _left[_llen] = 0;
                         pos = 0;
-                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col);
+                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col); free(_left); }
                         if (!type_locked) result_type = TYPE_FLOAT;
                     } else {
                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
@@ -2777,10 +2782,10 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 if (pending_divmod) {
                     int _is_fmod = pending_divmod_is_mod;
                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
                         memcpy(_left, out, _llen); _left[_llen] = 0;
                         pos = 0;
-                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col);
+                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col); free(_left); }
                         if (!type_locked) result_type = TYPE_FLOAT;
                     } else {
                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))",
@@ -3043,9 +3048,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         if (is_simple_str_lit && ipos >= 3) {
                             char ch = inner[lit_start];
                             if (ch == '\\' && lit_start + 1 < lit_end) {
-                                char esc[8] = {0};
-                                esc[0] = inner[lit_start]; esc[1] = inner[lit_start + 1];
-                                pos += snprintf(out + pos, out_size - pos, "\"%s\"", esc);
+                                char *esc = (char*)malloc(3); if(esc){ esc[0]=inner[lit_start]; esc[1]=inner[lit_start+1]; esc[2]=0;
+                                pos += snprintf(out + pos, out_size - pos, "\"%s\"", esc); free(esc); }
                             } else {
                                 pos += snprintf(out + pos, out_size - pos, "\"%c\"", ch);
                             }
@@ -3402,14 +3406,14 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%s", cname);
                         } else switch (_emit_type) {
                             case TYPE_INT: {
-                                char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atoll(%s)", cname);
+                                char *_opnd = _ltng_cfmt("atoll(%s)", cname);
                                 if (pending_divmod) {
                                     int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
                                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
                                         memcpy(_left, out, _llen); _left[_llen] = 0;
                                         pos = 0;
-                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col);
+                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col); free(_left); }
                                     } else {
                                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
                                     }
@@ -3417,17 +3421,17 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 /* Untyped/dynamic parameters (no known default type) need runtime add semantics.
                                    Parameters with known default types are treated as typed by default. */
                                 if (!_has_default_type && symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
-                                pending_divmod = 0; pending_mod_op_pos = -1;
+                                free(_opnd); pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_FLOAT: {
-                                char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "atof(%s)", cname);
+                                char *_opnd = _ltng_cfmt("atof(%s)", cname);
                                 if (pending_divmod) {
                                     int _is_fmod = pending_divmod_is_mod;
                                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
                                         memcpy(_left, out, _llen); _left[_llen] = 0;
                                         pos = 0;
-                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col);
+                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col); free(_left); }
                                     } else {
                                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D"), _opnd, pending_divmod_line, pending_divmod_col);
                                     }
@@ -3436,7 +3440,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 /* Untyped/dynamic parameters (no known default type) need runtime add semantics.
                                    Parameters with known default types are treated as typed by default. */
                                 if (!_has_default_type && symbol_table_is_param(table, mangled) && !symbol_table_get_locked(table, mangled)) has_dynamic_numeric = 1;
-                                pending_divmod = 0; pending_mod_op_pos = -1;
+                                free(_opnd); pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_CHAR:
                             case TYPE_STRING:
@@ -3446,20 +3450,20 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 pending_divmod = 0; pending_mod_op_pos = -1;
                                 break;
                             case TYPE_BOOL: {
-                                char _opnd[512]; snprintf(_opnd, sizeof(_opnd), "(%s[0]=='t'?1:0)", cname);
+                                char *_opnd = _ltng_cfmt("(%s[0]=='t'?1:0)", cname);
                                 if (pending_divmod) {
                                     int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
                                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                                        char _left[4096]; int _llen = pending_mod_op_pos; if (_llen >= (int)sizeof(_left)) _llen = sizeof(_left)-1;
+                                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
                                         memcpy(_left, out, _llen); _left[_llen] = 0;
                                         pos = 0;
-                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col);
+                                        pos += snprintf(out + pos, out_size - pos, "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col); free(_left); }
                                     } else {
                                         pos += snprintf(out + pos, out_size - pos, "(%s(%s,%d,%d))", (result_type == TYPE_FLOAT ? (pending_divmod_is_mod?"_LTNG_NZMOD_D":"_LTNG_NZDIV_D") : (pending_divmod_is_mod?"_LTNG_NZMOD_LL":"_LTNG_NZDIV_LL")), _opnd, pending_divmod_line, pending_divmod_col);
                                     }
                                 } else pos += snprintf(out + pos, out_size - pos, "%s", _opnd);
                                 if (!type_locked) result_type = TYPE_BOOL;
-                                pending_divmod = 0; pending_mod_op_pos = -1;
+                                free(_opnd); pending_divmod = 0; pending_mod_op_pos = -1;
                                 break; }
                             case TYPE_NULL:
                             default:
@@ -4129,10 +4133,10 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                     if (_i >= 0 && (isdigit((unsigned char)out[_i]) || out[_i] == ')')) _left_num = 1;
                                 }
                                 if (!_left_num && pos >= 6) {
-                                    char _tail[32] = {0};
+                                    { char *_tail = (char*)calloc(1,32);
                                     int _tl = pos < 30 ? pos : 30;
-                                    memcpy(_tail, out + pos - _tl, _tl);
-                                    if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1;
+                                    if(_tail){ memcpy(_tail, out + pos - _tl, _tl);
+                                    if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1; free(_tail); } }
                                 }
                                 _numeric_add = _left_num;
                             }
@@ -4192,10 +4196,10 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         /* check for numeric conversions */
                                     }
                                     if (!_left_num && pos >= 6) {
-                                        char _tail[32] = {0};
+                                        char *_tail = (char*)calloc(1,32);
                                         int _tl = pos < 30 ? pos : 30;
-                                        memcpy(_tail, out + pos - _tl, _tl);
-                                        if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1;
+                                        if(_tail){ memcpy(_tail, out + pos - _tl, _tl);
+                                        if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1; free(_tail); }
                                     }
                                     _numeric_mul = _left_num;
                                 }
@@ -4514,7 +4518,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 char cparts[32][600];
                 for (int i = 0; i < nparts; i++) {
                     const char *part = parts[i];
-                    char unwrapped[512] = {0};
+                    char *unwrapped = (char*)calloc(1,512);
                     int is_num_wrap = 0;
                     {
                         const char *pw = part;
@@ -4526,7 +4530,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
                             if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
                                 int tl = (int)(inner - start);
-                                if (tl >= (int)sizeof(unwrapped)) tl = (int)sizeof(unwrapped) - 1;
+                                if (tl >= (int)512) tl = (int)512 - 1;
                                 memcpy(unwrapped, start, tl);
                                 unwrapped[tl] = '\0';
                                 is_num_wrap = 1;
@@ -4554,6 +4558,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         normalize_string_expr(cparts[i], sizeof(cparts[i]), array_access_used, table);
 
                     }
+                    free(unwrapped);
                 }
                 char add_result[2048] = {0};
                 strncpy(add_result, cparts[0], sizeof(add_result) - 1);
@@ -4578,7 +4583,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 /* In string concatenation, atof/atoi/atoll(ident) wrappers came from
                    numeric-context emission of variables/params; use the original char
                    buffer so string values are preserved (e.g. untyped params). */
-                char unwrapped[512] = {0};
+                char *unwrapped = (char*)calloc(1,512);
                 int is_num_wrap = 0;
                 {
                     const char *pw = part;
@@ -4590,7 +4595,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
                         if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
                             int tl = (int)(inner - start);
-                            if (tl >= (int)sizeof(unwrapped)) tl = (int)sizeof(unwrapped) - 1;
+                            if (tl >= (int)512) tl = (int)512 - 1;
                             memcpy(unwrapped, start, tl);
                             unwrapped[tl] = '\0';
                             is_num_wrap = 1;
@@ -4620,6 +4625,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     normalize_string_expr(cpart, sizeof(cpart), array_access_used, table);
 
                 }
+                free(unwrapped);
                 if (i == 0) {
                     strncpy(add_result, cpart, sizeof(add_result) - 1);
                     add_result[sizeof(add_result) - 1] = 0;
