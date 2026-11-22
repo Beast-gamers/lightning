@@ -7,19 +7,20 @@
 #include <time.h>
 
 static int mkdir_p(const char *path) {
-    char tmp[4096];
+    char *tmp = (char*)malloc(4096);
+    if(!tmp) return 1;
     size_t len = strlen(path);
-    if (len == 0 || len >= sizeof(tmp)) return -1;
+    if (len == 0 || len >= 4096) { free(tmp); return -1; }
     memcpy(tmp, path, len + 1);
     if (tmp[len - 1] == '/') tmp[len - 1] = '\0';
     for (char *p = tmp + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';
-            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
+            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) { free(tmp); return -1; }
             *p = '/';
         }
     }
-    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return -1;
+    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) { free(tmp); return -1; }
     return 0;
 }
 
@@ -28,9 +29,9 @@ static int copy_file(const char *src, const char *dst) {
     if (!in) return -1;
     FILE *out = fopen(dst, "wb");
     if (!out) { fclose(in); return -1; }
-    char buf[4096];
+    char *buf = (char*)malloc(4096);
     size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+    while ((n = fread(buf, 1, 4096, in)) > 0) {
         if (fwrite(buf, 1, n, out) != n) { fclose(in); fclose(out); return -1; }
     }
     fclose(in);
@@ -75,10 +76,11 @@ static void run_cmd_capture(const char *cmd, const char *label) {
         fprintf(stderr, "[%s] failed to run command\n", label);
         return;
     }
-    char buf[4096];
+    char *buf = (char*)malloc(4096);
+    if(!buf){fclose(fp);return;}
     size_t n;
     int any = 0;
-    while ((n = fread(buf, 1, sizeof(buf) - 1, fp)) > 0) {
+    while ((n = fread(buf, 1, 4095, fp)) > 0) {
         buf[n] = '\0';
         for (size_t i = 0; i < n; i++) if (buf[i] == '\r') buf[i] = ' ';
         fprintf(stderr, "%s", buf);
@@ -96,8 +98,8 @@ static void log_stage(const char *stage, const char *msg) {
     time_t now = time(NULL);
     struct tm tm_now;
     localtime_r(&now, &tm_now);
-    char ts[32];
-    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_now);
+    char *ts = (char*)malloc(32);
+    strftime(ts, 32, "%Y-%m-%d %H:%M:%S", &tm_now);
     fprintf(stderr, "[%s] [%s] %s\n", ts, stage, msg);
 }
 
@@ -147,22 +149,22 @@ int main(int argc, char *argv[]) {
     char *src_copy = strdup(argv[file_arg]);
     char *src_dir = dirname(src_copy);
 
-    char debug_dir[4096] = "";
-    char debug_ir[4096] = "";
-    char debug_c[4096] = "";
-    char debug_src[4096] = "";
-    char debug_log[4096] = "";
-    char debug_compiler_log[4096] = "";
+    char *debug_dir = (char*)calloc(1,4096);
+    char *debug_ir = (char*)calloc(1,4096);
+    char *debug_c = (char*)calloc(1,4096);
+    char *debug_src = (char*)calloc(1,4096);
+    char *debug_log = (char*)calloc(1,4096);
+    char *debug_compiler_log = (char*)calloc(1,4096);
     FILE *compiler_log_fp = NULL;
     CodegenLog cglog = {0};
     if (debug) {
-        snprintf(debug_dir, sizeof(debug_dir), "%s/debug/%s", src_dir, base);
+        snprintf(debug_dir, 4096, "%s/debug/%s", src_dir, base);
         mkdir_p(debug_dir);
-        snprintf(debug_src, sizeof(debug_src), "%s/source.ltng", debug_dir);
-        snprintf(debug_ir, sizeof(debug_ir), "%s/intermediete.ltng_ir", debug_dir);
-        snprintf(debug_c, sizeof(debug_c), "%s/emitted.c", debug_dir);
-        snprintf(debug_log, sizeof(debug_log), "%s/logs.txt", debug_dir);
-        snprintf(debug_compiler_log, sizeof(debug_compiler_log), "%s/compiler_log.txt", debug_dir);
+        snprintf(debug_src, 4096, "%s/source.ltng", debug_dir);
+        snprintf(debug_ir, 4096, "%s/intermediete.ltng_ir", debug_dir);
+        snprintf(debug_c, 4096, "%s/emitted.c", debug_dir);
+        snprintf(debug_log, 4096, "%s/logs.txt", debug_dir);
+        snprintf(debug_compiler_log, 4096, "%s/compiler_log.txt", debug_dir);
         copy_file(argv[file_arg], debug_src);
         compiler_log_fp = fopen(debug_compiler_log, "w");
         if (compiler_log_fp) {
@@ -207,12 +209,12 @@ int main(int argc, char *argv[]) {
         free(base);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 1;
     }
 
-    char ir_path[4096];
-    snprintf(ir_path, sizeof(ir_path), "%s/%s.ltng_ir", src_dir, base);
+    char *ir_path = (char*)malloc(4096);
+    snprintf(ir_path, 4096, "%s/%s.ltng_ir", src_dir, base);
 
     FILE *ir_out = fopen(ir_path, "w");
     if (!ir_out) {
@@ -223,7 +225,7 @@ int main(int argc, char *argv[]) {
         free(base);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 1;
     }
     if (debug) log_stage("ir", "writing intermediate representation");
@@ -240,12 +242,12 @@ int main(int argc, char *argv[]) {
         free(base);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 0;
     }
 
-    char tmp_c[512];
-    snprintf(tmp_c, sizeof(tmp_c), "/tmp/ltng_%d.c", getpid());
+    char *tmp_c = (char*)malloc(512);
+    snprintf(tmp_c, 512, "/tmp/ltng_%d.c", getpid());
     FILE *out = fopen(tmp_c, "w");
     if (!out) {
         fprintf(stderr, "Error: Cannot create temporary C file\n");
@@ -256,7 +258,7 @@ int main(int argc, char *argv[]) {
         free(base);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 1;
     }
 
@@ -276,7 +278,7 @@ int main(int argc, char *argv[]) {
         free(base);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 1;
     }
 
@@ -285,8 +287,8 @@ int main(int argc, char *argv[]) {
         output_name = strdup(argv[out_arg]);
     } else {
         /* Create compiled folder in the directory containing the source file */
-        char compiled_dir[4096];
-        snprintf(compiled_dir, sizeof(compiled_dir), "%s/compiled", src_dir);
+        char *compiled_dir = (char*)malloc(4096);
+        snprintf(compiled_dir, 4096, "%s/compiled", src_dir);
         mkdir(compiled_dir, 0755);
         output_name = malloc(4096);
         if (emit_c) {
@@ -314,9 +316,9 @@ int main(int argc, char *argv[]) {
             if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); }
             return 1;
         }
-        char buf[4096];
+        char *buf = (char*)malloc(4096);
         size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), cin)) > 0) {
+        while ((n = fread(buf, 1, 4096, cin)) > 0) {
             fwrite(buf, 1, n, cout);
         }
         fclose(cin);
@@ -334,15 +336,15 @@ int main(int argc, char *argv[]) {
         free(output_name);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 0;
     }
 
-    char cmd[4096];
+    char *cmd = (char*)malloc(4096);
     if (debug) {
-        snprintf(cmd, sizeof(cmd), "%s -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
+        snprintf(cmd, 4096, "%s -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
     } else {
-        snprintf(cmd, sizeof(cmd), "%s -w -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
+        snprintf(cmd, 4096, "%s -w -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
     }
 
     if (debug) log_stage("cc", "invoking C compiler");
@@ -359,20 +361,20 @@ int main(int argc, char *argv[]) {
         free(output_name);
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return 1;
     }
 
     /* Read compiler output */
-    char compiler_err[4096] = "";
-    char buf[4096];
+    char *compiler_err = (char*)calloc(1,4096);
+    char *buf = (char*)malloc(4096);
     size_t n;
-    while ((n = fread(buf, 1, sizeof(buf) - 1, cfp)) > 0) {
+    while ((n = fread(buf, 1, 4096 - 1, cfp)) > 0) {
         buf[n] = '\0';
         for (size_t i = 0; i < n; i++) {
             if (buf[i] == '\r') buf[i] = ' ';
         }
-        strncat(compiler_err, buf, sizeof(compiler_err) - strlen(compiler_err) - 1);
+        strncat(compiler_err, buf, 4096 - strlen(compiler_err) - 1);
     }
     int compiler_exit = pclose(cfp);
 
@@ -384,18 +386,21 @@ int main(int argc, char *argv[]) {
         if (compiler_exit == 0) {
             printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
             /* generate debug artifacts: binary, object, assembly */
-            char dbg_bin[4096], dbg_obj[4096], dbg_asm[4096], cmd2[8192];
-            snprintf(dbg_bin, sizeof(dbg_bin), "%s/%s", debug_dir, base);
-            snprintf(dbg_obj, sizeof(dbg_obj), "%s/%s.o", debug_dir, base);
-            snprintf(dbg_asm, sizeof(dbg_asm), "%s/%s.s", debug_dir, base);
+            char *dbg_bin=(char*)malloc(4096), *dbg_obj=(char*)malloc(4096), *dbg_asm=(char*)malloc(4096), *cmd2=(char*)malloc(8192);
+            if(!dbg_bin||!dbg_obj||!dbg_asm||!cmd2){free(dbg_bin);free(dbg_obj);free(dbg_asm);free(cmd2);} else {
+            snprintf(dbg_bin, 4096, "%s/%s", debug_dir, base);
+            snprintf(dbg_obj, 4096, "%s/%s.o", debug_dir, base);
+            snprintf(dbg_asm, 4096, "%s/%s.s", debug_dir, base);
             copy_file(output_name, dbg_bin);
             chmod(dbg_bin, 0755);
-            snprintf(cmd2, sizeof(cmd2), "%s -c -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_obj, tmp_c);
+            snprintf(cmd2, 8192, "%s -c -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_obj, tmp_c);
             run_cmd_capture(cmd2, "C compiler (object)");
-            snprintf(cmd2, sizeof(cmd2), "%s -S -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_asm, tmp_c);
+            snprintf(cmd2, 8192, "%s -S -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_asm, tmp_c);
             run_cmd_capture(cmd2, "C compiler (assembly)");
-            snprintf(cmd2, sizeof(cmd2), "%s -g -O0 -o \"%s.dbg\" \"%s\" 2>&1", cc_cmd, dbg_bin, tmp_c);
+            snprintf(cmd2, 8192, "%s -g -O0 -o \"%s.dbg\" \"%s\" 2>&1", cc_cmd, dbg_bin, tmp_c);
             run_cmd_capture(cmd2, "C compiler (debug-symbol binary)");
+            free(dbg_bin); free(dbg_obj); free(dbg_asm); free(cmd2);
+            }
         }
     } else {
         /* Hide C compiler errors unless --debug */
@@ -422,6 +427,6 @@ int main(int argc, char *argv[]) {
 
     if (compiler_log_fp) { fclose(compiler_log_fp); compiler_log_fp = NULL; codegen_set_log(NULL); }
     if (debug) log_stage("end", "debug session finished");
-    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char lbuf[4096]; size_t ln; while((ln=fread(lbuf,1,sizeof(lbuf),lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
+    if (log_fd >= 0) { fflush(stdout); fflush(stderr); if (orig_stdout_fd>=0) dup2(orig_stdout_fd,STDOUT_FILENO); if (orig_stderr_fd>=0) dup2(orig_stderr_fd,STDERR_FILENO); close(log_fd); if(orig_stdout_fd>=0)close(orig_stdout_fd); if(orig_stderr_fd>=0)close(orig_stderr_fd); log_fd=-1; if (debug && debug_log[0]) { FILE *lf=fopen(debug_log,"r"); if(lf){ char *lbuf = (char*)malloc(4096); size_t ln; while((ln=fread(lbuf,1,4096,lf))>0) fwrite(lbuf,1,ln,stdout); fclose(lf);} } }
     return rc;
 }

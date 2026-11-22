@@ -11,9 +11,9 @@ This document consolidates known limitations, gaps, and unresolved issues record
 These limitations were identified in the initial audit and remain relevant across phases unless explicitly addressed.
 
 ### Language/runtime architecture and representation
-- **String-buffer runtime model (largely removed):** core runtime values are stored as dynamic heap strings (`_ltng_ds_*`), and generated formatting/temp/return-buffer helpers use dynamic allocation (`_ltng_ds_fmt`, `_ltng_retbuf_fmt`, dynamic `_ltng_retbuf`). Exception payload/trace/function-stack runtime buffers are also dynamic. Most remaining fixed-size buffers are compiler-internal parser/codegen scratch buffers (expression rewrite/work buffers, name buffers, etc.), not generated runtime value storage; they can still limit unusually large/complex compiler inputs but do not truncate normal runtime string values.
-- **Static/rotating runtime buffers:** helpers such as rotating return/temp buffers (e.g. `_ltng_retbuf` and similar patterns) create lifetime/aliasing constraints and are not a general ownership model.
-- **Fixed limits in compiler/runtime paths:** legacy/structural limits still exist in parts of the implementation (e.g. `MAX_STRING_LEN`, identifier/token-related limits, fixed buffer formatting in some paths, dimension/index handling constraints in specific contexts).
+- **String-buffer runtime model (largely removed):** core runtime values are stored as dynamic heap strings (`_ltng_ds_*`), and generated formatting/temp/return-buffer helpers use dynamic allocation (`_ltng_ds_fmt`, `_ltng_retbuf_fmt`, dynamic `_ltng_retbuf`). Exception payload/trace/function-stack runtime buffers are also dynamic. Fixed-size `char ...[N]` scratch buffers have been removed from the compiler source files (`lexer.c`, `parser.c`, `codegen.c`, `main.c`, `errors.c`, `ir.c`); parser/codegen scratch space is heap-allocated as needed. This removes fixed compiler scratch-buffer truncation/overflow limits for normal paths, though very large inputs are still constrained by available memory and existing structural limits.
+- **Static/rotating runtime buffers:** rotating return/temp buffers remain a lifetime/aliasing constraint (`_ltng_retbuf` and similar patterns), but they are heap-backed/dynamic rather than fixed-size static storage.
+- **Fixed limits in compiler/runtime paths:** legacy/structural limits still exist in parts of the implementation (e.g. `MAX_STRING_LEN`, identifier/token-related limits, some dimension/index handling constraints in specific contexts).
 - **Heuristic typing/coercion behavior:** dynamic/numeric-string heuristics (e.g. numeric-string detection/add behavior) can produce surprising results and are not yet fully aligned with a robust general-purpose type system.
 - **`+` operator overload ambiguity (add vs concat):** `+` is overloaded for numeric addition and string concatenation, but dispatch is context/type-dependent and can be inconsistent or order-sensitive in mixed string/numeric cases. Examples (current behavior): `"5" + 5` and `5 + "5"` both evaluate to `10` (not `"55"`), while with typed variables `let s = "5"; let n = 5` yields `s + n == "55"` (string concat) but `n + s == 10` (runtime numeric/string add path). Deterministic intent currently requires explicit conversion/careful typing rather than relying on mixed-operand `+` semantics.
 
@@ -150,13 +150,12 @@ These limitations were identified in the initial audit and remain relevant acros
 - `finally` runs on normal completion, `throw`, `return`, `break`, and `continue`; `return` in `finally` overrides pending control flow; new exceptions in `finally` replace pending ones.
 
 ### Remaining limitations
-- **Bounded trace buffer:** exception traces are stored in `_ltng_exc_trace[8192]`; extremely deep or wide traces may be truncated.
-- **Bounded function stack:** trace capture records at most 256 frames (`LTNG_FN_MAX`).
-- **Fixed exception payload buffers:** type, message, value, and trace use fixed-size buffers, so very large payloads are truncated.
+- **Bounded function stack:** trace capture records at most 256 frames (`LTNG_FN_MAX`), so extremely deep traces may omit older frames.
+- **Dynamic exception payloads/traces:** exception type, message, value, trace, and function-stack storage are heap-backed/dynamic (not fixed-size buffers), so very large payloads are limited by available memory rather than fixed buffer sizes.
 - **No typed catch filtering:** there is no `catch (Type e)` syntax; a `catch` handles every exception thrown in its `try`. Type-based dispatch must be done manually on `e.type`.
 - **`exit` skips `finally`:** `exit` terminates the process immediately, so pending `finally` cleanup does not run.
 - **Inlined cleanup / code size:** `finally` bodies are inlined at each exit point (including exception unwinding), which can increase generated code size for deeply nested `try`/`finally` blocks.
-- **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values (each roughly 11 KB) during exception-path `finally` execution; very deep exception-path `finally` nesting consumes additional C stack.
+- **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values during exception-path `finally` execution; values are heap-backed/dynamic, but very deep exception-path `finally` nesting still consumes additional C stack.
 - **Exception object model:** catch values are object-like fixed-buffer values; they are not first-class exception instances with inheritance, custom fields, or user-defined exception classes.
 - **Memory validation:** ASan could not run in this environment and valgrind is unavailable; validation relied on UBSan and native execution, so memory-safety evidence is not comprehensive.
 

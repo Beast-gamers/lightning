@@ -251,9 +251,8 @@
 - `limitations.md`
 
 ### Notes / remaining limitations
-- Trace text is bounded (`_ltng_exc_trace[8192]`); very deep traces may be truncated.
-- Function-stack capture is bounded to 256 frames.
-- Exception type/message/value/trace storage uses fixed buffers, so very large payloads are truncated.
+- Function-stack capture is bounded to 256 frames; very deep traces may omit older frames.
+- Exception type/message/value/trace storage is heap-backed/dynamic (not fixed-size buffers), so very large payloads are limited by available memory rather than fixed buffer sizes.
 - `exit` terminates the process without running pending `finally` blocks.
 - No typed catch filtering (`catch (Type e)`); every `catch` handles all exceptions from its `try`.
 - `finally` is implemented by inlining cleanup code at exit points; very deeply nested `try`/`finally` blocks increase generated code size.

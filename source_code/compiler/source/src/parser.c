@@ -4006,7 +4006,6 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 lexer_next(lexer); /* consume ] */
                                 index_count++;
                                 nxt = lexer_peek(lexer);
-                                free(index_exprs);
                             }
 
                             if (!index_error && index_count > 0) {
@@ -4096,8 +4095,12 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                     }
                                 }
                                 if (!have_dims) free(dims);
+                                free(index_exprs);
                             } else if (!index_error) {
                                 pos += snprintf(out + pos, out_size - pos, "0");
+                                free(index_exprs);
+                            } else {
+                                free(index_exprs);
                             }
                         } else {
                             char *errmsg = _ltng_cfmt("Variable '%s' is not an array", tok.value);
@@ -4442,10 +4445,21 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
         /* Handle multiplication with higher precedence - split by + at top level first */
         if (strstr(out, "+") != NULL) {
             /* split by + */
-            char tmp[2048];
+            char *tmp = (char*)malloc(2048);
+            char (*parts)[2048] = (char(*)[2048])malloc(32 * 2048);
+            char *norm_buf = (char*)malloc(2048);
+            char *split_tmp = (char*)malloc(2048);
+            char (*new_parts)[2048] = (char(*)[2048])malloc(32 * 2048);
+            char *inner_tmp = (char*)malloc(2048);
+            char (*cparts)[600] = (char(*)[600])malloc(32 * 600);
+            char *add_result = (char*)malloc(2048);
+            char *step = (char*)malloc(2048);
+            char *cpart = (char*)malloc(2048);
+            if(!tmp||!parts||!norm_buf||!split_tmp||!new_parts||!inner_tmp||!cparts||!add_result||!step||!cpart){
+                free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
+            } else {
             strncpy(tmp, out, 2047);
             tmp[2047] = 0;
-            char parts[32][2048];
             int nparts = 0;
             char *start = tmp;
             int depth_paren = 0, depth_bracket = 0, depth_brace = 0;
@@ -4471,8 +4485,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     while (*s == ' ' || *s == '\t') s++;
                     char *e = s + strlen(s) - 1;
                     while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                    strncpy(parts[nparts++], s, sizeof(parts[0]) - 1);
-                    parts[nparts-1][sizeof(parts[0]) - 1] = 0;
+                    strncpy(parts[nparts++], s, 2048 - 1);
+                    parts[nparts-1][2048 - 1] = 0;
                     start = p + 1;
                 }
             }
@@ -4481,16 +4495,16 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 while (*s == ' ' || *s == '\t') s++;
                 char *e = s + strlen(s) - 1;
                 while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                strncpy(parts[nparts++], s, sizeof(parts[0]) - 1);
-                parts[nparts-1][sizeof(parts[0]) - 1] = 0;
+                strncpy(parts[nparts++], s, 2048 - 1);
+                parts[nparts-1][2048 - 1] = 0;
             }
             /* transform each part */
             /* If no actual concatenation at top level (e.g. all '+' inside parens),
                try to normalize by unwrapping outer parens to expose top-level '+'. */
             if (nparts <= 1 && has_string_concat) {
-                char norm_buf[2048];
-                strncpy(norm_buf, parts[0], sizeof(norm_buf) - 1);
-                norm_buf[sizeof(norm_buf) - 1] = 0;
+                norm_buf[0]=0;
+                strncpy(norm_buf, parts[0], 2048 - 1);
+                norm_buf[2048 - 1] = 0;
                 /* Unwrap whole-expression paren layers dynamically. Each pass either
                    exposes a top-level '+' (then we split) or strips one wrapping layer,
                    so the number of passes is bounded by the string length - no fixed
@@ -4500,8 +4514,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 for (int unwrap_try = 0; unwrap_try < unwrap_limit && nparts <= 1; unwrap_try++) {
                     /* try splitting current norm_buf by top-level '+' first */
                     {
-                        char split_tmp[2048]; strncpy(split_tmp, norm_buf, sizeof(split_tmp)-1); split_tmp[sizeof(split_tmp)-1]=0;
-                        char *ist2 = split_tmp; int d2p=0,d2b=0,d2br=0,in2=0; char q2c=0; int new_n=0; char new_parts[32][2048];
+                        strncpy(split_tmp, norm_buf, 2047); split_tmp[2047]=0;
+                        char *ist2 = split_tmp; int d2p=0,d2b=0,d2br=0,in2=0; char q2c=0; int new_n=0;
                         for (char *pp = split_tmp; *pp && new_n < 32; pp++) {
                             if (in2) { if (*pp == q2c && (pp == split_tmp || *(pp-1) != '\\')) in2 = 0; continue; }
                             if (*pp == '"' || *pp == '\'') { in2 = 1; q2c = *pp; continue; }
@@ -4511,14 +4525,14 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             else if (*pp == '+' && d2p==0 && d2b==0 && d2br==0) {
                                 *pp = 0; char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
                                 char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
-                                strncpy(new_parts[new_n++], s2, sizeof(new_parts[0])-1); new_parts[new_n-1][sizeof(new_parts[0])-1]=0; ist2 = pp+1;
+                                strncpy(new_parts[new_n++], s2, 2048-1); new_parts[new_n-1][2048-1]=0; ist2 = pp+1;
                             }
                         }
                         { char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
                           char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
-                          strncpy(new_parts[new_n++], s2, sizeof(new_parts[0])-1); new_parts[new_n-1][sizeof(new_parts[0])-1]=0; }
+                          strncpy(new_parts[new_n++], s2, 2048-1); new_parts[new_n-1][2048-1]=0; }
                         if (new_n > 1) {
-                            for (int pi = 0; pi < new_n && pi < 32; pi++) { strncpy(parts[pi], new_parts[pi], sizeof(parts[0])-1); parts[pi][sizeof(parts[0])-1]=0; }
+                            for (int pi = 0; pi < new_n && pi < 32; pi++) { strncpy(parts[pi], new_parts[pi], 2048-1); parts[pi][2048-1]=0; }
                             nparts = new_n;
                             break;
                         }
@@ -4536,10 +4550,10 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     const char *naft = nend + 1; while (*naft == ' ' || *naft == '\t') naft++;
                     if (*naft != '\0') break; /* doesn't wrap whole expression, can't unwrap */
                     size_t nil = (size_t)(nend - (nq + 1));
-                    char inner_tmp[2048]; if (nil >= sizeof(inner_tmp)) nil = sizeof(inner_tmp) - 1;
+                    if (nil >= 2048) nil = 2047;
                     memcpy(inner_tmp, nq + 1, nil); inner_tmp[nil] = 0;
-                    strncpy(norm_buf, inner_tmp, sizeof(norm_buf)-1); norm_buf[sizeof(norm_buf)-1]=0;
-                    strncpy(parts[0], inner_tmp, sizeof(parts[0])-1); parts[0][sizeof(parts[0])-1]=0;
+                    strncpy(norm_buf, inner_tmp, 2048-1); norm_buf[2048-1]=0;
+                    strncpy(parts[0], inner_tmp, 2048-1); parts[0][2048-1]=0;
                 }
             }
             /* If no actual concatenation (single part), skip wrapping */
@@ -4557,7 +4571,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 /* Array elements are string buffers; use the runtime
                    numeric-or-string add so `arr[1] + arr[2]` adds numbers
                    and concatenates strings. */
-                char cparts[32][600];
+                /* cparts allocated above */
                 for (int i = 0; i < nparts; i++) {
                     const char *part = parts[i];
                     char *unwrapped = (char*)calloc(1,512);
@@ -4580,8 +4594,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                     }
                     if (is_num_wrap) {
-                        strncpy(cparts[i], unwrapped, sizeof(cparts[i]) - 1);
-                        cparts[i][sizeof(cparts[i]) - 1] = 0;
+                        strncpy(cparts[i], unwrapped, 600 - 1);
+                        cparts[i][600 - 1] = 0;
                     } else if (!part_is_stringy(part)) {
                         int is_float_expr = (strchr(part, '.') != NULL ||
                             strstr(part, "atof(") != NULL ||
@@ -4589,39 +4603,38 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             strstr(part, "_LTNG_NZDIV_D") != NULL ||
                             strstr(part, "_LTNG_NZMOD_D") != NULL ||
                             strstr(part, "_LTNG_FMOD_D") != NULL);
-                        snprintf(cparts[i], sizeof(cparts[i]),
+                        snprintf(cparts[i], 600,
                                  "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
                                  is_float_expr ? "%g" : "%lld",
                                  is_float_expr ? "double" : "long long",
                                  part);
                     } else {
-                        strncpy(cparts[i], part, sizeof(cparts[i]) - 1);
-                        cparts[i][sizeof(cparts[i]) - 1] = 0;
-                        normalize_string_expr(cparts[i], sizeof(cparts[i]), array_access_used, table);
+                        strncpy(cparts[i], part, 600 - 1);
+                        cparts[i][600 - 1] = 0;
+                        normalize_string_expr(cparts[i], 600, array_access_used, table);
 
                     }
                     free(unwrapped);
                 }
-                char add_result[2048] = {0};
-                strncpy(add_result, cparts[0], sizeof(add_result) - 1);
-                add_result[sizeof(add_result) - 1] = 0;
+                add_result[0]=0;
+                strncpy(add_result, cparts[0], 2047);
+                add_result[2047] = 0;
                 for (int i = 1; i < nparts; i++) {
-                    char step[2048];
-                    snprintf(step, sizeof(step), "_ltng_add_sn(%s, %s)",
+                    snprintf(step, 2048, "_ltng_add_sn(%s, %s)",
                              add_result, cparts[i]);
-                    strncpy(add_result, step, sizeof(add_result) - 1);
-                    add_result[sizeof(add_result) - 1] = 0;
+                    strncpy(add_result, step, 2047);
+                    add_result[2047] = 0;
                 }
                 strncpy(out, add_result, out_size - 1);
                 out[out_size - 1] = 0;
                 result_type = TYPE_STRING;
             } else {
             /* concatenate: build expression from parts */
-            char add_result[2048] = {0};
+            add_result[0]=0;
             int all_stringy = 1;
             for (int i = 0; i < nparts; i++) {
                 const char *part = parts[i];
-                char cpart[2048];
+                cpart[0]=0;
                 /* In string concatenation, atof/atoi/atoll(ident) wrappers came from
                    numeric-context emission of variables/params; use the original char
                    buffer so string values are preserved (e.g. untyped params). */
@@ -4646,8 +4659,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 }
                 if (is_num_wrap) {
                     /* Treat as string buffer for concatenation (runtime _ltng_add_sn handles numeric-vs-string). */
-                    strncpy(cpart, unwrapped, sizeof(cpart) - 1);
-                    cpart[sizeof(cpart) - 1] = 0;
+                    strncpy(cpart, unwrapped, 2048 - 1);
+                    cpart[2048 - 1] = 0;
                     all_stringy = 0; /* force _ltng_add_sn for runtime-correct behavior */
                 } else if (!part_is_stringy(part)) {
                     all_stringy = 0;
@@ -4657,34 +4670,35 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         strstr(part, "_LTNG_NZDIV_D") != NULL ||
                         strstr(part, "_LTNG_NZMOD_D") != NULL ||
                         strstr(part, "_LTNG_FMOD_D") != NULL);
-                    snprintf(cpart, sizeof(cpart), "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
+                    snprintf(cpart, 2048, "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
                              is_float_expr ? "%g" : "%lld",
                              is_float_expr ? "double" : "long long",
                              part);
                 } else {
-                    strncpy(cpart, part, sizeof(cpart) - 1);
-                    cpart[sizeof(cpart) - 1] = 0;
-                    normalize_string_expr(cpart, sizeof(cpart), array_access_used, table);
+                    strncpy(cpart, part, 2048 - 1);
+                    cpart[2048 - 1] = 0;
+                    normalize_string_expr(cpart, 2048, array_access_used, table);
 
                 }
                 free(unwrapped);
                 if (i == 0) {
-                    strncpy(add_result, cpart, sizeof(add_result) - 1);
-                    add_result[sizeof(add_result) - 1] = 0;
+                    strncpy(add_result, cpart, 2048 - 1);
+                    add_result[2048 - 1] = 0;
                 } else {
-                    char step[2048];
                     if (all_stringy) {
-                        snprintf(step, sizeof(step), "_ltng_concat_dyn(2, %s, %s)", add_result, cpart);
+                        snprintf(step, 2048, "_ltng_concat_dyn(2, %s, %s)", add_result, cpart);
                     } else {
-                        snprintf(step, sizeof(step), "_ltng_add_sn(%s, %s)", add_result, cpart);
+                        snprintf(step, 2048, "_ltng_add_sn(%s, %s)", add_result, cpart);
                     }
-                    strncpy(add_result, step, sizeof(add_result) - 1);
-                    add_result[sizeof(add_result) - 1] = 0;
+                    strncpy(add_result, step, 2047);
+                    add_result[2047] = 0;
                 }
             }
             strncpy(out, add_result, out_size - 1);
             out[out_size - 1] = 0;
             result_type = TYPE_STRING;
+            }
+            free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
             }
         } else if (strstr(out, "*") != NULL) {
             /* Use normalize_string_expr for general multiply expressions
