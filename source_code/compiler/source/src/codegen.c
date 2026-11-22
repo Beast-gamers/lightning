@@ -8,7 +8,7 @@ static CodegenLog *codegen_log = NULL;
 #define CG_MAX_CLEANUPS 128
 #define CG_MAX_LOOPS 64
 typedef struct {
-    char top_expr[64];        /* assignment such as _ltng_tf0.prev */
+    char *top_expr;        /* assignment such as _ltng_tf0.prev */
     ASTNode *finally_body;    /* NULL when the try has no finally */
 } CgCleanup;
 
@@ -143,8 +143,9 @@ static void log_emitted_node(const char *src_file, ASTNode *node, const char *c_
     if (node->args) {
         int ai = 0;
         for (ASTNode *a = node->args; a; a = a->next) {
-            char label[64];
-            snprintf(label, sizeof(label), "arg[%d]", ai++);
+            char *label = (char*)malloc(128);
+            if(!label) label=(char*)calloc(1,1);
+            snprintf(label, 128, "arg[%d]", ai++);
             if (a->value[0] || a->is_expr || a->is_variable) {
                 if (a->v_sl > 0) {
                     fprintf(codegen_log->file, "  [expr:%s] ltng %s:%d:%d-%d:%d\n", label, src_file ? src_file : "<input>", a->v_sl,a->v_sc,a->v_el,a->v_ec);
@@ -239,8 +240,7 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
         if (*p == '<') {
             p++;
             while (*p && *p != '>') {
-                char tmp[2] = {*p, '\0'};
-                write_c_string(out, tmp);
+                char *tmp_s = (char*)malloc(2); if(tmp_s){tmp_s[0]=*p; tmp_s[1]=0; write_c_string(out, tmp_s); free(tmp_s);}
                 p++;
             }
             if (*p == '>') p++;
@@ -356,8 +356,7 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
         if (*p == '<') {
             p++;
             while (*p && *p != '>') {
-                char tmp[2] = {*p, '\0'};
-                write_c_string(out, tmp);
+                char *tmp_s = (char*)malloc(2); if(tmp_s){tmp_s[0]=*p; tmp_s[1]=0; write_c_string(out, tmp_s); free(tmp_s);}
                 p++;
             }
             if (*p == '>') p++;
@@ -527,8 +526,10 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
     if (!expr || !expr[0]) return 0;
     if (!strchr(expr, '/') && !strchr(expr, '%')) return 0;
 
-    char tmp[8192];
-    strncpy(tmp, expr, sizeof(tmp)-1); tmp[sizeof(tmp)-1]=0;
+    size_t expr_len = strlen(expr);
+    char *tmp = (char*)malloc(expr_len + 1);
+    if (!tmp) return 0;
+    memcpy(tmp, expr, expr_len + 1);
 
     /* trim */
     char *t = tmp; while (*t==' '||*t=='\t'||*t=='\n'||*t=='\r') t++;
@@ -550,31 +551,33 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
         break;
     }
 
-    /* Only rewrite if there's a div/mod at top level in this (possibly unwrapped) expr.
-       This avoids breaking expressions where / % appear only inside nested subexpressions we can't safely restructure here;
-       we apply iteratively on lhs to catch left-associative chains. */
-    if (!cg_expr_has_divmod(t)) return 0;
+    /* Only rewrite if there's a div/mod at top level in this (possibly unwrapped) expr. */
+    if (!cg_expr_has_divmod(t)) { free(tmp); return 0; }
 
     int pdiv=-1, pmod=-1;
     cg_find_top_binop(t, '/', &pdiv);
     cg_find_top_binop(t, '%', &pmod);
     int pos = -1; char op = 0;
     if (pmod > pdiv) { pos = pmod; op = '%'; } else if (pdiv >= 0) { pos = pdiv; op = '/'; }
-    if (pos < 0) return 0;
+    if (pos < 0) { free(tmp); return 0; }
 
-    char lhs_raw[4096], rhs_raw[4096];
-    int lp = pos; if (lp >= (int)sizeof(lhs_raw)) lp = sizeof(lhs_raw)-1;
-    memcpy(lhs_raw, t, lp); lhs_raw[lp]=0;
-    strncpy(rhs_raw, t+pos+1, sizeof(rhs_raw)-1); rhs_raw[sizeof(rhs_raw)-1]=0;
+    size_t tl = strlen(t);
+    char *lhs_raw = (char*)malloc(tl + 1);
+    char *rhs_raw = (char*)malloc(tl + 1);
+    if(!lhs_raw||!rhs_raw){ free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
+    int lp = pos; if (lp < 0) lp = 0;
+    memcpy(lhs_raw, t, (size_t)lp); lhs_raw[lp]=0;
+    strncpy(rhs_raw, t+pos+1, tl); rhs_raw[tl]=0;
 
     /* trim lhs/rhs */
     char *a=lhs_raw; while(*a==' '||*a=='\t') a++; size_t la=strlen(a); while(la>0&&(a[la-1]==' '||a[la-1]=='\t')) a[--la]=0;
     char *b=rhs_raw; while(*b==' '||*b=='\t') b++; size_t lb=strlen(b); while(lb>0&&(b[lb-1]==' '||b[lb-1]=='\t')) b[--lb]=0;
-    if (!*a || !*b) return 0;
+    if (!*a || !*b) { free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
 
     /* Recursively rewrite lhs to protect inner left-associative ops (e.g. a/b/c). */
-    char lhs_rw[8192];
-    int lhs_changed = cg_rewrite_divmod(lhs_rw, sizeof(lhs_rw), a, is_float, line, col);
+    char *lhs_rw = (char*)malloc(outsz > 0 ? outsz : 8192);
+    if(!lhs_rw){ free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
+    int lhs_changed = cg_rewrite_divmod(lhs_rw, outsz > 0 ? outsz : 8192, a, is_float, line, col);
     const char *lhs_final = lhs_changed ? lhs_rw : a;
 
     if (is_float) {
@@ -584,6 +587,7 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
         if (op == '/') snprintf(out,outsz,"_LTNG_DIV_LL(%s,%s,%d,%d)", lhs_final,b,line,col);
         else snprintf(out,outsz,"_LTNG_MOD_LL(%s,%s,%d,%d)", lhs_final,b,line,col);
     }
+    free(lhs_rw); free(lhs_raw); free(rhs_raw); free(tmp);
     return 1;
 }
 
@@ -735,19 +739,21 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                 if (_is_call_res)
                     fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n", node->name, node->value);
                 else {
-                    char _rex[4096];
-                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                    char *_rex = (char*)malloc(4096);
+                    if (cg_rewrite_divmod(_rex, 4096, node->value, 1, node->line, node->col))
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
+                    free(_rex);
                 }
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 {
-                    char _rex[4096];
-                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                    char *_rex = (char*)malloc(4096);
+                    if (cg_rewrite_divmod(_rex, 4096, node->value, 1, node->line, node->col))
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
+                    free(_rex);
                 }
             } else if (node->var_type == TYPE_BOOL) {
                 if (_is_call_res)
@@ -758,11 +764,12 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                 if (_is_call_res)
                     fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n", node->name, node->value);
                 else {
-                    char _rex[4096];
-                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
+                    char *_rex = (char*)malloc(4096);
+                    if (cg_rewrite_divmod(_rex, 4096, node->value, 0, node->line, node->col))
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, _rex);
                     else
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, node->value);
+                    free(_rex);
                 }
             }
         }
@@ -877,17 +884,19 @@ static void codegen_write(FILE *out, ASTNode *node, SymbolTable *table, int inde
         } else if (node->var_type == TYPE_INT || node->var_type == TYPE_FLOAT) {
             pad(out, indent);
             if (node->var_type == TYPE_FLOAT) {
-                char _rex[4096];
-                if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                char *_rex = (char*)malloc(4096);
+                if (cg_rewrite_divmod(_rex, 4096, node->value, 1, node->line, node->col))
                     fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", _rex);
                 else
                     fprintf(out, "printf(\"%%g\\n\", (double)(%s));\n", node->value);
+                free(_rex);
             } else {
-                char _rex[4096];
-                if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
+                char *_rex = (char*)malloc(4096);
+                if (cg_rewrite_divmod(_rex, 4096, node->value, 0, node->line, node->col))
                     fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", _rex);
                 else
                     fprintf(out, "printf(\"%%lld\\n\", (long long)(%s));\n", node->value);
+                free(_rex);
             }
         } else if (node->var_type == TYPE_BOOL) {
             pad(out, indent);
@@ -1024,19 +1033,21 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                 if (_is_call_res)
                     fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)atof(%s));\n", node->name, node->value);
                 else {
-                    char _rex[4096];
-                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                    char *_rex = (char*)malloc(4096);
+                    if (cg_rewrite_divmod(_rex, 4096, node->value, 1, node->line, node->col))
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
+                    free(_rex);
                 }
             } else if (strchr(node->value, '.') && !_is_call_res) {
                 {
-                    char _rex[4096];
-                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 1, node->line, node->col))
+                    char *_rex = (char*)malloc(4096);
+                    if (cg_rewrite_divmod(_rex, 4096, node->value, 1, node->line, node->col))
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, _rex);
                     else
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%g\", (double)(%s));\n", node->name, node->value);
+                    free(_rex);
                 }
             } else if (node->var_type == TYPE_BOOL) {
                 if (_is_call_res)
@@ -1047,11 +1058,12 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
                 if (_is_call_res)
                     fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)atoll(%s));\n", node->name, node->value);
                 else {
-                    char _rex[4096];
-                    if (cg_rewrite_divmod(_rex, sizeof(_rex), node->value, 0, node->line, node->col))
+                    char *_rex = (char*)malloc(4096);
+                    if (cg_rewrite_divmod(_rex, 4096, node->value, 0, node->line, node->col))
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, _rex);
                     else
                         fprintf(out, "_ltng_ds_setfmt(&%s, \"%%lld\", (long long)(%s));\n", node->name, node->value);
+                    free(_rex);
                 }
             }
         }
@@ -1061,9 +1073,8 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
         pad(out, indent);
         fprintf(out, "_ltng_ds_set(&%s, \"", node->name);
         if (node->var_type == TYPE_FLOAT) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%g", atof(node->value));
-            write_c_string(out, buf);
+            char *buf = (char*)malloc(64);
+            if(buf){ snprintf(buf, 64, "%g", atof(node->value)); write_c_string(out, buf); free(buf); }
         } else if (node->var_type == TYPE_BOOL) {
             write_c_string(out, bool_to_str(node->value));
         } else {
@@ -1387,16 +1398,17 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
 
 static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent) {
     int id = g_try_uid++;
-    char tf[64], tr[64], cf[64], cr[64], es[64], ec[64], ef[64], er[64], ee[64];
-    snprintf(tf, sizeof(tf), "_ltng_tf%d", id);
-    snprintf(tr, sizeof(tr), "_ltng_tr%d", id);
-    snprintf(cf, sizeof(cf), "_ltng_cf%d", id);
-    snprintf(cr, sizeof(cr), "_ltng_cr%d", id);
-    snprintf(es, sizeof(es), "_ltng_es%d", id);
-    snprintf(ec, sizeof(ec), "_ltng_ec%d", id);
-    snprintf(ef, sizeof(ef), "_ltng_ef%d", id);
-    snprintf(er, sizeof(er), "_ltng_er%d", id);
-    snprintf(ee, sizeof(ee), "_ltng_ee%d", id);
+    char *tf=malloc(64),*tr=malloc(64),*cf=malloc(64),*cr=malloc(64),*es=malloc(64),*ec=malloc(64),*ef=malloc(64),*er=malloc(64),*ee=malloc(64);
+    if(!tf||!tr||!cf||!cr||!es||!ec||!ef||!er||!ee){free(tf);free(tr);free(cf);free(cr);free(es);free(ec);free(ef);free(er);free(ee);return;}
+    snprintf(tf, 64, "_ltng_tf%d", id);
+    snprintf(tr, 64, "_ltng_tr%d", id);
+    snprintf(cf, 64, "_ltng_cf%d", id);
+    snprintf(cr, 64, "_ltng_cr%d", id);
+    snprintf(es, 64, "_ltng_es%d", id);
+    snprintf(ec, 64, "_ltng_ec%d", id);
+    snprintf(ef, 64, "_ltng_ef%d", id);
+    snprintf(er, 64, "_ltng_er%d", id);
+    snprintf(ee, 64, "_ltng_ee%d", id);
     int base = g_cleanup_count;
 
     pad(out, indent); fprintf(out, "{\n");
@@ -1409,7 +1421,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
 
     if (g_cleanup_count < CG_MAX_CLEANUPS) {
         CgCleanup *c = &g_cleanups[g_cleanup_count++];
-        snprintf(c->top_expr, sizeof(c->top_expr), "%s.prev", tf);
+        c->top_expr = (char*)malloc(256); snprintf(c->top_expr, 256, "%s.prev", tf);
         c->finally_body = node->has_finally ? node->cases : NULL;
     }
 
@@ -1488,7 +1500,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
 
             if (g_cleanup_count < CG_MAX_CLEANUPS) {
                 CgCleanup *c = &g_cleanups[g_cleanup_count++];
-                snprintf(c->top_expr, sizeof(c->top_expr), "%s.prev", cf);
+                c->top_expr = (char*)malloc(256); snprintf(c->top_expr, 256, "%s.prev", cf);
                 c->finally_body = node->cases;
             }
             if (node->orelse) emit_block(out, node->orelse, table, indent + 3);
@@ -1535,6 +1547,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
 
     pad(out, indent + 1); fprintf(out, "}\n");
     pad(out, indent); fprintf(out, "}\n");
+    free(tf);free(tr);free(cf);free(cr);free(es);free(ec);free(ef);free(er);free(ee);
 }
 
 static int _expr_is_call_buf(const char *v) {
@@ -2205,7 +2218,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "#define _LTNG_NZMOD_LL(V,L,C) ({ long long _v=(long long)(V); _v==0?_ltng_mod0_ll((L),(C)):_v; })\n");
     fprintf(out, "#define _LTNG_NZDIV_D(V,L,C) ({ double _v=(double)(V); _v==0.0?_ltng_div0_d((L),(C)):_v; })\n");
     fprintf(out, "#define _LTNG_NZMOD_D(V,L,C) ({ double _v=(double)(V); _v==0.0?_ltng_mod0_d((L),(C)):_v; })\n");
-    fprintf(out, "static char *_ltng_ptr_to_str(void *p){ static char b[32][32]; static int i; i=(i+1)%%32; snprintf(b[i], sizeof(b[i]), \"%%llu\", (unsigned long long)(uintptr_t)p); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_ptr_to_str(void *p){ static char *b[32]={0}; static int i; i=(i+1)%%32; char *_r=_ltng_ds_fmt(\"%%llu\",(unsigned long long)(uintptr_t)p); _ltng_ds_set(&b[i],_r); free(_r); return b[i]; }\n");
     fprintf(out, "static void *_ltng_str_to_ptr(const char *s){ if(!s||!*s) return NULL; return (void*)(uintptr_t)strtoull(s, NULL, 10); }\n");
     fprintf(out, "typedef struct { char **d; int len; int cap; } _ltng_ah;\n");
     fprintf(out, "static char *_ltng_ah_pack(char **d, int len, int cap){ _ltng_ah *h=(_ltng_ah*)malloc(sizeof(_ltng_ah)); h->d=NULL; h->len=0; h->cap=0; _ltng_arr_copy(d,&h->d,&h->len,&h->cap,len); return _ltng_ptr_to_str(h); }\n");

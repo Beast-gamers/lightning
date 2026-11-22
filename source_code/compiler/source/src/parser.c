@@ -1,5 +1,6 @@
 #include "ltng.h"
 #include <stdarg.h>
+#include <stdarg.h>
 
 static ErrorState *parser_errors = NULL;
 static int g_break_depth = 0;
@@ -3496,7 +3497,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             /* Array method call(s) with chaining support.
                                                Value-consumed context: operate on a temp copy to keep
                                                the original receiver intact, return method result. */
-                                            char _chain_prefix[16384] = {0};
+                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");goto _arr_method_result_done;} _chain_prefix[0]=0;
                                             int _cp = 0;
                                             int _chain_step = 0;
                                             char _final_expr[4096] = {0};
@@ -3504,7 +3505,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             int _chain_err = 0;
                                             Token _cm = mname;
                                             /* Copy original array into temp working array */
-                                            _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                            _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                 "char **__td=NULL; int __tl=0; int __tc=0; _ltng_arr_copy(%s, &__td, &__tl, &__tc, %s); ",
                                                 arrname, lenname);
                                             const char *_wa = "__td"; /* working array data */
@@ -3529,7 +3530,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                             "char *__apv%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _wa, _wl, _wc, _chain_step, _chain_step, _chain_step, _chain_step);
                                                     }
@@ -3538,7 +3539,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 } else if (strcmp(_cm.value, "pop") == 0) {
                                                     if (lexer_peek(lexer).type == TOKEN_RPAREN) {
                                                         lexer_next(lexer);
-                                                        _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                             "char *__pv%d = _ltng_arr_pop(%s, &%s); ", _chain_step, _wa, _wl);
                                                         snprintf(_final_expr, sizeof(_final_expr), "__pv%d", _chain_step);
                                                     } else {
@@ -3549,7 +3550,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                             skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); _chain_err = 1; break;
                                                         }
                                                         lexer_next(lexer);
-                                                        _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                             "char *__pv%d = _ltng_arr_pop_index(%s, &%s, (int)(%s)); ",
                                                             _chain_step, _wa, _wl, idx_expr);
                                                         snprintf(_final_expr, sizeof(_final_expr), "__pv%d", _chain_step);
@@ -3573,7 +3574,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                             "char *__aiv%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _wa, _wl, _wc, idx_expr, _chain_step, _chain_step, _chain_step, _chain_step);
                                                     }
@@ -3587,7 +3588,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); _chain_err = 1; break;
                                                     }
                                                     lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                    _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                         "char *__rv%d = _ltng_arr_pop_index(%s, &%s, (int)(%s)); ",
                                                         _chain_step, _wa, _wl, idx_expr);
                                                     snprintf(_final_expr, sizeof(_final_expr), "__rv%d", _chain_step);
@@ -3603,7 +3604,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                             "char *__cv%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _chain_step, _wa, _wl, _chain_step, _chain_step);
                                                     }
@@ -3621,7 +3622,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                             "char *__iv%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _chain_step, _wa, _wl, _chain_step, _chain_step);
                                                     }
@@ -3634,7 +3635,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); _chain_err = 1; break;
                                                     }
                                                     lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                    _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                         "_ltng_arr_sort(%s, %s); ", _wa, _wl);
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ _ltng_retbuf_fmt(\"true\"); })");
@@ -3645,7 +3646,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); _chain_err = 1; break;
                                                     }
                                                     lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                    _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                         "_ltng_arr_reverse(%s, %s); ", _wa, _wl);
                                                     snprintf(_final_expr, sizeof(_final_expr),
                                                         "({ _ltng_retbuf_fmt(\"true\"); })");
@@ -3702,8 +3703,8 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 goto _arr_method_result_done;
                                             }
                                             lexer_next(lexer); /* consume ( */
-                                            char _chain_prefix[16384] = {0}; int _cp = 0;
-                                            _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");goto _arr_method_result_done;} _chain_prefix[0]=0; int _cp = 0;
+                                            _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                 "char **__td=NULL; int __tl=0; int __tc=0; ");
                                             if (strcmp(mname.value, "copy") == 0) {
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
@@ -3711,7 +3712,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* consume ) */
-                                                _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                     "_ltng_arr_copy(%s, &__td, &__tl, &__tc, %s); ",
                                                     arrname, lenname);
                                             } else { /* slice */
@@ -3728,7 +3729,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* ) */
-                                                _cp += snprintf(_chain_prefix + _cp, sizeof(_chain_prefix) - _cp,
+                                                _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                     "_ltng_arr_slice(%s, %s, (int)(%s), (int)(%s), &__td, &__tl, &__tc); ",
                                                     arrname, lenname, s0, s1);
                                             }
@@ -3763,11 +3764,11 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (lexer_peek(lexer).type != TOKEN_RPAREN) { _chain_err=1; break; } lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp, "char *__apv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ", _chain_step,fmt,cast,arg_expr,_wa,_wl,_wc,_chain_step,_chain_step,_chain_step,_chain_step);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp, "char *__apv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ", _chain_step,fmt,cast,arg_expr,_wa,_wl,_wc,_chain_step,_chain_step,_chain_step,_chain_step);
                                                     snprintf(_final_expr,sizeof(_final_expr),"__apr%d",_chain_step);
                                                 } else if (strcmp(_cm.value, "pop") == 0) {
-                                                    if (lexer_peek(lexer).type == TOKEN_RPAREN) { lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"char *__pv%d=_ltng_arr_pop(%s,&%s); ",_chain_step,_wa,_wl); snprintf(_final_expr,sizeof(_final_expr),"__pv%d",_chain_step); }
-                                                    else { char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"char *__pv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie); snprintf(_final_expr,sizeof(_final_expr),"__pv%d",_chain_step); }
+                                                    if (lexer_peek(lexer).type == TOKEN_RPAREN) { lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop(%s,&%s); ",_chain_step,_wa,_wl); snprintf(_final_expr,sizeof(_final_expr),"__pv%d",_chain_step); }
+                                                    else { char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie); snprintf(_final_expr,sizeof(_final_expr),"__pv%d",_chain_step); }
                                                 } else if (strcmp(_cm.value, "insert") == 0) {
                                                     char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,1,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_COMMA){_chain_err=1;break;} lexer_next(lexer);
@@ -3775,34 +3776,34 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"char *__aiv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",_chain_step,fmt,cast,ae,_wa,_wl,_wc,ie,_chain_step,_chain_step,_chain_step,_chain_step);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__aiv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",_chain_step,fmt,cast,ae,_wa,_wl,_wc,ie,_chain_step,_chain_step,_chain_step,_chain_step);
                                                     snprintf(_final_expr,sizeof(_final_expr),"__air%d",_chain_step);
                                                 } else if (strcmp(_cm.value, "remove") == 0) {
                                                     char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,0,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"char *__rv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__rv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie);
                                                     snprintf(_final_expr,sizeof(_final_expr),"__rv%d",_chain_step);
                                                 } else if (strcmp(_cm.value, "sort") == 0) {
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"_ltng_arr_sort(%s,%s); ",_wa,_wl);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"_ltng_arr_sort(%s,%s); ",_wa,_wl);
                                                     snprintf(_final_expr,sizeof(_final_expr),"({ _ltng_retbuf_fmt(\"true\"); })");
                                                 } else if (strcmp(_cm.value, "reverse") == 0) {
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"_ltng_arr_reverse(%s,%s); ",_wa,_wl);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"_ltng_arr_reverse(%s,%s); ",_wa,_wl);
                                                     snprintf(_final_expr,sizeof(_final_expr),"({ _ltng_retbuf_fmt(\"true\"); })");
                                                 } else if (strcmp(_cm.value, "contains") == 0) {
                                                     char ae[MAX_STRING_LEN]; VarType at=collect_expression(lexer,table,ae,sizeof(ae),1,0,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"char *__cv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__cv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
                                                     snprintf(_final_expr,sizeof(_final_expr),"({ _ltng_retbuf_fmt(\"%%s\",__cr%d?\"true\":\"false\"); })",_chain_step);
                                                 } else if (strcmp(_cm.value, "index_of") == 0) {
                                                     char ae[MAX_STRING_LEN]; VarType at=collect_expression(lexer,table,ae,sizeof(ae),1,0,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,sizeof(_chain_prefix)-_cp,"char *__iv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
+                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__iv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
                                                     snprintf(_final_expr,sizeof(_final_expr),"({ _ltng_retbuf_fmt(\"%%d\",__ir%d); })",_chain_step);
                                                 } else { _chain_err=1; break; }
                                                 /* next chain? */
@@ -6231,8 +6232,8 @@ static int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *
                 lexer->current + 1 < lexer->count && lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN) {
                 lexer_next(lexer); /* consume method name */
                 static int _ahc_id = 0; int aid = _ahc_id++;
-                char prefix[16384]; int pp = 0;
-                pp += snprintf(prefix+pp,sizeof(prefix)-pp,
+                char *prefix = (char*)malloc(16384); if(!prefix){snprintf(cexpr,cexpr_size,"");chained=1;continue;} prefix[0]=0; int pp = 0;
+                pp += snprintf(prefix+pp,16384-pp,
                     "char *__ahsrc%d=_ltng_ds_new(%s); _ltng_ah *__ah%d=_ltng_ah_unpack(__ahsrc%d); char **__td%d=NULL; int __tl%d=0,__tc%d=0; if(__ah%d){ _ltng_arr_copy(__ah%d->d,&__td%d,&__tl%d,&__tc%d,__ah%d->len); } ",
                     aid,cexpr,aid,aid,aid,aid,aid,aid,aid,aid,aid,aid,aid);
                 char final_expr[4096]="\"\""; int chain_err=0; int has_scalar=0; int step=0;
@@ -6306,13 +6307,16 @@ static int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *
                     has_chain=0;
                     if(lexer_peek(lexer).type==TOKEN_DOT){ int sd=lexer->current; lexer_next(lexer); Token nm=lexer_peek(lexer); if((nm.type==TOKEN_IDENT||token_is_name(nm)) && (strcmp(nm.value,"push")==0||strcmp(nm.value,"pop")==0||strcmp(nm.value,"insert")==0||strcmp(nm.value,"remove")==0||strcmp(nm.value,"contains")==0||strcmp(nm.value,"index_of")==0||strcmp(nm.value,"sort")==0||strcmp(nm.value,"reverse")==0||strcmp(nm.value,"copy")==0||strcmp(nm.value,"slice")==0)){ lexer_next(lexer); cm=nm; has_chain=1; } else lexer->current=sd; }
                 }
-                if (chain_err) { snprintf(cexpr,cexpr_size,"\"\""); }
+                if (chain_err) { snprintf(cexpr,cexpr_size,"\"\""); free(prefix); }
                 else {
-                    char buf[16384];
-                    snprintf(buf,sizeof(buf),"({ %schar *__fres%d=(char*)(%s); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); _ltng_ah_free(__ah%d); free(__ahsrc%d); __fres%d; })",
+                    char *buf = (char*)malloc(16384);
+                    if(buf){ snprintf(buf,16384,"({ %schar *__fres%d=(char*)(%s); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); _ltng_ah_free(__ah%d); free(__ahsrc%d); __fres%d; })",
                         prefix,aid,final_expr,aid,aid,aid,aid,aid,aid,aid);
-                    strncpy(cexpr,buf,cexpr_size-1); cexpr[cexpr_size-1]='\0';
+                        strncpy(cexpr,buf,cexpr_size-1); cexpr[cexpr_size-1]='\0';
+                        free(buf);
+                    } else { snprintf(cexpr,cexpr_size,""); }
                 }
+                free(prefix);
                 chained = 1;
                 continue;
             }
