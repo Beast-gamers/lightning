@@ -1164,7 +1164,8 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                 int rhs_s = part_is_stringy(rhs);
 
                 /* Build char* args for concat helpers (_ltng_add_sn/_ltng_concat_dyn take const char*). */
-                char lhs_arg[4200], rhs_arg[4200];
+                char *lhs_arg = (char*)malloc(4200); char *rhs_arg = (char*)malloc(4200);
+                if(!lhs_arg||!rhs_arg){free(lhs_arg);free(rhs_arg); strncpy(ires,work,sizeof(ires)-1); ires[sizeof(ires)-1]=0; continue;}
                 #define _LTNG_SN_ARG(src, dst, dstsz, is_str) do { \
                     const char *_ps = (src); while (*_ps==' '||*_ps=='\t') _ps++; \
                     if (is_str) { \
@@ -1181,13 +1182,13 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                         } else { \
                             int _hd = (strchr(_ps,'.')!=NULL); \
                             snprintf((dst), (dstsz), \
-                                "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })", \
+                                "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })", \
                                 _hd ? "%g" : "%lld", _hd ? "double" : "long long", _ps); \
                         } \
                     } \
                 } while(0)
-                _LTNG_SN_ARG(lhs, lhs_arg, sizeof(lhs_arg), lhs_s);
-                _LTNG_SN_ARG(rhs, rhs_arg, sizeof(rhs_arg), rhs_s);
+                _LTNG_SN_ARG(lhs, lhs_arg, 4200, lhs_s);
+                _LTNG_SN_ARG(rhs, rhs_arg, 4200, rhs_s);
                 #undef _LTNG_SN_ARG
 
                 /* Helper: determine if a stringy bare-identifier part is a string-typed variable. */
@@ -1225,9 +1226,9 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                     }
                 }
 
-                char st[5000];
+                char *st = (char*)malloc(5000); if(!st) st=(char*)calloc(1,1);
                 if (array_access_used) {
-                    snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                    snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 } else {
                     int lhs_def_str = lhs_is_str_var || (lhs_s && !lhs_was_numwrap && lhs[0] == '"') || (!lhs_was_numwrap && lhs_s && strstr(lhs, "_ltng_concat") != NULL);
                     int rhs_def_str = rhs_is_str_var || (rhs_s && !rhs_was_numwrap && rhs[0] == '"') || (!rhs_was_numwrap && rhs_s && strstr(rhs, "_ltng_concat") != NULL);
@@ -1244,7 +1245,7 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                         }
                     }
                     if (lhs_s && rhs_s && lhs_def_str && rhs_def_str)
-                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else if (lhs_s && rhs_s && lhs_bare_ident && rhs_bare_ident && !lhs_was_numwrap && !rhs_was_numwrap && !lhs_is_str_var && !rhs_is_str_var) {
                         int lhs_num = 0, rhs_num = 0;
                         if (table) {
@@ -1257,21 +1258,24 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                             }
                         }
                         if (lhs_num || rhs_num)
-                            snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                            snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                         else
-                            snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                            snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     } else if (lhs_s && rhs_s && lhs_def_str && !rhs_def_str)
-                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else if (lhs_s && rhs_s && !lhs_def_str && rhs_def_str)
-                        snprintf(st, sizeof(st), "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else
-                        snprintf(st, sizeof(st), "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 }
+                free(lhs_arg); free(rhs_arg);
                 strncpy(ires, st, sizeof(ires) - 1); ires[sizeof(ires) - 1] = 0;
+                free(st);
             }
-            char nb[8192];
-            snprintf(nb, sizeof(nb), "%.*s%s%s", bs, work, ires, work + be + 1);
+            char *nb = (char*)malloc(8192); if(!nb) nb=(char*)calloc(1,1);
+            snprintf(nb, 8192, "%.*s%s%s", bs, work, ires, work + be + 1);
             strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+            free(nb);
         } else if (do_mul) {
             int d = 0, inq = 0; char qc = 0; int star = -1;
             for (int kk = 0; kk < clen; kk++) {
@@ -2164,27 +2168,33 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                             snprintf(buf, buf_size, "(%s) %s (%s)", lcmp, ops[i], rcmp);
                         } else {
                             /* Ensure numeric helper expressions become string expressions for strcmp */
-                            char lsc[4200], rsc[4200];
-                            strncpy(lsc, lq, sizeof(lsc)-1); lsc[sizeof(lsc)-1]=0;
-                            strncpy(rsc, rq, sizeof(rsc)-1); rsc[sizeof(rsc)-1]=0;
-                            if (lnumh) {
-                                int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("))!=NULL;
-                                if (is_f)
-                                    snprintf(lsc, sizeof(lsc), "({ char __nb[64]; snprintf(__nb,64,\"%%g\",(double)(%s)); __nb; })", left);
+                            char *lsc = (char*)malloc(4200); char *rsc = (char*)malloc(4200);
+                            if(!lsc||!rsc){
+                                free(lsc); free(rsc);
+                                snprintf(buf, buf_size, "strcmp(%s, %s) %s 0", lq, rq, ops[i]);
+                            } else {
+                                strncpy(lsc, lq, 4200-1); lsc[4200-1]=0;
+                                strncpy(rsc, rq, 4200-1); rsc[4200-1]=0;
+                                if (lnumh) {
+                                    int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("))!=NULL;
+                                    if (is_f)
+                                        snprintf(lsc, 4200, "({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", left);
+                                    else
+                                        snprintf(lsc, 4200, "({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", left);
+                                }
+                                if (rnumh) {
+                                    int is_f = (strstr(right,"atof(")||strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D("))!=NULL;
+                                    if (is_f)
+                                        snprintf(rsc, 4200, "({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", right);
+                                    else
+                                        snprintf(rsc, 4200, "({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", right);
+                                }
+                                if (strcmp(ops[i], "==") == 0)
+                                    snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lsc, rsc);
                                 else
-                                    snprintf(lsc, sizeof(lsc), "({ char __nb[64]; snprintf(__nb,64,\"%%lld\",(long long)(%s)); __nb; })", left);
+                                    snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lsc, rsc);
+                                free(lsc); free(rsc);
                             }
-                            if (rnumh) {
-                                int is_f = (strstr(right,"atof(")||strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D("))!=NULL;
-                                if (is_f)
-                                    snprintf(rsc, sizeof(rsc), "({ char __nb[64]; snprintf(__nb,64,\"%%g\",(double)(%s)); __nb; })", right);
-                                else
-                                    snprintf(rsc, sizeof(rsc), "({ char __nb[64]; snprintf(__nb,64,\"%%lld\",(long long)(%s)); __nb; })", right);
-                            }
-                            if (strcmp(ops[i], "==") == 0)
-                                snprintf(buf, buf_size, "(strcmp(%s, %s) == 0)", lsc, rsc);
-                            else
-                                snprintf(buf, buf_size, "(strcmp(%s, %s) != 0)", lsc, rsc);
                         }
                         /* fallback: numeric helper compared to numeric string literal should be numeric */
                         {
@@ -2369,15 +2379,16 @@ static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used,
             int ok=1; char *nn=numside; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
             if (ok) {
                 /* unwrap helper to numeric expr */
-                char h[4096]; strncpy(h, helperside, sizeof(h)-1); h[sizeof(h)-1]=0; trim_c_expr(h);
-                char repl[8192];
-                if (helper_left) snprintf(repl,sizeof(repl),"((double)atof(%s) %s (%s))", h, is_eq?"==":"!=", numside);
-                else snprintf(repl,sizeof(repl),"((%s) %s (double)atof(%s))", numside, is_eq?"==":"!=", h);
+                char *h = (char*)malloc(4096); if(!h) h=(char*)calloc(1,1); strncpy(h, helperside, 4096-1); h[4096-1]=0; trim_c_expr(h);
+                char *repl = (char*)malloc(8192); if(!repl) repl=(char*)calloc(1,1);
+                if (helper_left) snprintf(repl,8192,"((double)atof(%s) %s (%s))", h, is_eq?"==":"!=", numside);
+                else snprintf(repl,8192,"((%s) %s (double)atof(%s))", numside, is_eq?"==":"!=", h);
                 /* replace from p to endcmp */
-                char newbuf[16384];
+                char *newbuf = (char*)malloc(16384); if(!newbuf){free(repl); continue;}
                 int prefix = (int)(p - buf);
-                snprintf(newbuf,sizeof(newbuf),"%.*s%s%s", prefix, buf, repl, endcmp);
+                snprintf(newbuf,16384,"%.*s%s%s", prefix, buf, repl, endcmp);
                 strncpy(buf,newbuf,buf_size-1); buf[buf_size-1]=0;
+                free(h); free(repl); free(newbuf);
                 continue;
             }
         }
@@ -3036,11 +3047,11 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             if (iv >= 0 && iv <= 127 && iv != '\\' && iv != '"' && iv != '\n' && iv != '\t' && iv != '\r' && iv != '\0') {
                                 pos += snprintf(out + pos, out_size - pos, "\"%c\"", iv);
                             } else {
-                                pos += snprintf(out + pos, out_size - pos, "({ char _tc[8]; int _cv=(int)(%d); if(_cv=='\\n') snprintf(_tc,8,\"\\n\"); else if(_cv=='\\t') snprintf(_tc,8,\"\\t\"); else if(_cv=='\\r') snprintf(_tc,8,\"\\r\"); else if(_cv=='\\\\') snprintf(_tc,8,\"\\\\\"); else if(_cv=='\\\"') snprintf(_tc,8,\"\\\"\"); else { _tc[0]=(char)_cv; _tc[1]=0; } _ltng_as(_tc); })", iv);
+                                pos += snprintf(out + pos, out_size - pos, "({ char *_tc=_ltng_ds_new(\"\"); int _cv=(int)(%d); if(_cv=='\\n') _ltng_ds_set(&_tc,\"\\n\"); else if(_cv=='\\t') _ltng_ds_set(&_tc,\"\\t\"); else if(_cv=='\\r') _ltng_ds_set(&_tc,\"\\r\"); else if(_cv=='\\\\') _ltng_ds_set(&_tc,\"\\\\\"); else if(_cv=='\\\"') _ltng_ds_set(&_tc,\"\\\"\"); else _ltng_ds_setfmt(&_tc,\"%%c\",(char)_cv); char *_r=_ltng_as(_tc); free(_tc); _r; })", iv);
                             }
                         } else if (inner_is_cnum) {
                             pos += snprintf(out + pos, out_size - pos,
-                                "({ char _tc[2]; _tc[0]=(char)(int)(%s); _tc[1]=0; _ltng_as(_tc); })",
+                                "({ char *_tc=_ltng_ds_fmt(\"%%c\",(char)(int)(%s)); char *_r=_ltng_as(_tc); free(_tc); _r; })",
                                 inner_expr);
                         } else {
                             pos += snprintf(out + pos, out_size - pos,
@@ -4526,7 +4537,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             strstr(part, "_LTNG_NZMOD_D") != NULL ||
                             strstr(part, "_LTNG_FMOD_D") != NULL);
                         snprintf(cparts[i], sizeof(cparts[i]),
-                                 "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
+                                 "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
                                  is_float_expr ? "%g" : "%lld",
                                  is_float_expr ? "double" : "long long",
                                  part);
@@ -4592,7 +4603,7 @@ static VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         strstr(part, "_LTNG_NZDIV_D") != NULL ||
                         strstr(part, "_LTNG_NZMOD_D") != NULL ||
                         strstr(part, "_LTNG_FMOD_D") != NULL);
-                    snprintf(cpart, sizeof(cpart), "({ char __ltcn[64]; snprintf(__ltcn,64,\"%s\",(%s)(%s)); __ltcn; })",
+                    snprintf(cpart, sizeof(cpart), "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
                              is_float_expr ? "%g" : "%lld",
                              is_float_expr ? "double" : "long long",
                              part);
@@ -7228,7 +7239,7 @@ static void parse_let(Lexer *lexer, SymbolTable *table) {
                         else if (iv=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
                         else if (iv=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
                         else if (iv>=32 && iv<=126) snprintf(expr,sizeof(expr),"\"%c\"", (char)iv);
-                        else snprintf(expr,sizeof(expr),"({ char _tc[8]; int _cv=%d; if(_cv=='\\n') snprintf(_tc,8,\"\\n\"); else if(_cv=='\\t') snprintf(_tc,8,\"\\t\"); else if(_cv=='\\r') snprintf(_tc,8,\"\\r\"); else if(_cv=='\\\\') snprintf(_tc,8,\"\\\\\"); else if(_cv=='\\\"') snprintf(_tc,8,\"\\\"\"); else { _tc[0]=(char)_cv; _tc[1]=0; } _ltng_as(_tc); })", iv);
+                        else snprintf(expr,sizeof(expr), "({ char *_tc=_ltng_ds_new(\"\"); int _cv=%d; if(_cv=='\\n') _ltng_ds_set(&_tc,\"\\n\"); else if(_cv=='\\t') _ltng_ds_set(&_tc,\"\\t\"); else if(_cv=='\\r') _ltng_ds_set(&_tc,\"\\r\"); else if(_cv=='\\\\') _ltng_ds_set(&_tc,\"\\\\\"); else if(_cv=='\\\"') _ltng_ds_set(&_tc,\"\\\"\"); else _ltng_ds_setfmt(&_tc,\"%%c\",(char)_cv); char *_r=_ltng_as(_tc); free(_tc); _r; })", iv);
                     } else if (arg.type == TOKEN_CHAR) {
                         /* token value for char literal is the char content (possibly escaped like n or \\) */
                         if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"\\%c\"", arg.value[1]);
@@ -8691,7 +8702,7 @@ static void parse_set(Lexer *lexer, SymbolTable *table) {
                         else if (iv=='\\') snprintf(expr,sizeof(expr),"\"\\\\\"");
                         else if (iv=='\"') snprintf(expr,sizeof(expr),"\"\\\"\"");
                         else if (iv>=32 && iv<=126) snprintf(expr,sizeof(expr),"\"%c\"", (char)iv);
-                        else snprintf(expr,sizeof(expr),"({ char _tc[8]; int _cv=%d; if(_cv=='\\n') snprintf(_tc,8,\"\\n\"); else if(_cv=='\\t') snprintf(_tc,8,\"\\t\"); else if(_cv=='\\r') snprintf(_tc,8,\"\\r\"); else if(_cv=='\\\\') snprintf(_tc,8,\"\\\\\"); else if(_cv=='\\\"') snprintf(_tc,8,\"\\\"\"); else { _tc[0]=(char)_cv; _tc[1]=0; } _ltng_as(_tc); })", iv);
+                        else snprintf(expr,sizeof(expr), "({ char *_tc=_ltng_ds_new(\"\"); int _cv=%d; if(_cv=='\\n') _ltng_ds_set(&_tc,\"\\n\"); else if(_cv=='\\t') _ltng_ds_set(&_tc,\"\\t\"); else if(_cv=='\\r') _ltng_ds_set(&_tc,\"\\r\"); else if(_cv=='\\\\') _ltng_ds_set(&_tc,\"\\\\\"); else if(_cv=='\\\"') _ltng_ds_set(&_tc,\"\\\"\"); else _ltng_ds_setfmt(&_tc,\"%%c\",(char)_cv); char *_r=_ltng_as(_tc); free(_tc); _r; })", iv);
                     } else if (arg.type == TOKEN_CHAR) {
                         /* token value for char literal is the char content (possibly escaped like n or \\) */
                         if (arg.value[0]=='\\' && arg.value[1]) snprintf(expr,sizeof(expr),"\"\\%c\"", arg.value[1]);
@@ -9241,8 +9252,8 @@ static ASTNode *parse_while(Lexer *lexer, SymbolTable *table) {
     if (cond[0] == '\0') {
         ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
         if (ctype == TYPE_STRING || ctype == TYPE_CHAR || ctype == TYPE_OBJECT || ctype == TYPE_NULL) {
-            char _tc[MAX_STRING_LEN]; snprintf(_tc, sizeof(_tc), "_ltng_str_truthy(%s)", cond);
-            strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0';
+            char *_tc = _ltng_cfmt("_ltng_str_truthy(%s)", cond);
+            if(_tc){ strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0'; free(_tc); }
         }
     }
 
@@ -9350,8 +9361,8 @@ static ASTNode *parse_do_while(Lexer *lexer, SymbolTable *table) {
     if (cond[0] == '\0') {
         ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
         if (ctype == TYPE_STRING || ctype == TYPE_CHAR || ctype == TYPE_OBJECT || ctype == TYPE_NULL) {
-            char _tc[MAX_STRING_LEN]; snprintf(_tc, sizeof(_tc), "_ltng_str_truthy(%s)", cond);
-            strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0';
+            char *_tc = _ltng_cfmt("_ltng_str_truthy(%s)", cond);
+            if(_tc){ strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0'; free(_tc); }
         }
     }
     strncpy(node->value, cond, MAX_STRING_LEN - 1);
@@ -9644,8 +9655,8 @@ static ASTNode *parse_if_core(Lexer *lexer, SymbolTable *table) {
     if (cond[0] == '\0') {
         ctype = collect_expression(lexer, table, cond, sizeof(cond), 1, 0, &csl,&csc,&cel,&cec);
         if (ctype == TYPE_STRING || ctype == TYPE_CHAR || ctype == TYPE_OBJECT || ctype == TYPE_NULL) {
-            char _tc[MAX_STRING_LEN]; snprintf(_tc, sizeof(_tc), "_ltng_str_truthy(%s)", cond);
-            strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0';
+            char *_tc = _ltng_cfmt("_ltng_str_truthy(%s)", cond);
+            if(_tc){ strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0'; free(_tc); }
         }
     }
 

@@ -284,8 +284,8 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
             fprintf(out, "%%%%");
             p++;
         } else {
-            char tmp[2] = {*p, '\0'};
-            write_c_string(out, tmp);
+            char *tmp_s = (char*)malloc(2);
+            if(tmp_s){ tmp_s[0]=*p; tmp_s[1]=0; write_c_string(out, tmp_s); free(tmp_s); }
             p++;
         }
     }
@@ -400,8 +400,8 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
             fprintf(out, "%%%%");
             p++;
         } else {
-            char tmp[2] = {*p, '\0'};
-            write_c_string(out, tmp);
+            char *tmp_s = (char*)malloc(2);
+            if(tmp_s){ tmp_s[0]=*p; tmp_s[1]=0; write_c_string(out, tmp_s); free(tmp_s); }
             p++;
         }
     }
