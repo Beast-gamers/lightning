@@ -827,11 +827,12 @@ static int has_operator_ahead(Lexer *lexer) {
 
 static void transform_string_multiply(char *expr, int size) {
     if (strstr(expr, "*") == NULL) return;
-    char tmp[2048];
+    char *tmp = (char*)malloc(2048); if(!tmp) return;
     strncpy(tmp, expr, 2047);
     tmp[2047] = 0;
     char *start = tmp;
-    char left[512] = {0}, right[512] = {0};
+    char *left = (char*)calloc(1,512); char *right = (char*)calloc(1,512);
+    if(!left||!right){free(tmp);free(left);free(right);return;}
     int found = 0;
     int depth_brace = 0;
     for (char *p = tmp; *p && !found; p++) {
@@ -929,8 +930,8 @@ static void transform_string_multiply(char *expr, int size) {
             found = 1;
         }
     }
-    if (!found) return;
-    char result[2048];
+    if (!found) { free(tmp); free(left); free(right); return; }
+    char *result = (char*)malloc(2048); if(!result){free(tmp);free(left);free(right);return;}
     /* determine whether the count operand (right) is a pure numeric literal;
        if it's a variable/string buffer, convert with atoi() so we don't cast a pointer */
     int right_is_num = 1;
@@ -946,12 +947,13 @@ static void transform_string_multiply(char *expr, int size) {
         }
         if (!hasdig) right_is_num = 0;
     }
+    char *cntbuf = NULL;
     const char *count_expr;
     if (right_is_num) {
         count_expr = right;
     } else {
-        static char cntbuf[512];
-        snprintf(cntbuf, sizeof(cntbuf), "atoll(%s)", right);
+        cntbuf = (char*)malloc(512); if(!cntbuf){free(tmp);free(left);free(right);free(result);return;}
+        snprintf(cntbuf, 512, "atoll(%s)", right);
         count_expr = cntbuf;
     }
     int left_is_num = 1;
@@ -979,6 +981,7 @@ static void transform_string_multiply(char *expr, int size) {
     }
     strncpy(expr, result, size - 1);
     expr[size - 1] = 0;
+    free(cntbuf); free(tmp); free(left); free(right); free(result);
 }
 
 
@@ -1152,10 +1155,10 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                             const char *start = inner;
                             while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
                             if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
-                                char tmp[512]; int tl = (int)(inner - start);
-                                if (tl >= (int)sizeof(tmp)) tl = sizeof(tmp)-1;
+                                char *tmp = (char*)malloc(512); if(!tmp){sides[si][0]=0;} else { int tl = (int)(inner - start);
+                                if (tl >= (int)512) tl = 512-1;
                                 memcpy(tmp, start, tl); tmp[tl]=0;
-                                strncpy(sides[si], tmp, slens[si]-1); sides[si][slens[si]-1]=0;
+                                strncpy(sides[si], tmp, slens[si]-1); sides[si][slens[si]-1]=0; free(tmp); }
                                 *numwrap[si] = 1;
                             }
                         }
@@ -1208,20 +1211,21 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                             const char *end = qe;
                             while (*end==' '||*end=='\t') end++;
                             if (*end == '\0') {
-                                char nm[512]; int nl = (int)(qe - sp);
-                                if (nl >= (int)sizeof(nm)) nl = (int)sizeof(nm)-1;
+                                char *nm = (char*)malloc(512); if(nm){ int nl = (int)(qe - sp);
+                                if (nl >= (int)512) nl = (int)512-1;
                                 memcpy(nm, sp, nl); nm[nl] = 0;
                                 if (symbol_table_has(table, nm)) {
                                     VarType vt = symbol_table_get(table, nm);
                                     if (vt == TYPE_STRING || vt == TYPE_CHAR) *flags[si] = 1;
                                 } else {
-                                    char mn[512];
-                                    mangle_name(nm, mn, sizeof(mn));
+                                    char *mn = (char*)malloc(512);
+                                    if(mn){ mangle_name(nm, mn, 512);
                                     if (symbol_table_has(table, mn)) {
                                         VarType vt = symbol_table_get(table, mn);
                                         if (vt == TYPE_STRING || vt == TYPE_CHAR) *flags[si] = 1;
-                                    }
+                                    } free(mn); }
                                 }
+                                free(nm); }
                             }
                         }
                     }
@@ -1253,9 +1257,10 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                             const char *ss[2] = {lhs, rhs}; int *nf[2] = {&lhs_num, &rhs_num};
                             for (int si=0; si<2; si++) {
                                 const char *sp = ss[si]; while (*sp==' '||*sp=='\t') sp++;
-                                char nm[512]; int nl=0; while(sp[nl]&&(isalnum((unsigned char)sp[nl])||sp[nl]=='_')){nm[nl]=sp[nl];nl++; if(nl>=511)break;} nm[nl]=0;
+                                char *nm = (char*)malloc(512); if(nm){ int nl=0; while(sp[nl]&&(isalnum((unsigned char)sp[nl])||sp[nl]=='_')){nm[nl]=sp[nl];nl++; if(nl>=511)break;} nm[nl]=0;
                                 if (symbol_table_has(table, nm)) { VarType vt=symbol_table_get(table,nm); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL) *nf[si]=1; }
-                                else { char mn[512]; mangle_name(nm,mn,sizeof(mn)); if(symbol_table_has(table,mn)){VarType vt=symbol_table_get(table,mn); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL)*nf[si]=1;} }
+                                else { char *mn = (char*)malloc(512); if(mn){ mangle_name(nm,mn,512); if(symbol_table_has(table,mn)){VarType vt=symbol_table_get(table,mn); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL)*nf[si]=1;} free(mn); } }
+                                free(nm); }
                             }
                         }
                         if (lhs_num || rhs_num)
@@ -2202,13 +2207,13 @@ static void normalize_or_expr(char *buf, int buf_size, int array_access_used, Sy
                         {
                                                         if ((strstr(lq,"_ltng_from_double(")||strstr(lq,"_ltng_from_int(")||strstr(lq,"_ltng_ad(")) && rq[0]=='"') {
                                 /* rq is "num" */
-                                char num[128]; strncpy(num, rq+1, sizeof(num)-1); num[sizeof(num)-1]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
+                                char *num = (char*)malloc(128); if(num){ strncpy(num, rq+1, 127); num[127]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
-                                if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], num);
+                                if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", left, ops[i], num); free(num); }
                             } else if ((strstr(rq,"_ltng_from_double(")||strstr(rq,"_ltng_from_int(")||strstr(rq,"_ltng_ad(")) && lq[0]=='"') {
-                                char num[128]; strncpy(num, lq+1, sizeof(num)-1); num[sizeof(num)-1]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
+                                char *num = (char*)malloc(128); if(num){ strncpy(num, lq+1, 127); num[127]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
-                                if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", num, ops[i], right);
+                                if(ok) snprintf(buf, buf_size, "(%s) %s (%s)", num, ops[i], right); free(num); }
                             } else {
                                 /* bool/int ternary expr compared with quoted "0"/"1" numeric literal: compare numerically */
                                 int lq_qnum = (lq[0]=='"' && (strcmp(lq,"\"0\"")==0 || strcmp(lq,"\"1\"")==0));
@@ -2371,11 +2376,11 @@ static void normalize_mixed_expr(char *buf, int buf_size, int array_access_used,
         trim_c_expr(leftarg); trim_c_expr(rightarg);
         int lnumh = (strstr(leftarg,"_ltng_from_double(")||strstr(leftarg,"_ltng_from_int(")||strstr(leftarg,"_ltng_ad("))!=NULL;
         int rnumh = (strstr(rightarg,"_ltng_from_double(")||strstr(rightarg,"_ltng_from_int(")||strstr(rightarg,"_ltng_ad("))!=NULL;
-        char numside[128]; int have = 0; char *helperside = NULL; int helper_left = 0;
+        char *numside = (char*)malloc(128); if(!numside) numside=(char*)calloc(1,1); int have = 0; char *helperside = NULL; int helper_left = 0;
         if (lnumh && rightarg[0]=='"') {
-            strncpy(numside, rightarg+1, sizeof(numside)-1); numside[sizeof(numside)-1]=0; char *qe=strchr(numside,'"'); if(qe)*qe=0; helperside=leftarg; helper_left=1; have=1;
+            strncpy(numside, rightarg+1, 127); numside[127]=0; char *qe=strchr(numside,'"'); if(qe)*qe=0; helperside=leftarg; helper_left=1; have=1;
         } else if (rnumh && leftarg[0]=='"') {
-            strncpy(numside, leftarg+1, sizeof(numside)-1); numside[sizeof(numside)-1]=0; char *qe=strchr(numside,'"'); if(qe)*qe=0; helperside=rightarg; helper_left=0; have=1;
+            strncpy(numside, leftarg+1, 127); numside[127]=0; char *qe=strchr(numside,'"'); if(qe)*qe=0; helperside=rightarg; helper_left=0; have=1;
         }
         if (have) {
             int ok=1; char *nn=numside; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
