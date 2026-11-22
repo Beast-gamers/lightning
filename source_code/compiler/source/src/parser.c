@@ -1005,9 +1005,9 @@ static int part_is_stringy(const char *part);
    parentheses. */
 static void normalize_string_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
     if (!buf || buf_size < 2) return;
-    char work[8192];
-    strncpy(work, buf, sizeof(work) - 1);
-    work[sizeof(work) - 1] = 0;
+    char *work = (char*)malloc(8192); if(!work) return;
+    strncpy(work, buf, 8192 - 1);
+    work[8192 - 1] = 0;
     int just_wrapped = 0;
 
     for (int pass = 0; pass < (int)strlen(work); pass++) {
@@ -1086,9 +1086,10 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
                 else if (cc == '*' && d == 0) hm = 1;
             }
             if (hp || hm) {
-                char wbuf[8192];
-                snprintf(wbuf, sizeof(wbuf), "(%s)", work);
-                strncpy(work, wbuf, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+                char *wbuf = (char*)malloc(8192); if(!wbuf){free(work); return;}
+                snprintf(wbuf, 8192, "(%s)", work);
+                strncpy(work, wbuf, 8192 - 1); work[8192 - 1] = 0;
+                free(wbuf);
                 just_wrapped = 1;
                 continue;
             }
@@ -1274,7 +1275,7 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
             }
             char *nb = (char*)malloc(8192); if(!nb) nb=(char*)calloc(1,1);
             snprintf(nb, 8192, "%.*s%s%s", bs, work, ires, work + be + 1);
-            strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+            strncpy(work, nb, 8192 - 1); work[8192 - 1] = 0;
             free(nb);
         } else if (do_mul) {
             int d = 0, inq = 0; char qc = 0; int star = -1;
@@ -1338,13 +1339,14 @@ static void normalize_string_expr(char *buf, int buf_size, int array_access_used
             }
             char *rep = _ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf ? countbuf : "0");
             char *nb = _ltng_cfmt("%.*s%s%s", bs, work, rep, work + be + 1);
-            strncpy(work, nb, sizeof(work) - 1); work[sizeof(work) - 1] = 0;
+            strncpy(work, nb, 8192 - 1); work[8192 - 1] = 0;
             free(countbuf); free(rep); free(nb);
         }
     }
 
     strncpy(buf, work, buf_size - 1);
     buf[buf_size - 1] = 0;
+    free(work);
 }
 
 /* Post-process: replace atof(X) + atof(Y), atof(X) + _ltng_add_sn(Y, Z),
