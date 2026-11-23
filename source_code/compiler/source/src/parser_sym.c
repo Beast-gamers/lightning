@@ -56,7 +56,7 @@ void funcinfo_ensure_params(FuncInfo *fi, int n) {
 int g_in_function = 0;
 int g_in_catch = 0;
 Program *g_program_ref = NULL;
-char g_enclosing_cname[MAX_IDENTIFIER_LEN] = "";
+char *g_enclosing_cname = NULL;
 int g_ret_obj_count = 0;
 int g_anon_count = 0;
 
@@ -105,9 +105,9 @@ ObjSchema *obj_lookup(const char *mangled_var) {
 
 const char *obj_resolve_field(const char *mangled_var, const char *field, char *out, int out_size) {
     /* field var name: <mangled_var>__<mangled_field> */
-    char fm[MAX_IDENTIFIER_LEN];
-    mangle_name(field, fm, MAX_IDENTIFIER_LEN);
-    snprintf(out, out_size, "%s__%s", mangled_var, fm);
+    char *fm = mangle_name_alloc(field);
+    snprintf(out, out_size, "%s__%s", mangled_var, fm ? fm : "");
+    free(fm);
     return out;
 }
 
@@ -180,19 +180,18 @@ void obj_build_all(ObjSchema *s) {
 
 void register_function(const char *name, int param_count) {
     if (g_func_count >= g_func_cap /*MAX_FUNCS*/) return;
-    char mangled[MAX_IDENTIFIER_LEN];
-    mangle_name(name, mangled, MAX_IDENTIFIER_LEN);
-    /* avoid duplicates by source name */
+    char *mangled = mangle_name_alloc(name);
     for (int i = 0; i < g_func_count; i++) {
         if (strcmp(g_funcs[i].src, name) == 0) {
             if (param_count > 0) g_funcs[i].param_count = param_count;
+            free(mangled);
             return;
         }
     }
     ensure_func_cap();
     FuncInfo *_fi = &g_funcs[g_func_count];
     funcinfo_init(_fi);
-    free(_fi->name); _fi->name = ltng_strdup(mangled);
+    free(_fi->name); _fi->name = mangled;
     free(_fi->src); _fi->src = ltng_strdup(name);
     _fi->param_count = param_count;
     _fi->required_count = param_count;
@@ -200,12 +199,12 @@ void register_function(const char *name, int param_count) {
 }
 
 int is_function_name(const char *name) {
-    char mangled[MAX_IDENTIFIER_LEN];
-    mangle_name(name, mangled, MAX_IDENTIFIER_LEN);
+    char *mangled = mangle_name_alloc(name);
     for (int i = 0; i < g_func_count; i++) {
         if (strcmp(g_funcs[i].name, mangled) == 0 ||
-            strcmp(g_funcs[i].src, name) == 0) return 1;
+            strcmp(g_funcs[i].src, name) == 0) { free(mangled); return 1; }
     }
+    free(mangled);
     return 0;
 }
 
@@ -235,28 +234,35 @@ const char *resolve_func_name(SymbolTable *table, const char *src, char *out, in
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->func_count; i++) {
             if (strcmp(s->funcs[i].src, src) == 0) {
-                strncpy(out, s->funcs[i].cname, out_size - 1);
-                out[out_size - 1] = 0;
-                return out;
+                if (out && out_size > 0) {
+                    strncpy(out, s->funcs[i].cname, out_size - 1);
+                    out[out_size - 1] = 0;
+                    return out;
+                }
+                return s->funcs[i].cname;
             }
         }
     }
-    /* fallback: global short name -> mangled */
-    char mangled[MAX_IDENTIFIER_LEN];
-    mangle_name(src, mangled, MAX_IDENTIFIER_LEN);
+    char *mangled = mangle_name_alloc(src);
     for (int i = 0; i < g_func_count; i++) {
         if (strcmp(g_funcs[i].name, mangled) == 0 || strcmp(g_funcs[i].src, src) == 0) {
-            strncpy(out, g_funcs[i].name, out_size - 1);
-            out[out_size - 1] = 0;
-            return out;
+            if (out && out_size > 0) {
+                strncpy(out, g_funcs[i].name, out_size - 1);
+                out[out_size - 1] = 0;
+                free(mangled);
+                return out;
+            }
+            const char *r = g_funcs[i].name;
+            free(mangled);
+            return r;
         }
     }
+    free(mangled);
     return NULL;
 }
 
 int is_function_name_scoped(SymbolTable *table, const char *src) {
-    char tmp[MAX_IDENTIFIER_LEN];
-    return resolve_func_name(table, src, tmp, sizeof(tmp)) != NULL;
+    return resolve_func_name(table, src, NULL, 0) != NULL;
 }
 
 void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char *func_cname, int param_count);
@@ -268,9 +274,10 @@ int is_callable_ident(SymbolTable *table, const char *src) {
     if (is_function_name_scoped(table, src)) return 1;
     if (symbol_table_get_func_ref(table, src, NULL, 0, NULL)) return 1;
     {
-        char mangled[MAX_IDENTIFIER_LEN];
-        mangle_name(src, mangled, sizeof(mangled));
-        if (symbol_table_has(table, mangled) || symbol_table_has(table, src)) return 1;
+        char *mangled = mangle_name_alloc(src);
+        int has = symbol_table_has(table, mangled) || symbol_table_has(table, src);
+        free(mangled);
+        if (has) return 1;
     }
     return 0;
 }
@@ -474,12 +481,26 @@ int is_c_reserved(const char *name) {
 }
 
 void mangle_name(const char *in, char *out, int out_size) {
+    if (!out || out_size <= 0) return;
+    if (!in) { out[0] = 0; return; }
     if (is_c_reserved(in)) {
         snprintf(out, out_size, "%s_res", in);
     } else {
         strncpy(out, in, out_size - 1);
         out[out_size - 1] = '\0';
     }
+}
+
+char *mangle_name_alloc(const char *in) {
+    if (!in) return ltng_strdup("");
+    if (is_c_reserved(in)) {
+        size_t n = strlen(in) + 5;
+        char *out = (char*)malloc(n);
+        if (!out) return ltng_strdup("");
+        snprintf(out, n, "%s_res", in);
+        return out;
+    }
+    return ltng_strdup(in);
 }
 
 VarType type_keyword_to_vartype(const char *name) {
@@ -638,21 +659,22 @@ void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char 
 }
 
 int symbol_table_get_func_ref(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_param_count) {
-    char mangled[MAX_IDENTIFIER_LEN];
-    mangle_name(name, mangled, sizeof(mangled));
+    char *mangled = mangle_name_alloc(name);
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0 || strcmp(s->vars[i].name, mangled) == 0) {
-                if (!s->vars[i].is_func_ref) return 0;
+                if (!s->vars[i].is_func_ref) { free(mangled); return 0; }
                 if (out_cname && out_size > 0) {
                     strncpy(out_cname, s->vars[i].func_ref_cname, out_size - 1);
                     out_cname[out_size - 1] = '\0';
                 }
                 if (out_param_count) *out_param_count = s->vars[i].func_ref_param_count;
+                free(mangled);
                 return 1;
             }
         }
     }
+    free(mangled);
     return 0;
 }
 
@@ -834,11 +856,10 @@ int is_operator(TokenType t) {
 int token_is_int(Token tok, SymbolTable *table) {
     if (tok.type == TOKEN_INT_LIT) return 1;
     if (tok.type == TOKEN_IDENT && !is_bool_value(tok.value) && !is_type_keyword(tok.value)) {
-        char mangled[MAX_IDENTIFIER_LEN];
-        mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
-        if (symbol_table_has(table, mangled)) {
-            return symbol_table_get(table, mangled) == TYPE_INT;
-        }
+        char *mangled = mangle_name_alloc(tok.value);
+        int ok = symbol_table_has(table, mangled) && symbol_table_get(table, mangled) == TYPE_INT;
+        free(mangled);
+        return ok;
     }
     return 0;
 }
@@ -846,7 +867,7 @@ int token_is_int(Token tok, SymbolTable *table) {
 FuncInfo *find_funcinfo_by_cname(const char *cname);
 
 VarType effective_param_default_type(const char *src_name, VarType sym_type) {
-    if (!g_enclosing_cname[0]) return sym_type;
+    if (!(g_enclosing_cname ? g_enclosing_cname[0] : 0)) return sym_type;
     /* Untyped params are typically stored as TYPE_FLOAT placeholders in scope.
        For params with known default types, prefer the default type in typing/inference. */
     if (sym_type != TYPE_FLOAT) return sym_type;
@@ -1663,18 +1684,21 @@ int part_is_stringy(const char *part) {
         while (*e && (isalnum((unsigned char)*e) || *e == '_')) e++;
         if (*e == '(') {
             /* Function call: decide by the callee's return type. */
-            char callee[MAX_IDENTIFIER_LEN];
             int cl = (int)(e - q);
-            if (cl >= MAX_IDENTIFIER_LEN) cl = MAX_IDENTIFIER_LEN - 1;
+            char *callee = (char*)malloc((size_t)cl + 1);
+            if (!callee) return 0;
             memcpy(callee, q, (size_t)cl);
             callee[cl] = '\0';
-            /* runtime helpers that return char* */
             if (strcmp(callee, "_ltng_add_sn") == 0 || strcmp(callee, "_ltng_concat") == 0 ||
                 strcmp(callee, "_ltng_repeat") == 0 || strcmp(callee, "_ltng_as") == 0 ||
                 strcmp(callee, "_ltng_ad") == 0 || strcmp(callee, "_ltng_retbuf") == 0 ||
-                strcmp(callee, "__ltng_call_indirect") == 0)
+                strcmp(callee, "__ltng_call_indirect") == 0) {
+                free(callee);
                 return 1;
-            return function_returns_string(callee);
+            }
+            int frs = function_returns_string(callee);
+            free(callee);
+            return frs;
         }
         /* simple identifier: treat as stringy (variables stored as char buffers) */
         const char *end = e;

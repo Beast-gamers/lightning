@@ -44,7 +44,7 @@ extern int g_func_cap;
 extern int g_in_function;
 extern int g_in_catch;
 extern Program *g_program_ref;
-extern char g_enclosing_cname[MAX_IDENTIFIER_LEN];
+extern char *g_enclosing_cname;
 extern int g_ret_obj_count;
 extern int g_anon_count;
 
@@ -196,6 +196,7 @@ void codegen_free(Program *program);
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
 int is_c_reserved(const char *name);
 void mangle_name(const char *in, char *out, int out_size);
+char *mangle_name_alloc(const char *in);
 void symbol_table_add_local(SymbolTable *table, const char *name, VarType type);
 void symbol_table_add_param(SymbolTable *table, const char *name, VarType type);
 void symbol_table_update(SymbolTable *table, const char *name, VarType type);

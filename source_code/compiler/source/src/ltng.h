@@ -307,6 +307,7 @@ void codegen_free(Program *program);
 
 int is_c_reserved(const char *name);
 void mangle_name(const char *in, char *out, int out_size);
+char *mangle_name_alloc(const char *in);
 
 VarType parse_expression_from_string(const char *expr, SymbolTable *table,
                                      char *out, int out_size);

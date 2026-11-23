@@ -5915,7 +5915,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
 }
 
 void record_return_obj_schema(const char *obj_base) {
-    if (!obj_base || !obj_base[0] || !g_enclosing_cname[0]) return;
+    if (!obj_base || !obj_base[0] || !(g_enclosing_cname ? g_enclosing_cname[0] : 0)) return;
     if (!obj_lookup(obj_base)) return;
     FuncInfo *fi = find_funcinfo_by_cname(g_enclosing_cname);
     if (fi && fi->return_obj_base[0] == '\0') {
@@ -6047,7 +6047,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                 if (vtype2 == TYPE_ARRAY) {
                     etype = TYPE_ARRAY;
                     snprintf(expr, sizeof(expr), "_ltng_ah_pack(%s_data, %s_len, %s_cap)", cname, cname, cname);
-                    if (g_enclosing_cname[0]) {
+                    if ((g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
                         FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
                         if (efi) { efi->return_type = TYPE_ARRAY; efi->has_return_type = 1; }
                     }
@@ -6062,7 +6062,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                 } else {
                     /* Try param default type */
                     VarType pdt = TYPE_NULL;
-                    if (g_enclosing_cname[0]) {
+                    if ((g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
                         FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
                         if (efi) {
                             for (int pi = 0; pi < efi->param_count; pi++) {
@@ -6088,7 +6088,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                 node->is_variable = (etype == TYPE_OBJECT || etype == TYPE_STRING) ? 1 : 0;
                 /* Mark pure pass-through of an untyped parameter (no default type coercion)
                    so call sites can specialize return type when feasible. */
-                if (etype == TYPE_STRING && symbol_table_is_param(table, m) && g_enclosing_cname[0]) {
+                if (etype == TYPE_STRING && symbol_table_is_param(table, m) && (g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
                     int _is_pt = 1;
                     /* exclude if param has a concrete default type (we'd have taken pdt branch above) */
                     VarType _pdt2 = TYPE_NULL;
@@ -6123,7 +6123,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
             if (try_parse_sole_call_expr(lexer, table, expr, sizeof(expr), 1, &sole_call_type, sole_call_cname, sizeof(sole_call_cname))) {
                 etype = sole_call_type;
                 if (etype == TYPE_NULL || etype == TYPE_VOID) etype = TYPE_STRING;
-                if (etype == TYPE_ARRAY && g_enclosing_cname[0]) {
+                if (etype == TYPE_ARRAY && (g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
                     FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
                     if (efi) { efi->return_type = TYPE_ARRAY; efi->has_return_type = 1; }
                 }
@@ -6556,11 +6556,8 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
         sig->has_return_type = has_return_type;
         sig->return_type = return_type;
     }
-    char saved_enc[MAX_IDENTIFIER_LEN];
-    strncpy(saved_enc, g_enclosing_cname, MAX_IDENTIFIER_LEN - 1);
-    saved_enc[MAX_IDENTIFIER_LEN - 1] = 0;
-    strncpy(g_enclosing_cname, cname, MAX_IDENTIFIER_LEN - 1);
-    g_enclosing_cname[MAX_IDENTIFIER_LEN - 1] = 0;
+    char *saved_enc = ltng_strdup(g_enclosing_cname ? g_enclosing_cname : "");
+    { free(g_enclosing_cname); g_enclosing_cname = ltng_strdup(cname ? cname : ""); }
     /* Detect params used as arrays in function body (including base). */
     {
         ASTNode *pp_scan = params;
@@ -6607,8 +6604,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
     g_in_function++;
     fn->body = parse_block(lexer, func_scope, 0);
     g_in_function--;
-    strncpy(g_enclosing_cname, saved_enc, MAX_IDENTIFIER_LEN - 1);
-    g_enclosing_cname[MAX_IDENTIFIER_LEN - 1] = 0;
+    { free(g_enclosing_cname); g_enclosing_cname = saved_enc; }
 
     /* Compute captures for nested/anonymous functions */
     fn->capture_count = 0;
@@ -7392,7 +7388,7 @@ Program *parse(Lexer *lexer, ErrorState *errors) {
     g_obj_count = 0;
     g_in_function = 0;
     g_in_catch = 0;
-    g_enclosing_cname[0] = 0;
+    { free(g_enclosing_cname); g_enclosing_cname = ltng_strdup(""); }
     Program *program = (Program *)malloc(sizeof(Program));
     if (!program) {
         fprintf(stderr, "Error: Memory allocation failed\n");
