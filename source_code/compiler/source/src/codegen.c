@@ -225,9 +225,10 @@ static int is_simple_var_or_keyword(const char *name, SymbolTable *table) {
         strcmp(name, "let") == 0 || strcmp(name, "const") == 0 ||
         strcmp(name, "set") == 0 || strcmp(name, "write") == 0 ||
         strcmp(name, "read") == 0) return 1;
-    char mvname[MAX_IDENTIFIER_LEN];
-    mangle_name(name, mvname, MAX_IDENTIFIER_LEN);
-    if (symbol_table_has(table, mvname)) return 1;
+    char *mvname = mangle_name_alloc(name);
+    int _has = symbol_table_has(table, mvname);
+    free(mvname);
+    if (_has) return 1;
     return 0;
 }
 
@@ -255,9 +256,9 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
             }
             if (*p == ']') {
                 int len = (int)(p - start);
-                char vname[MAX_IDENTIFIER_LEN];
-                if (len >= MAX_IDENTIFIER_LEN) len = MAX_IDENTIFIER_LEN - 1;
-                memcpy(vname, start, len);
+                char *vname = (char*)malloc((size_t)len + 1);
+                if (!vname) { p++; continue; }
+                memcpy(vname, start, (size_t)len);
                 vname[len] = '\0';
                 if (is_simple_var_or_keyword(vname, codegen_table)) {
                     fprintf(out, "%%s");
@@ -275,6 +276,7 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                         fprintf(out, "%%lld");
                     }
                 }
+                free(vname);
                 arg_count++;
                 p++;
             } else {
@@ -316,13 +318,13 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                     } else if (strcmp(vname, "false") == 0 || strcmp(vname, "f") == 0) {
                         fprintf(out, ", \"false\"");
                     } else if (is_simple_var_or_keyword(vname, codegen_table)) {
-                        char mvname[MAX_IDENTIFIER_LEN];
-                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                        char *mvname = mangle_name_alloc(vname);
                         if (symbol_table_has(codegen_table, mvname)) {
                             fprintf(out, ", %s", mvname);
                         } else {
                             fprintf(out, ", \"%s\"", vname);
                         }
+                        free(mvname);
                     } else {
                         char expr_out[MAX_STRING_LEN];
                         VarType etype = parse_expression_from_string(vname, codegen_table,
@@ -371,9 +373,9 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
             }
             if (*p == ']') {
                 int len = (int)(p - start);
-                char vname[MAX_IDENTIFIER_LEN];
-                if (len >= MAX_IDENTIFIER_LEN) len = MAX_IDENTIFIER_LEN - 1;
-                memcpy(vname, start, len);
+                char *vname = (char*)malloc((size_t)len + 1);
+                if (!vname) { p++; continue; }
+                memcpy(vname, start, (size_t)len);
                 vname[len] = '\0';
                 if (is_simple_var_or_keyword(vname, codegen_table)) {
                     fprintf(out, "%%s");
@@ -391,6 +393,7 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                         fprintf(out, "%%lld");
                     }
                 }
+                free(vname);
                 arg_count++;
                 p++;
             } else {
@@ -423,22 +426,22 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                 }
                 if (*p == ']') {
                     int len = (int)(p - start);
-                    char vname[MAX_IDENTIFIER_LEN];
-                    if (len >= MAX_IDENTIFIER_LEN) len = MAX_IDENTIFIER_LEN - 1;
-                    memcpy(vname, start, len);
+                    char *vname = (char*)malloc((size_t)len + 1);
+                    if (!vname) { p++; continue; }
+                    memcpy(vname, start, (size_t)len);
                     vname[len] = '\0';
                     if (strcmp(vname, "true") == 0 || strcmp(vname, "t") == 0) {
                         fprintf(out, ", \"true\"");
                     } else if (strcmp(vname, "false") == 0 || strcmp(vname, "f") == 0) {
                         fprintf(out, ", \"false\"");
                     } else if (is_simple_var_or_keyword(vname, codegen_table)) {
-                        char mvname[MAX_IDENTIFIER_LEN];
-                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                        char *mvname = mangle_name_alloc(vname);
                         if (symbol_table_has(codegen_table, mvname)) {
                             fprintf(out, ", %s", mvname);
                         } else {
                             fprintf(out, ", \"%s\"", vname);
                         }
+                        free(mvname);
                     } else {
                         char expr_out[MAX_STRING_LEN];
                         VarType etype = parse_expression_from_string(vname, codegen_table,
@@ -453,6 +456,8 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                             fprintf(out, ", (long long)(%s)", expr_out);
                         }
                     }
+                    free(vname);
+                    arg_count++;
                     p++;
                 }
             } else {
@@ -1948,37 +1953,39 @@ static ASTNode *find_function_by_cname(ASTNode *fns, const char *cname) {
     return NULL;
 }
 
-#define MAX_PARAM_SCHEMAS 256
 typedef struct {
-    char fn_name[MAX_IDENTIFIER_LEN];
+    char *fn_name;
     int param_index;
-    char arg_var[MAX_IDENTIFIER_LEN];
+    char *arg_var;
 } ParamSchema;
-static ParamSchema g_param_schemas[MAX_PARAM_SCHEMAS];
+static ParamSchema *g_param_schemas = NULL;
 static int g_param_schema_count = 0;
+static int g_param_schema_cap = 0;
 
-/* Record that an object variable is passed to a function parameter at a call site. */
 static void record_param_schema(ASTNode *call, ASTNode *fns) {
     ASTNode *fn = find_function_by_cname(fns, call->name);
     if (!fn) return;
     int pidx = 0;
     for (ASTNode *p = fn->params, *a = call->args; p && a; p = p->next, a = a->next, pidx++) {
         if (a->is_variable && a->value[0] != '\0' && obj_lookup(a->value)) {
-            /* avoid duplicates */
             int dup = 0;
             for (int i = 0; i < g_param_schema_count; i++) {
                 if (strcmp(g_param_schemas[i].fn_name, fn->name) == 0 &&
                     g_param_schemas[i].param_index == pidx &&
                     strcmp(g_param_schemas[i].arg_var, a->value) == 0) { dup = 1; break; }
             }
-            if (!dup && g_param_schema_count < MAX_PARAM_SCHEMAS) {
-                ParamSchema *e = &g_param_schemas[g_param_schema_count++];
-                strncpy(e->fn_name, fn->name, MAX_IDENTIFIER_LEN - 1);
-                e->fn_name[MAX_IDENTIFIER_LEN - 1] = '\0';
-                e->param_index = pidx;
-                strncpy(e->arg_var, a->value, MAX_IDENTIFIER_LEN - 1);
-                e->arg_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            if (dup) continue;
+            if (g_param_schema_count >= g_param_schema_cap) {
+                int nc = g_param_schema_cap ? g_param_schema_cap * 2 : 64;
+                ParamSchema *ns = (ParamSchema*)realloc(g_param_schemas, nc * sizeof(ParamSchema));
+                if (!ns) return;
+                for (int j = g_param_schema_cap; j < nc; j++) { ns[j].fn_name = NULL; ns[j].arg_var = NULL; ns[j].param_index = 0; }
+                g_param_schemas = ns; g_param_schema_cap = nc;
             }
+            ParamSchema *e = &g_param_schemas[g_param_schema_count++];
+            e->fn_name = ltng_strdup(fn->name ? fn->name : "");
+            e->param_index = pidx;
+            e->arg_var = ltng_strdup(a->value ? a->value : "");
         }
     }
 }
