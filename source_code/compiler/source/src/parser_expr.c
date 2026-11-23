@@ -1312,7 +1312,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                         if (simple_ident) {
                             is_simple_ident_arg = 1;
-                            char mname[MAX_IDENTIFIER_LEN]; mangle_name(inner, mname, MAX_IDENTIFIER_LEN);
+                            char *mname = mangle_name_alloc(inner);
                             if (symbol_table_has(table, mname)) {
                                 inner_ctype = symbol_table_get(table, mname);
                                 inner_expr = symbol_table_get_cname(table, mname);
@@ -1323,6 +1323,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 inner_ctype = TYPE_STRING;
                                 inner_expr = inner;
                             }
+                            free(mname);
                         } else {
                             /* Complex expression: compile */
                             inner_ctype = parse_expression_from_string(inner, table, inner_c, sizeof(inner_c));
