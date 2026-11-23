@@ -10,9 +10,6 @@
 #define MAX_TOKENS 1024  /* initial token capacity */
 #define MAX_STRING_LEN 4096
 #define MAX_IDENTIFIER_LEN 256
-#define MAX_VARS 256
-#define MAX_ERRORS 256
-#define MAX_SOURCE_LINES 4096
 
 typedef enum {
     TOKEN_WRITE,

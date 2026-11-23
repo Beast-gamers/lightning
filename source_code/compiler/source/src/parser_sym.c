@@ -60,8 +60,22 @@ char g_enclosing_cname[MAX_IDENTIFIER_LEN] = "";
 int g_ret_obj_count = 0;
 int g_anon_count = 0;
 
-ObjSchema g_objs[MAX_OBJS];
+ObjSchema *g_objs = NULL;
 int g_obj_count = 0;
+int g_obj_cap = 0;
+
+static void ensure_obj_cap(void) {
+    if (g_obj_count < g_obj_cap) return;
+    int nc = g_obj_cap ? g_obj_cap * 2 : 64;
+    ObjSchema *n = (ObjSchema*)realloc(g_objs, nc * sizeof(ObjSchema));
+    if (!n) return;
+    for (int i = g_obj_cap; i < nc; i++) {
+        memset(&n[i], 0, sizeof(ObjSchema));
+        n[i].var = ltng_strdup("");
+        n[i].default_val = ltng_strdup("");
+    }
+    g_objs = n; g_obj_cap = nc;
+}
 
 void obj_register(const char *mangled_var, ObjSchema *schema) {
     if (!mangled_var || !schema) return;
@@ -73,7 +87,8 @@ void obj_register(const char *mangled_var, ObjSchema *schema) {
             return;
         }
     }
-    if (g_obj_count < MAX_OBJS) {
+    ensure_obj_cap();
+    if (g_obj_count < g_obj_cap) {
         objschema_deep_copy(&g_objs[g_obj_count], schema);
         free(g_objs[g_obj_count].var); g_objs[g_obj_count].var = ltng_strdup(mangled_var);
         g_obj_count++;
@@ -837,7 +852,7 @@ VarType effective_param_default_type(const char *src_name, VarType sym_type) {
     if (sym_type != TYPE_FLOAT) return sym_type;
     FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
     if (!efi) return sym_type;
-    for (int pi = 0; pi < efi->param_count && pi < 32 /*MAX_FUNC_PARAMS*/; pi++) {
+    for (int pi = 0; pi < efi->param_count; pi++) {
         if (strcmp(efi->param_names[pi], src_name) == 0) {
             if (efi->has_default[pi] && efi->def_type[pi] != TYPE_NULL)
                 return efi->def_type[pi];

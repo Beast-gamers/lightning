@@ -48,9 +48,9 @@ extern char g_enclosing_cname[MAX_IDENTIFIER_LEN];
 extern int g_ret_obj_count;
 extern int g_anon_count;
 
-#define MAX_OBJS 128
-extern ObjSchema g_objs[MAX_OBJS];
+extern ObjSchema *g_objs;
 extern int g_obj_count;
+extern int g_obj_cap;
 extern int g_scope_var_uid;
 
 /* ---- shared helpers ---- */

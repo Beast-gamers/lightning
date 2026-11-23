@@ -5502,36 +5502,36 @@ FuncInfo *resolve_overload(const char *src, ASTNode *args, int line, int col,
         if (!fi->top_level || strcmp(fi->src, src) != 0) continue;
         (*group_count)++;
 
-        int provided[32 /*MAX_FUNC_PARAMS*/];
-        memset(provided, 0, sizeof(provided));
+        int pcnt = fi->param_count > 0 ? fi->param_count : 0;
+        int *provided = pcnt ? (int*)calloc((size_t)pcnt, sizeof(int)) : NULL;
         int ok = 1;
         for (ASTNode *a = args; a && ok; a = a->next) {
             if (!a->for_var[0]) continue;
             int found = -1;
-            for (int p = 0; p < fi->param_count && p < 32 /*MAX_FUNC_PARAMS*/; p++) {
-                if (strcmp(fi->param_names[p], a->for_var) == 0) { found = p; break; }
+            for (int p = 0; p < pcnt; p++) {
+                if (fi->param_names[p] && strcmp(fi->param_names[p], a->for_var) == 0) { found = p; break; }
             }
             if (found < 0) { ok = 0; break; }
             if (provided[found]) { ok = 0; break; }
             provided[found] = 1;
         }
-        if (!ok) continue;
+        if (!ok) { free(provided); continue; }
 
         int pos = positional;
         int used_defaults = 0;
-        for (int p = 0; p < fi->param_count; p++) {
+        for (int p = 0; p < pcnt; p++) {
             if (provided[p]) continue;
             if (pos > 0) { pos--; provided[p] = 1; }
-            else if (fi->has_default[p]) { used_defaults++; }
+            else if (fi->has_default && fi->has_default[p]) { used_defaults++; }
             else { ok = 0; break; }
         }
-        if (!ok) continue;
+        if (!ok) { free(provided); continue; }
         int rest_used = 0;
         if (pos > 0) {
             if (fi->is_variadic) rest_used = 1;
             else { ok = 0; }
         }
-        if (!ok) continue;
+        if (!ok) { free(provided); continue; }
 
         int sv = fi->is_variadic ? 1 : 0;
         int exact = (used_defaults == 0 && !rest_used) ? 1 : 0;
@@ -5545,14 +5545,13 @@ FuncInfo *resolve_overload(const char *src, ASTNode *args, int line, int col,
             best_exact = exact;
             ambiguous = 0;
         } else if (sv == best_variadic && used_defaults == best_defaults && exact == best_exact) {
-            /* Identical signatures are reported separately by the duplicate
-               prescan check; do not add a cascading ambiguity error. */
             if (best && !(fi->param_count == best->param_count &&
                           fi->required_count == best->required_count &&
                           fi->is_variadic == best->is_variadic)) {
                 ambiguous = 1;
             }
         }
+        free(provided);
     }
     if (best && ambiguous) {
         char *msg = _ltng_cfmt("Ambiguous call to overloaded function '%s'", src);
@@ -5578,27 +5577,24 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
         pc = fi->param_count;
         is_variadic = fi->is_variadic;
     }
-    if (pc > 32 /*MAX_FUNC_PARAMS*/) pc = 32 /*MAX_FUNC_PARAMS*/;
+    if (pc < 0) pc = 0;
 
-    ASTNode *param_node[32 /*MAX_FUNC_PARAMS*/] = {0};
+    ASTNode **param_node = pc ? (ASTNode**)calloc((size_t)pc, sizeof(ASTNode*)) : NULL;
+    ASTNode **chosen = pc ? (ASTNode**)calloc((size_t)pc, sizeof(ASTNode*)) : NULL;
+    int *provided = pc ? (int*)calloc((size_t)pc, sizeof(int)) : NULL;
     ASTNode *pn = fn_def ? fn_def->params : NULL;
     for (int p = 0; p < pc; p++) {
         param_node[p] = pn;
         if (pn) pn = pn->next;
     }
 
-    ASTNode *chosen[32 /*MAX_FUNC_PARAMS*/] = {0};
-    int provided[32 /*MAX_FUNC_PARAMS*/];
-    memset(provided, 0, sizeof(provided));
-
-    /* Map named arguments to parameters. */
     for (ASTNode *a = args; a; a = a->next) {
         if (!a->for_var[0]) continue;
         int found = -1;
         for (int p = 0; p < pc; p++) {
             const char *pname = param_node[p] ? param_node[p]->for_var :
-                                (fi ? fi->param_names[p] : "");
-            if (pname[0] && strcmp(pname, a->for_var) == 0) { found = p; break; }
+                                (fi && fi->param_names && p < fi->param_count && fi->param_names[p] ? fi->param_names[p] : "");
+            if (pname && pname[0] && strcmp(pname, a->for_var) == 0) { found = p; break; }
         }
         if (found < 0) {
             char *msg = _ltng_cfmt("Unknown argument '%s' in call to '%s'", a->for_var, fname);
@@ -5614,14 +5610,15 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
         }
     }
 
-    /* Collect positional arguments in source order. */
-    ASTNode *pos[32 /*MAX_FUNC_PARAMS*/ * 4];
     int pos_n = 0;
+    for (ASTNode *a = args; a; a = a->next) if (!a->for_var[0]) pos_n++;
+    ASTNode **pos = pos_n ? (ASTNode**)malloc((size_t)pos_n * sizeof(ASTNode*)) : NULL;
+    int pos_i = 0;
     for (ASTNode *a = args; a; a = a->next) {
         if (a->for_var[0]) continue;
-        if (pos_n < (int)(sizeof(pos) / sizeof(pos[0]))) pos[pos_n++] = a;
+        if (pos_i < pos_n) pos[pos_i++] = a;
     }
-    int pos_i = 0;
+    pos_i = 0;
 
     ASTNode *eff = NULL, *efflast = NULL;
     for (int p = 0; p < pc; p++) {
@@ -5631,7 +5628,7 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
                 outn = pos[pos_i++];
             } else {
                 int hasdef = param_node[p] ? param_node[p]->has_default :
-                             (fi ? fi->has_default[p] : 0);
+                             (fi && fi->has_default && p < fi->param_count ? fi->has_default[p] : 0);
                 if (hasdef) {
                     outn = create_node(NODE_PARAM, "", "");
                     outn->is_expr = 1;
@@ -5648,7 +5645,8 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
                         outn->var_type = dvt;
                     }
                 } else {
-                    char *msg = _ltng_cfmt("Missing required argument '%s' in call to '%s'", param_node[p] ? param_node[p]->for_var : (fi ? fi->param_names[p] : "?"), fname);
+                    const char *pname = param_node[p] ? param_node[p]->for_var : (fi && fi->param_names && p < fi->param_count && fi->param_names[p] ? fi->param_names[p] : "?");
+                    char *msg = _ltng_cfmt("Missing required argument '%s' in call to '%s'", pname, fname);
                     error_state_add(parser_errors, line, col, msg ? msg : "");
                     free(msg);
                     outn = create_node(NODE_PARAM, "", "\"\"");
@@ -5662,7 +5660,6 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
         else { efflast->next = outn; efflast = outn; }
     }
 
-    /* Extra positional arguments become the variadic rest list. */
     if (pos_i < pos_n) {
         if (is_variadic) {
             ASTNode *rest = NULL, *rlast = NULL;
@@ -5679,6 +5676,10 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
             free(msg);
         }
     }
+    free(param_node);
+    free(chosen);
+    free(provided);
+    free(pos);
     return eff;
 }
 
@@ -6064,7 +6065,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                     if (g_enclosing_cname[0]) {
                         FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
                         if (efi) {
-                            for (int pi = 0; pi < efi->param_count && pi < 32 /*MAX_FUNC_PARAMS*/; pi++) {
+                            for (int pi = 0; pi < efi->param_count; pi++) {
                                 if (strcmp(efi->param_names[pi], id.value) == 0) {
                                     if (efi->has_default[pi]) pdt = efi->def_type[pi];
                                     break;
@@ -6093,7 +6094,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                     VarType _pdt2 = TYPE_NULL;
                     FuncInfo *_efi2 = find_funcinfo_by_cname(g_enclosing_cname);
                     if (_efi2) {
-                        for (int _pi = 0; _pi < _efi2->param_count && _pi < 32 /*MAX_FUNC_PARAMS*/; _pi++) {
+                        for (int _pi = 0; _pi < _efi2->param_count; _pi++) {
                             if (strcmp(_efi2->param_names[_pi], id.value) == 0) {
                                 if (_efi2->has_default[_pi] && _efi2->def_type[_pi] != TYPE_NULL &&
                                     (_efi2->def_type[_pi] == TYPE_INT || _efi2->def_type[_pi] == TYPE_FLOAT || _efi2->def_type[_pi] == TYPE_BOOL))
@@ -6625,10 +6626,9 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             add_capture_name(locals, &locals_n, 64, fn->variadic_name);
         collect_declared_locals(fn->body, locals, &locals_n, 64, 0);
         collect_used_idents(fn->body, used, &used_n, 64, 0);
-        for (int i = 0; i < used_n && fn->capture_count < 8; i++) {
+        for (int i = 0; i < used_n; i++) {
             const char *u = used[i];
             if (name_in_list(locals, locals_n, u)) continue;
-            /* skip common keywords/builtins/literals that might appear as tokens in expressions */
             if (strcmp(u,"true")==0||strcmp(u,"false")==0||strcmp(u,"t")==0||strcmp(u,"f")==0) continue;
             if (strcmp(u,"null")==0||strcmp(u,"write")==0||strcmp(u,"read")==0) continue;
             if (strcmp(u,"int")==0||strcmp(u,"float")==0||strcmp(u,"string")==0||strcmp(u,"char")==0||strcmp(u,"bool")==0) continue;
@@ -6638,17 +6638,13 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             if (strcmp(u,"break")==0||strcmp(u,"continue")==0||strcmp(u,"switch")==0||strcmp(u,"case")==0||strcmp(u,"default")==0) continue;
             if (strcmp(u,"and")==0||strcmp(u,"or")==0||strcmp(u,"not")==0||strcmp(u,"in")==0||strcmp(u,"from")==0||strcmp(u,"to")==0||strcmp(u,"step")==0||strcmp(u,"by")==0) continue;
             if (strcmp(u,"exit")==0||strcmp(u,"include")==0) continue;
-            /* skip if it's a declared function name */
             if (is_function_name(u)) continue;
-            /* skip numeric-like */
             if (u[0] >= '0' && u[0] <= '9') continue;
-            /* check if this identifier exists in enclosing scope (as variable) */
             char mangled_u[MAX_IDENTIFIER_LEN];
             mangle_name(u, mangled_u, sizeof(mangled_u));
             int in_enclosing = 0;
             const char *cap_cname = NULL;
             if (table) {
-                /* try by symbol name (mangled key) */
                 for (Scope *s = table; s && !in_enclosing; s = s->parent) {
                     for (int vi = 0; vi < s->count; vi++) {
                         VarEntry *ve = &s->vars[vi];
@@ -6661,15 +6657,15 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
                     }
                 }
             }
-            if (!in_enclosing) continue;
-            /* avoid duplicate captures */
+            if (!in_enclosing || !cap_cname) continue;
             int dup = 0;
             for (int c = 0; c < fn->capture_count; c++) {
-                if (strcmp(fn->captures[c], cap_cname) == 0) dup = 1;
+                if (fn->captures && fn->captures[c] && strcmp(fn->captures[c], cap_cname) == 0) { dup = 1; break; }
             }
             if (dup) continue;
-            if (!fn->captures) { fn->captures = (char**)malloc(8 * sizeof(char*)); for (int ci=0;ci<8;ci++) fn->captures[ci] = ltng_strdup(""); }
-            free(fn->captures[fn->capture_count]);
+            char **ncaps = (char**)realloc(fn->captures, (size_t)(fn->capture_count + 1) * sizeof(char*));
+            if (!ncaps) continue;
+            fn->captures = ncaps;
             fn->captures[fn->capture_count] = ltng_strdup(cap_cname);
             fn->capture_count++;
         }
