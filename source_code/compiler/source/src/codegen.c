@@ -36,18 +36,17 @@ static void emit_obj_return_staging(FILE *out, ASTNode *fn, ASTNode *ret_node, i
     if (ret_node->var_type != TYPE_OBJECT || !ret_node->value[0]) return;
     /* only for variable/base returns (object value in a named object) */
     if (ret_node->value[0] == '"' || ret_node->value[0] == '(') return;
-    char stage_base[MAX_IDENTIFIER_LEN*2+16];
-    snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", fn->name);
+    char *stage_base = _ltng_cfmt("__ltng_oret_%s", fn->name ? fn->name : "");
     for (int i = 0; i < sc->count; i++) {
-        char src_f[MAX_IDENTIFIER_LEN*2+8], dst_f[MAX_IDENTIFIER_LEN*2+8];
-        obj_resolve_field(ret_node->value, sc->fields[i].name, src_f, sizeof(src_f));
-        obj_resolve_field(stage_base, sc->fields[i].name, dst_f, sizeof(dst_f));
-        int bsz = (strcmp(sc->fields[i].name, "obj") == 0) ? 512 : 256;
+        char *src_f = obj_resolve_field_alloc(ret_node->value, sc->fields[i].name);
+        char *dst_f = obj_resolve_field_alloc(stage_base, sc->fields[i].name);
         pad(out, indent);
         fprintf(out, "_ltng_ds_set(&%s, %s);\n", dst_f, src_f);
+        free(src_f); free(dst_f);
     }
     pad(out, indent);
     fprintf(out, "_ltng_ds_set(&%s, %s);\n", stage_base, ret_node->value);
+    free(stage_base);
 }
 
 void codegen_set_log(CodegenLog *log) {
@@ -477,16 +476,15 @@ static int has_interpolation(const char *str) {
 
 static int is_var_captured_by_nested(ASTNode *fn, ASTNode *all_fns, const char *var_cname) {
     if (!fn || !all_fns || !var_cname || !var_cname[0]) return 0;
-    char prefix[MAX_IDENTIFIER_LEN + 4];
-    snprintf(prefix, sizeof(prefix), "%s__", fn->name);
-    size_t plen = strlen(prefix);
+    char *prefix = _ltng_cfmt("%s__", fn->name ? fn->name : "");
+    size_t plen = strlen(prefix ? prefix : "");
     for (ASTNode *nf = all_fns; nf; nf = nf->next) {
-        if (strncmp(nf->name, prefix, plen) != 0) continue;
-        /* nf is nested inside fn (directly or transitively - but captures list has cnames) */
+        if (!prefix || strncmp(nf->name, prefix, plen) != 0) continue;
         for (int i = 0; i < nf->capture_count; i++) {
-            if (strcmp(nf->captures[i], var_cname) == 0) return 1;
+            if (strcmp(nf->captures[i], var_cname) == 0) { free(prefix); return 1; }
         }
     }
+    free(prefix);
     return 0;
 }
 
@@ -2246,14 +2244,14 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         for (ASTNode *fn = program->functions; fn; fn = fn->next) {
             ObjSchema *sc = fn_return_obj_schema(fn);
             if (!sc) continue;
-            char stage_base[MAX_IDENTIFIER_LEN*2+16];
-            snprintf(stage_base, sizeof(stage_base), "__ltng_oret_%s", fn->name);
+            char *stage_base = _ltng_cfmt("__ltng_oret_%s", fn->name ? fn->name : "");
             fprintf(out, "static char *%s = NULL;\n", stage_base);
             for (int i = 0; i < sc->count; i++) {
-                char dst_f[MAX_IDENTIFIER_LEN*2+8];
-                obj_resolve_field(stage_base, sc->fields[i].name, dst_f, sizeof(dst_f));
+                char *dst_f = obj_resolve_field_alloc(stage_base, sc->fields[i].name);
                 fprintf(out, "static char *%s = NULL;\n", dst_f);
+                free(dst_f);
             }
+            free(stage_base);
         }
         fprintf(out, "\n");
     }
@@ -2321,13 +2319,13 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             }
             /* Build the variadic rest parameter as a dynamic array. */
             if (fn->is_variadic && fn->variadic_name[0]) {
-                char rest_cname[MAX_IDENTIFIER_LEN];
-                mangle_name(fn->variadic_name, rest_cname, sizeof(rest_cname));
+                char *rest_cname = mangle_name_alloc(fn->variadic_name);
                 fprintf(out, "    int %s_len = 0;\n", rest_cname);
                 fprintf(out, "    int %s_cap = 0;\n", rest_cname);
                 fprintf(out, "    char **%s_data = _ltng_arr_new(_ltng_restc > 0 ? _ltng_restc : 1);\n", rest_cname);
                 fprintf(out, "    for (int __ri = 0; __ri < _ltng_restc; __ri++) _ltng_arr_push(&%s_data, &%s_len, &%s_cap, _ltng_restv ? _ltng_restv[__ri] : \"\");\n",
                     rest_cname, rest_cname, rest_cname);
+                free(rest_cname);
             }
             /* declare object field variables for object-typed parameters */
             for (ASTNode *p = fn->params; p; p = p->next) {
@@ -2445,12 +2443,11 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             fprintf(out, "\");\n");
             if (sc) {
                 for (int fi = 0; fi < sc->count; fi++) {
-                    char fv[MAX_IDENTIFIER_LEN*2+8];
-                    obj_resolve_field(table->vars[i].name, sc->fields[fi].name, fv, sizeof(fv));
-                    int bsz = (strcmp(sc->fields[fi].name, "obj") == 0) ? 512 : 256;
+                    char *fv = obj_resolve_field_alloc(table->vars[i].name, sc->fields[fi].name);
                     fprintf(out, "    char *%s = _ltng_ds_new(\"", fv);
                     write_c_string(out, sc->fields[fi].value);
                     fprintf(out, "\");\n");
+                    free(fv);
                 }
             }
         } else {

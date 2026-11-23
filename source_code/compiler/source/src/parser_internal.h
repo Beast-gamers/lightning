@@ -83,6 +83,7 @@ void objschema_deep_copy(ObjSchema *dst, const ObjSchema *src);
 void obj_register(const char *mangled_var, ObjSchema *schema);
 ObjSchema *obj_lookup(const char *mangled_var);
 const char *obj_resolve_field(const char *mangled_var, const char *field, char *out, int out_size);
+char *obj_resolve_field_alloc(const char *mangled_var, const char *field);
 void obj_build_all(ObjSchema *s);
 void register_function(const char *name, int param_count);
 int is_function_name(const char *name);

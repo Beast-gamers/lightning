@@ -111,6 +111,16 @@ const char *obj_resolve_field(const char *mangled_var, const char *field, char *
     return out;
 }
 
+char *obj_resolve_field_alloc(const char *mangled_var, const char *field) {
+    char *fm = mangle_name_alloc(field);
+    size_t n = strlen(mangled_var ? mangled_var : "") + 2 + strlen(fm ? fm : "") + 1;
+    char *out = (char*)malloc(n);
+    if (!out) { free(fm); return ltng_strdup(""); }
+    snprintf(out, n, "%s__%s", mangled_var ? mangled_var : "", fm ? fm : "");
+    free(fm);
+    return out;
+}
+
 
 void objschema_free(ObjSchema *s) {
     if (!s) return;
