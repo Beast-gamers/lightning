@@ -6230,26 +6230,34 @@ void parse_exit(Lexer *lexer, SymbolTable *table) {
 int is_ident_start_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 int is_ident_char(char c) { return is_ident_start_char(c) || (c >= '0' && c <= '9'); }
 
-void add_capture_name(char names[][MAX_IDENTIFIER_LEN], int *count, int max, const char *name) {
-    if (!name || !name[0] || *count >= max) return;
-    /* skip internal/runtime names */
+void add_capture_name(char ***names, int *count, int *cap, const char *name) {
+    if (!names || !count || !cap || !name || !name[0]) return;
     if (strncmp(name, "_ltng", 5) == 0) return;
-    if (strncmp(name, "_v", 2) == 0) { /* scoped var cname prefix - but we want to track by mangled/original; keep */ }
-    for (int i = 0; i < *count; i++) if (strcmp(names[i], name) == 0) return;
-    strncpy(names[*count], name, MAX_IDENTIFIER_LEN - 1);
-    names[*count][MAX_IDENTIFIER_LEN - 1] = 0;
+    for (int i = 0; i < *count; i++) if ((*names)[i] && strcmp((*names)[i], name) == 0) return;
+    if (*count >= *cap) {
+        int nc = *cap ? (*cap * 2) : 32;
+        char **nn = (char**)realloc(*names, (size_t)nc * sizeof(char*));
+        if (!nn) return;
+        *names = nn; *cap = nc;
+    }
+    (*names)[*count] = ltng_strdup(name);
     (*count)++;
 }
 
-void collect_idents_from_str(const char *s, char names[][MAX_IDENTIFIER_LEN], int *count, int max) {
+void collect_idents_from_str(const char *s, char ***names, int *count, int *cap) {
     if (!s) return;
     for (int i = 0; s[i]; ) {
         if (is_ident_start_char(s[i])) {
-            char buf[MAX_IDENTIFIER_LEN]; int j = 0;
-            while (s[i] && is_ident_char(s[i]) && j < MAX_IDENTIFIER_LEN - 1) buf[j++] = s[i++];
-            buf[j] = 0;
-            add_capture_name(names, count, max, buf);
-        } else if (s[i] == '"' ) {
+            int start = i;
+            while (s[i] && is_ident_char(s[i])) i++;
+            int len = i - start;
+            char *buf = (char*)malloc((size_t)len + 1);
+            if (!buf) return;
+            memcpy(buf, s + start, (size_t)len);
+            buf[len] = 0;
+            add_capture_name(names, count, cap, buf);
+            free(buf);
+        } else if (s[i] == '"') {
             i++; while (s[i] && s[i] != '"') { if (s[i] == '\\' && s[i+1]) i += 2; else i++; }
             if (s[i] == '"') i++;
         } else if (s[i] == '\'') {
@@ -6261,52 +6269,43 @@ void collect_idents_from_str(const char *s, char names[][MAX_IDENTIFIER_LEN], in
     }
 }
 
-void collect_declared_locals(ASTNode *node, char names[][MAX_IDENTIFIER_LEN], int *count, int max, int depth) {
+void collect_declared_locals(ASTNode *node, char ***names, int *count, int *cap, int depth) {
     if (!node || depth > 128) return;
     if (node->type == NODE_LET || node->type == NODE_CONST) {
-        if (node->name[0]) add_capture_name(names, count, max, node->name);
+        if (node->name[0]) add_capture_name(names, count, cap, node->name);
     }
-    /* don't descend into nested function bodies - they have separate scopes */
     if (node->type == NODE_FUNCTION) return;
-    collect_declared_locals(node->body, names, count, max, depth + 1);
-    collect_declared_locals(node->orelse, names, count, max, depth + 1);
-    collect_declared_locals(node->else_body, names, count, max, depth + 1);
-    collect_declared_locals(node->cases, names, count, max, depth + 1);
-    collect_declared_locals(node->next, names, count, max, depth + 1);
+    collect_declared_locals(node->body, names, count, cap, depth + 1);
+    collect_declared_locals(node->orelse, names, count, cap, depth + 1);
+    collect_declared_locals(node->else_body, names, count, cap, depth + 1);
+    collect_declared_locals(node->cases, names, count, cap, depth + 1);
+    collect_declared_locals(node->next, names, count, cap, depth + 1);
 }
 
-void collect_used_idents(ASTNode *node, char names[][MAX_IDENTIFIER_LEN], int *count, int max, int depth) {
+void collect_used_idents(ASTNode *node, char ***names, int *count, int *cap, int depth) {
     if (!node || depth > 128) return;
-    /* don't descend into nested function bodies */
-    if (node->type == NODE_FUNCTION) { collect_used_idents(node->next, names, count, max, depth); return; }
-    /* NODE_READ stores variable name in node->name */
-    if (node->type == NODE_READ && node->name[0]) add_capture_name(names, count, max, node->name);
-    /* calls: name is callee (function) - not a variable capture unless indirect; args have values */
+    if (node->type == NODE_FUNCTION) { collect_used_idents(node->next, names, count, cap, depth); return; }
+    if (node->type == NODE_READ && node->name[0]) add_capture_name(names, count, cap, node->name);
     if (node->type == NODE_CALL) {
-        /* indirect call target var stored in for_var */
         if (strcmp(node->name, "__ltng_indirect") == 0 && node->for_var[0])
-            add_capture_name(names, count, max, node->for_var);
+            add_capture_name(names, count, cap, node->for_var);
     }
-    /* scan expression-bearing string fields */
-    collect_idents_from_str(node->value, names, count, max);
-    collect_idents_from_str(node->for_start, names, count, max);
-    collect_idents_from_str(node->for_end, names, count, max);
-    collect_idents_from_str(node->for_step, names, count, max);
-    collect_idents_from_str(node->array_index, names, count, max);
-    /* SET/assignments target var in name - writing is not a capture read, but reading RHS is in value */
-    /* for NODE_PARAM args, value may contain var refs */
-
-    collect_used_idents(node->body, names, count, max, depth + 1);
-    collect_used_idents(node->orelse, names, count, max, depth + 1);
-    collect_used_idents(node->else_body, names, count, max, depth + 1);
-    collect_used_idents(node->cases, names, count, max, depth + 1);
-    collect_used_idents(node->args, names, count, max, depth + 1);
-    collect_used_idents(node->params, names, count, max, depth + 1);
-    collect_used_idents(node->next, names, count, max, depth + 1);
+    collect_idents_from_str(node->value, names, count, cap);
+    collect_idents_from_str(node->for_start, names, count, cap);
+    collect_idents_from_str(node->for_end, names, count, cap);
+    collect_idents_from_str(node->for_step, names, count, cap);
+    collect_idents_from_str(node->array_index, names, count, cap);
+    collect_used_idents(node->body, names, count, cap, depth + 1);
+    collect_used_idents(node->orelse, names, count, cap, depth + 1);
+    collect_used_idents(node->else_body, names, count, cap, depth + 1);
+    collect_used_idents(node->cases, names, count, cap, depth + 1);
+    collect_used_idents(node->args, names, count, cap, depth + 1);
+    collect_used_idents(node->params, names, count, cap, depth + 1);
+    collect_used_idents(node->next, names, count, cap, depth + 1);
 }
 
-int name_in_list(char names[][MAX_IDENTIFIER_LEN], int count, const char *name) {
-    for (int i = 0; i < count; i++) if (strcmp(names[i], name) == 0) return 1;
+int name_in_list(char **names, int count, const char *name) {
+    for (int i = 0; i < count; i++) if (names[i] && strcmp(names[i], name) == 0) return 1;
     return 0;
 }
 
@@ -6609,22 +6608,19 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
     /* Compute captures for nested/anonymous functions */
     fn->capture_count = 0;
     if (is_anon || (enclosing_cname && enclosing_cname[0])) {
-        char (*used)[MAX_IDENTIFIER_LEN] = (char(*)[MAX_IDENTIFIER_LEN])calloc(64, MAX_IDENTIFIER_LEN);
-        char (*locals)[MAX_IDENTIFIER_LEN] = (char(*)[MAX_IDENTIFIER_LEN])calloc(64, MAX_IDENTIFIER_LEN);
-        int used_n = 0, locals_n = 0;
-        if(!used||!locals){ free(used); free(locals); } else {
-        /* params are locals */
+        char **used = NULL, **locals = NULL;
+        int used_n = 0, locals_n = 0, used_cap = 0, locals_cap = 0;
         for (ASTNode *p = fn->params; p; p = p->next) {
-            if (p->for_var[0]) add_capture_name(locals, &locals_n, 64, p->for_var);
-            if (p->name[0]) add_capture_name(locals, &locals_n, 64, p->name);
+            if (p->for_var[0]) add_capture_name(&locals, &locals_n, &locals_cap, p->for_var);
+            if (p->name[0]) add_capture_name(&locals, &locals_n, &locals_cap, p->name);
         }
         if (fn->is_variadic && fn->variadic_name[0])
-            add_capture_name(locals, &locals_n, 64, fn->variadic_name);
-        collect_declared_locals(fn->body, locals, &locals_n, 64, 0);
-        collect_used_idents(fn->body, used, &used_n, 64, 0);
+            add_capture_name(&locals, &locals_n, &locals_cap, fn->variadic_name);
+        collect_declared_locals(fn->body, &locals, &locals_n, &locals_cap, 0);
+        collect_used_idents(fn->body, &used, &used_n, &used_cap, 0);
         for (int i = 0; i < used_n; i++) {
             const char *u = used[i];
-            if (name_in_list(locals, locals_n, u)) continue;
+            if (!u || name_in_list(locals, locals_n, u)) continue;
             if (strcmp(u,"true")==0||strcmp(u,"false")==0||strcmp(u,"t")==0||strcmp(u,"f")==0) continue;
             if (strcmp(u,"null")==0||strcmp(u,"write")==0||strcmp(u,"read")==0) continue;
             if (strcmp(u,"int")==0||strcmp(u,"float")==0||strcmp(u,"string")==0||strcmp(u,"char")==0||strcmp(u,"bool")==0) continue;
@@ -6636,8 +6632,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             if (strcmp(u,"exit")==0||strcmp(u,"include")==0) continue;
             if (is_function_name(u)) continue;
             if (u[0] >= '0' && u[0] <= '9') continue;
-            char mangled_u[MAX_IDENTIFIER_LEN];
-            mangle_name(u, mangled_u, sizeof(mangled_u));
+            char *mangled_u = mangle_name_alloc(u);
             int in_enclosing = 0;
             const char *cap_cname = NULL;
             if (table) {
@@ -6653,6 +6648,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
                     }
                 }
             }
+            free(mangled_u);
             if (!in_enclosing || !cap_cname) continue;
             int dup = 0;
             for (int c = 0; c < fn->capture_count; c++) {
@@ -6665,8 +6661,9 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             fn->captures[fn->capture_count] = ltng_strdup(cap_cname);
             fn->capture_count++;
         }
+        for (int i = 0; i < used_n; i++) free(used[i]);
+        for (int i = 0; i < locals_n; i++) free(locals[i]);
         free(used); free(locals);
-        }
     }
 
     free(func_scope);
