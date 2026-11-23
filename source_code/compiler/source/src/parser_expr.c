@@ -212,8 +212,7 @@ int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
     node->array_dims = dims;
     node->array_elem_count = elem_count;
     node->array_elem_type = elem_type_set ? elem_type : TYPE_NULL;
-    strncpy(node->value, values, MAX_STRING_LEN - 1);
-    node->value[MAX_STRING_LEN - 1] = '\0';
+    { free(node->value); node->value = ltng_strdup(values); }
     free(values);
 
     return 1;
@@ -1691,7 +1690,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 } else if (strcmp(tok.value, "typeof") == 0) {
                     /* typeof was already consumed by lexer_next; parse typeof(arg) */
                     lexer->current--; /* unconsume typeof for try_parse_typeof */
-                    Token tres;
+                    Token tres = {0};
                     if (try_parse_typeof(lexer, table, &tres)) {
                         pos += snprintf(out + pos, out_size - pos, "\"%s\"", tres.value);
                         if (!type_locked) result_type = TYPE_STRING;
@@ -3432,7 +3431,6 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
         }
     }
     resolved[rlen] = '\0';
-    strncpy(tok->value, resolved, MAX_STRING_LEN - 1);
-    tok->value[MAX_STRING_LEN - 1] = '\0';
+    { free(tok->value); tok->value = ltng_strdup(resolved); }
 }
 

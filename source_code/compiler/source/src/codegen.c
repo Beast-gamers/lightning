@@ -1999,7 +1999,9 @@ static void traverse_record_param_schemas(ASTNode *node, ASTNode *fns) {
    Returns the number of fields in the combined schema. */
 static int merge_param_schemas(ObjSchema *combined, const char *fn_name, int param_index) {
     memset(combined, 0, sizeof(ObjSchema));
-    int field_count = 0;
+    combined->var = ltng_strdup(fn_name ? fn_name : "");
+    combined->default_val = ltng_strdup("");
+    combined->fields = NULL; combined->count = 0; combined->cap = 0;
     for (int i = 0; i < g_param_schema_count; i++) {
         if (strcmp(g_param_schemas[i].fn_name, fn_name) != 0)
             continue;
@@ -2007,21 +2009,27 @@ static int merge_param_schemas(ObjSchema *combined, const char *fn_name, int par
             continue;
         ObjSchema *sc = obj_lookup(g_param_schemas[i].arg_var);
         if (!sc) continue;
-        for (int fi = 0; fi < sc->count && field_count < MAX_OBJ_FIELDS; fi++) {
-            /* check if field already in combined */
+        for (int fi = 0; fi < sc->count; fi++) {
             int dup = 0;
-            for (int k = 0; k < field_count; k++) {
+            for (int k = 0; k < combined->count; k++) {
                 if (strcmp(combined->fields[k].name, sc->fields[fi].name) == 0) { dup = 1; break; }
             }
-            if (!dup) {
-                combined->fields[field_count] = sc->fields[fi];
-                field_count++;
+            if (dup) continue;
+            if (combined->count >= combined->cap) {
+                int nc = combined->cap ? combined->cap * 2 : 8;
+                ObjField *nf = (ObjField*)realloc(combined->fields, nc * sizeof(ObjField));
+                if (!nf) break;
+                for (int j = combined->cap; j < nc; j++) { nf[j].name = ltng_strdup(""); nf[j].value = ltng_strdup(""); nf[j].type = TYPE_NULL; }
+                combined->fields = nf; combined->cap = nc;
             }
+            ObjField *dst = &combined->fields[combined->count];
+            free(dst->name); dst->name = ltng_strdup(sc->fields[fi].name ? sc->fields[fi].name : "");
+            free(dst->value); dst->value = ltng_strdup(sc->fields[fi].value ? sc->fields[fi].value : "");
+            dst->type = sc->fields[fi].type;
+            combined->count++;
         }
     }
-    combined->count = field_count;
-    strncpy(combined->var, fn_name, MAX_IDENTIFIER_LEN - 1);
-    return field_count;
+    return combined->count;
 }
 
 void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors) {

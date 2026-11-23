@@ -20,8 +20,39 @@ char *_ltng_cfmt(const char *fmt, ...) {
     return p;
 }
 
-FuncInfo g_funcs[MAX_FUNCS];
+FuncInfo *g_funcs = NULL;
 int g_func_count = 0;
+int g_func_cap = 0;
+void ensure_func_cap(void) {
+    if (g_func_count >= g_func_cap) {
+        int nc = g_func_cap ? g_func_cap * 2 : 32;
+        FuncInfo *n = (FuncInfo*)realloc(g_funcs, nc * sizeof(FuncInfo));
+        if (!n) return;
+        for (int i = g_func_cap; i < nc; i++) memset(&n[i], 0, sizeof(FuncInfo));
+        g_funcs = n; g_func_cap = nc;
+    }
+}
+void funcinfo_init(FuncInfo *fi) {
+    memset(fi, 0, sizeof(*fi));
+    fi->passthrough_param = -1;
+    fi->name = ltng_strdup("");
+    fi->src = ltng_strdup("");
+    fi->return_obj_base = ltng_strdup("");
+    fi->return_type = TYPE_STRING;
+}
+void funcinfo_ensure_params(FuncInfo *fi, int n) {
+    if (n <= fi->param_cap) return;
+    int nc = fi->param_cap ? fi->param_cap * 2 : 8;
+    while (nc < n) nc *= 2;
+    fi->param_names = (char**)realloc(fi->param_names, nc * sizeof(char*));
+    fi->has_default = (int*)realloc(fi->has_default, nc * sizeof(int));
+    fi->def_type = (VarType*)realloc(fi->def_type, nc * sizeof(VarType));
+    fi->def_start = (int*)realloc(fi->def_start, nc * sizeof(int));
+    fi->def_end = (int*)realloc(fi->def_end, nc * sizeof(int));
+    for (int i = fi->param_cap; i < nc; i++) { fi->param_names[i]=ltng_strdup(""); fi->has_default[i]=0; fi->def_type[i]=TYPE_NULL; fi->def_start[i]=0; fi->def_end[i]=0; }
+    fi->param_cap = nc;
+}
+
 int g_in_function = 0;
 int g_in_catch = 0;
 Program *g_program_ref = NULL;
@@ -36,16 +67,15 @@ void obj_register(const char *mangled_var, ObjSchema *schema) {
     if (!mangled_var || !schema) return;
     for (int i = 0; i < g_obj_count; i++) {
         if (strcmp(g_objs[i].var, mangled_var) == 0) {
-            g_objs[i] = *schema;
-            strncpy(g_objs[i].var, mangled_var, MAX_IDENTIFIER_LEN - 1);
-            g_objs[i].var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            objschema_free(&g_objs[i]);
+            objschema_deep_copy(&g_objs[i], schema);
+            free(g_objs[i].var); g_objs[i].var = ltng_strdup(mangled_var);
             return;
         }
     }
     if (g_obj_count < MAX_OBJS) {
-        g_objs[g_obj_count] = *schema;
-        strncpy(g_objs[g_obj_count].var, mangled_var, MAX_IDENTIFIER_LEN - 1);
-        g_objs[g_obj_count].var[MAX_IDENTIFIER_LEN - 1] = '\0';
+        objschema_deep_copy(&g_objs[g_obj_count], schema);
+        free(g_objs[g_obj_count].var); g_objs[g_obj_count].var = ltng_strdup(mangled_var);
         g_obj_count++;
     }
 }
@@ -66,40 +96,75 @@ const char *obj_resolve_field(const char *mangled_var, const char *field, char *
     return out;
 }
 
+
+void objschema_free(ObjSchema *s) {
+    if (!s) return;
+    if (s->var) { free(s->var); s->var = NULL; }
+    if (s->default_val) { free(s->default_val); s->default_val = NULL; }
+    if (s->fields) {
+        for (int i = 0; i < s->cap; i++) {
+            free(s->fields[i].name); s->fields[i].name = NULL;
+            free(s->fields[i].value); s->fields[i].value = NULL;
+        }
+        free(s->fields);
+        s->fields = NULL;
+    }
+    s->count = 0; s->cap = 0;
+}
+
+void objschema_deep_copy(ObjSchema *dst, const ObjSchema *src) {
+    if (!dst || !src) return;
+    memset(dst, 0, sizeof(*dst));
+    dst->var = ltng_strdup(src->var ? src->var : "");
+    dst->default_val = ltng_strdup(src->default_val ? src->default_val : "");
+    dst->count = src->count;
+    dst->cap = src->count;
+    if (dst->cap > 0) {
+        dst->fields = (ObjField*)calloc((size_t)dst->cap, sizeof(ObjField));
+        for (int i = 0; i < dst->cap; i++) {
+            dst->fields[i].name = ltng_strdup(src->fields && i < src->count && src->fields[i].name ? src->fields[i].name : "");
+            dst->fields[i].value = ltng_strdup(src->fields && i < src->count && src->fields[i].value ? src->fields[i].value : "");
+            dst->fields[i].type = src->fields && i < src->count ? src->fields[i].type : TYPE_NULL;
+        }
+    }
+}
 void obj_build_all(ObjSchema *s) {
     /* "obj" field = all values in order, space-separated */
     char buf[MAX_STRING_LEN];
     buf[0] = 0;
     for (int i = 0; i < s->count; i++) {
         if (i > 0) strncat(buf, " ", sizeof(buf)-strlen(buf)-1);
-        strncat(buf, s->fields[i].value, sizeof(buf)-strlen(buf)-1);
+        if (s->fields[i].value) strncat(buf, s->fields[i].value, sizeof(buf)-strlen(buf)-1);
     }
     /* store as a synthesized field named "obj" if not present, else update */
     int found = 0;
     for (int i = 0; i < s->count; i++) {
-        if (strcmp(s->fields[i].name, "obj") == 0) {
-            strncpy(s->fields[i].value, buf, MAX_STRING_LEN-1);
+        if (s->fields[i].name && strcmp(s->fields[i].name, "obj") == 0) {
+            free(s->fields[i].value); s->fields[i].value = ltng_strdup(buf);
             found = 1; break;
         }
     }
-    if (!found && s->count < MAX_OBJ_FIELDS) {
-        strncpy(s->fields[s->count].name, "obj", MAX_IDENTIFIER_LEN-1);
-        strncpy(s->fields[s->count].value, buf, MAX_STRING_LEN-1);
-        s->fields[s->count].type = TYPE_STRING;
-        s->count++;
+    if (!found) {
+        objschema_ensure(s, s->count + 1);
+        if (s->count < s->cap) {
+            free(s->fields[s->count].name); s->fields[s->count].name = ltng_strdup("obj");
+            free(s->fields[s->count].value); s->fields[s->count].value = ltng_strdup(buf);
+            s->fields[s->count].type = TYPE_STRING;
+            s->count++;
+        }
     }
     /* default_val = field "default" if present, else "object" */
-    strncpy(s->default_val, "object", MAX_STRING_LEN-1);
+    free(s->default_val); s->default_val = ltng_strdup("object");
     for (int i = 0; i < s->count; i++) {
-        if (strcmp(s->fields[i].name, "default") == 0) {
-            strncpy(s->default_val, s->fields[i].value, MAX_STRING_LEN-1);
+        if (s->fields[i].name && strcmp(s->fields[i].name, "default") == 0) {
+            free(s->default_val); s->default_val = ltng_strdup(s->fields[i].value ? s->fields[i].value : "");
             break;
         }
     }
 }
 
 void register_function(const char *name, int param_count) {
-    if (g_func_count >= MAX_FUNCS) return;
+    if (g_func_count >= g_func_cap /*MAX_FUNCS*/) return;
     char mangled[MAX_IDENTIFIER_LEN];
     mangle_name(name, mangled, MAX_IDENTIFIER_LEN);
     /* avoid duplicates by source name */
@@ -109,20 +174,13 @@ void register_function(const char *name, int param_count) {
             return;
         }
     }
-    g_funcs[g_func_count].passthrough_param = -1;
-    strncpy(g_funcs[g_func_count].name, mangled, MAX_IDENTIFIER_LEN - 1);
-    g_funcs[g_func_count].name[MAX_IDENTIFIER_LEN - 1] = '\0';
-    strncpy(g_funcs[g_func_count].src, name, MAX_IDENTIFIER_LEN - 1);
-    g_funcs[g_func_count].src[MAX_IDENTIFIER_LEN - 1] = '\0';
-    g_funcs[g_func_count].param_count = param_count;
-    g_funcs[g_func_count].required_count = param_count;
-    g_funcs[g_func_count].is_variadic = 0;
-    g_funcs[g_func_count].has_return_type = 0;
-    g_funcs[g_func_count].return_type = TYPE_STRING;
-    g_funcs[g_func_count].return_obj_base[0] = '\0';
-    g_funcs[g_func_count].line = 0;
-    g_funcs[g_func_count].col = 0;
-    g_funcs[g_func_count].defined = 0;
+    ensure_func_cap();
+    FuncInfo *_fi = &g_funcs[g_func_count];
+    funcinfo_init(_fi);
+    free(_fi->name); _fi->name = ltng_strdup(mangled);
+    free(_fi->src); _fi->src = ltng_strdup(name);
+    _fi->param_count = param_count;
+    _fi->required_count = param_count;
     g_func_count++;
 }
 
@@ -137,19 +195,24 @@ int is_function_name(const char *name) {
 }
 
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count) {
-    if (!table || table->func_count >= MAX_FUNCBINDS) return;
+    if (!table) return;
     for (int i = 0; i < table->func_count; i++) {
         if (strcmp(table->funcs[i].src, src) == 0) {
-            strncpy(table->funcs[i].cname, cname, MAX_IDENTIFIER_LEN - 1);
+            free(table->funcs[i].cname); table->funcs[i].cname = ltng_strdup(cname);
             table->funcs[i].param_count = param_count;
             return;
         }
     }
+    if (table->func_count >= table->funcs_cap) {
+        int nc = table->funcs_cap ? table->funcs_cap * 2 : 8;
+        FuncBind *nf = (FuncBind*)realloc(table->funcs, nc * sizeof(FuncBind));
+        if (!nf) return;
+        for (int i = table->funcs_cap; i < nc; i++) { nf[i].src = ltng_strdup(""); nf[i].cname = ltng_strdup(""); nf[i].param_count = 0; }
+        table->funcs = nf; table->funcs_cap = nc;
+    }
     FuncBind *b = &table->funcs[table->func_count++];
-    strncpy(b->src, src, MAX_IDENTIFIER_LEN - 1);
-    b->src[MAX_IDENTIFIER_LEN - 1] = 0;
-    strncpy(b->cname, cname, MAX_IDENTIFIER_LEN - 1);
-    b->cname[MAX_IDENTIFIER_LEN - 1] = 0;
+    free(b->src); b->src = ltng_strdup(src);
+    free(b->cname); b->cname = ltng_strdup(cname);
     b->param_count = param_count;
 }
 
@@ -228,10 +291,15 @@ ASTNode *create_node(NodeType type, const char *name, const char *value) {
     memset(node, 0, sizeof(ASTNode));
     node->passthrough_param = -1;
     node->type = type;
-    strncpy(node->name, name ? name : "", MAX_IDENTIFIER_LEN - 1);
-    node->name[MAX_IDENTIFIER_LEN - 1] = '\0';
-    strncpy(node->value, value ? value : "", MAX_STRING_LEN - 1);
-    node->value[MAX_STRING_LEN - 1] = '\0';
+    node->name = ltng_strdup(name ? name : "");
+    node->value = ltng_strdup(value ? value : "");
+    node->variadic_name = ltng_strdup("");
+    node->return_obj_base = ltng_strdup("");
+    node->for_var = ltng_strdup("");
+    node->for_start = ltng_strdup("");
+    node->for_end = ltng_strdup("");
+    node->for_step = ltng_strdup("");
+    node->array_index = ltng_strdup("");
     node->var_type = TYPE_STRING;
     node->array_elem_type = TYPE_NULL;
     return node;
@@ -426,7 +494,7 @@ void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType type, 
         if (strcmp(table->vars[i].name, name) == 0) {
             table->vars[i].type = type;
             table->vars[i].is_func_ref = 0;
-            table->vars[i].func_ref_cname[0] = '\0';
+            { free(table->vars[i].func_ref_cname); table->vars[i].func_ref_cname = ltng_strdup(""); }
             table->vars[i].func_ref_param_count = -1;
             return;
         }
@@ -438,18 +506,22 @@ void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType type, 
             if (parser_errors) error_state_add(parser_errors, 0, 0, "Out of memory adding variable");
             return;
         }
+        for (int _i = table->vars_cap; _i < nc; _i++) {
+            memset(&nv[_i], 0, sizeof(VarEntry));
+            nv[_i].name = ltng_strdup("");
+            nv[_i].cname = ltng_strdup("");
+            nv[_i].func_ref_cname = ltng_strdup("");
+        }
         table->vars = nv;
         table->vars_cap = nc;
     }
     VarEntry *ve = &table->vars[table->count];
     memset(ve, 0, sizeof(*ve));
-    strncpy(ve->name, name, MAX_IDENTIFIER_LEN - 1);
-    ve->name[MAX_IDENTIFIER_LEN - 1] = '\0';
+    { free(ve->name); ve->name = ltng_strdup(name); }
     if (unique_cname) {
-        snprintf(ve->cname, MAX_IDENTIFIER_LEN, "_v%d_%s", g_scope_var_uid++, name);
+        { char *_s = _ltng_cfmt("_v%d_%s", g_scope_var_uid++, name); free(ve->cname); ve->cname = _s ? _s : ltng_strdup(""); }
     } else {
-        strncpy(ve->cname, name, MAX_IDENTIFIER_LEN - 1);
-        ve->cname[MAX_IDENTIFIER_LEN - 1] = '\0';
+        { free(ve->cname); ve->cname = ltng_strdup(name); }
     }
     ve->type = type;
     ve->is_const = 0;
@@ -459,7 +531,7 @@ void symbol_table_add_in_ex(SymbolTable *table, const char *name, VarType type, 
     ve->array_dims = NULL;
     ve->array_elem_type = TYPE_NULL;
     ve->is_func_ref = 0;
-    ve->func_ref_cname[0] = '\0';
+    { free(ve->func_ref_cname); ve->func_ref_cname = ltng_strdup(""); }
     ve->func_ref_param_count = -1;
     table->count++;
 }
@@ -517,7 +589,7 @@ void symbol_table_update(SymbolTable *table, const char *name, VarType type) {
             if (strcmp(s->vars[i].name, name) == 0) {
                 s->vars[i].type = type;
                 s->vars[i].is_func_ref = 0;
-                s->vars[i].func_ref_cname[0] = '\0';
+                { free(s->vars[i].func_ref_cname); s->vars[i].func_ref_cname = ltng_strdup(""); }
                 s->vars[i].func_ref_param_count = -1;
                 return;
             }
@@ -542,8 +614,7 @@ void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char 
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0) {
                 s->vars[i].is_func_ref = 1;
-                strncpy(s->vars[i].func_ref_cname, func_cname, MAX_IDENTIFIER_LEN - 1);
-                s->vars[i].func_ref_cname[MAX_IDENTIFIER_LEN - 1] = '\0';
+                { free(s->vars[i].func_ref_cname); s->vars[i].func_ref_cname = ltng_strdup(func_cname); }
                 s->vars[i].func_ref_param_count = param_count;
                 return;
             }
@@ -766,7 +837,7 @@ VarType effective_param_default_type(const char *src_name, VarType sym_type) {
     if (sym_type != TYPE_FLOAT) return sym_type;
     FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
     if (!efi) return sym_type;
-    for (int pi = 0; pi < efi->param_count && pi < MAX_FUNC_PARAMS; pi++) {
+    for (int pi = 0; pi < efi->param_count && pi < 32 /*MAX_FUNC_PARAMS*/; pi++) {
         if (strcmp(efi->param_names[pi], src_name) == 0) {
             if (efi->has_default[pi] && efi->def_type[pi] != TYPE_NULL)
                 return efi->def_type[pi];

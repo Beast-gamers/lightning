@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include "parser_internal.h"
 
 int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
@@ -30,8 +31,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                 return 0;
             }
             result->type = TOKEN_STRING;
-            strncpy(result->value, "string", MAX_STRING_LEN - 1);
-            result->value[MAX_STRING_LEN - 1] = '\0';
+            { free(result->value); result->value = ltng_strdup("string"); }
             result->line = typeof_tok.line;
             result->col = typeof_tok.col;
             return 1;
@@ -97,8 +97,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             else if (strcmp(arg.value, "tochar") == 0 || strcmp(arg.value, "char") == 0) cvt = TYPE_CHAR;
             else cvt = TYPE_BOOL; /* tobool/bool */
             result->type = TOKEN_STRING;
-            strncpy(result->value, var_type_name(cvt), MAX_STRING_LEN - 1);
-            result->value[MAX_STRING_LEN - 1] = '\0';
+            { free(result->value); result->value = ltng_strdup(var_type_name(cvt)); }
             result->line = typeof_tok.line;
             result->col = typeof_tok.col;
             return 1;
@@ -123,8 +122,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                 lexer_next(lexer); /* consume outer ) of typeof */
                 VarType ftype = infer_call_result_type(tcall);
                 result->type = TOKEN_STRING;
-                strncpy(result->value, var_type_name(ftype == TYPE_NULL ? TYPE_STRING : ftype), MAX_STRING_LEN - 1);
-                result->value[MAX_STRING_LEN - 1] = '\0';
+                { free(result->value); result->value = ltng_strdup(var_type_name(ftype == TYPE_NULL ? TYPE_STRING : ftype)); }
                 result->line = typeof_tok.line;
                 result->col = typeof_tok.col;
                 return 1;
@@ -171,8 +169,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                 VarType aet = symbol_table_get_array_elem_type(table, mangled_arr);
                 if (aet == TYPE_NULL) aet = TYPE_STRING;
                 result->type = TOKEN_STRING;
-                strncpy(result->value, var_type_name(aet), MAX_STRING_LEN - 1);
-                result->value[MAX_STRING_LEN - 1] = '\0';
+                { free(result->value); result->value = ltng_strdup(var_type_name(aet)); }
                 result->line = typeof_tok.line;
                 result->col = typeof_tok.col;
                 return 1;
@@ -190,8 +187,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
             vtype = TYPE_BOOL;
         } else if (arg.type == TOKEN_IDENT && is_ltng_reserved(arg.value)) {
             result->type = TOKEN_STRING;
-            strncpy(result->value, "reserved", MAX_STRING_LEN - 1);
-            result->value[MAX_STRING_LEN - 1] = '\0';
+            { free(result->value); result->value = ltng_strdup("reserved"); }
             result->line = typeof_tok.line;
             result->col = typeof_tok.col;
             return 1;
@@ -199,8 +195,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
                    arg.type == TOKEN_LET || arg.type == TOKEN_CONST ||
                    arg.type == TOKEN_SET) {
             result->type = TOKEN_STRING;
-            strncpy(result->value, "reserved", MAX_STRING_LEN - 1);
-            result->value[MAX_STRING_LEN - 1] = '\0';
+            { free(result->value); result->value = ltng_strdup("reserved"); }
             result->line = typeof_tok.line;
             result->col = typeof_tok.col;
             return 1;
@@ -232,8 +227,7 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         }
 
         result->type = TOKEN_STRING;
-        strncpy(result->value, var_type_name(vtype), MAX_STRING_LEN - 1);
-        result->value[MAX_STRING_LEN - 1] = '\0';
+        { free(result->value); result->value = ltng_strdup(var_type_name(vtype)); }
         result->line = typeof_tok.line;
         result->col = typeof_tok.col;
         return 1;
@@ -253,8 +247,7 @@ typeof_general_expr:
             /* Discard errors introduced by speculative typeof arg parse */
             if (parser_errors && parser_errors->count > err_before) parser_errors->count = err_before;
             result->type = TOKEN_STRING;
-            strncpy(result->value, var_type_name(etype), MAX_STRING_LEN - 1);
-            result->value[MAX_STRING_LEN - 1] = '\0';
+            { free(result->value); result->value = ltng_strdup(var_type_name(etype)); }
             result->line = typeof_tok.line;
             result->col = typeof_tok.col;
             return 1;
@@ -782,7 +775,7 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
 
     ASTNode *node;
 
-    Token typeof_val;
+    Token typeof_val = {0};
     if (arg.type == TOKEN_IDENT && strcmp(arg.value, "typeof") == 0) {
         lexer->current--;
         if (try_parse_typeof(lexer, table, &typeof_val)) {
@@ -855,8 +848,7 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                 }
             }
             resolved[rlen] = '\0';
-            strncpy(node->value, resolved, MAX_STRING_LEN - 1);
-            node->value[MAX_STRING_LEN - 1] = '\0';
+            { free(node->value); node->value = ltng_strdup(resolved); }
         }
     } else if (arg.type == TOKEN_INT_LIT || arg.type == TOKEN_FLOAT_LIT) {
         node = create_node(NODE_WRITE, "", arg.value);
@@ -1318,8 +1310,7 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, 
             ASTNode *recv = create_node(NODE_PARAM, "", "");
             recv->is_expr = 1;
             recv->var_type = TYPE_STRING;
-            strncpy(recv->value, cexpr, MAX_STRING_LEN - 1);
-            recv->value[MAX_STRING_LEN - 1] = '\0';
+            { free(recv->value); recv->value = ltng_strdup(cexpr); }
             ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
             if (call->is_base_assign) {
                 /* Value-consumed context: keep receiver intact, use return value */
@@ -1340,15 +1331,15 @@ ASTNode *make_receiver_arg(SymbolTable *table, Token rtok) {
     mangle_name(rtok.value, rm, MAX_IDENTIFIER_LEN);
     if (symbol_table_has(table, rm)) {
         recv->is_variable = 1;
-        strncpy(recv->value, rm, MAX_STRING_LEN - 1);
+        { free(recv->value); recv->value = ltng_strdup(rm); }
         recv->var_type = symbol_table_get(table, rm);
     } else if (symbol_table_has(table, rtok.value)) {
         recv->is_variable = 1;
-        strncpy(recv->value, rtok.value, MAX_STRING_LEN - 1);
+        { free(recv->value); recv->value = ltng_strdup(rtok.value); }
         recv->var_type = symbol_table_get(table, rtok.value);
     } else {
         recv->is_expr = 1;
-        strncpy(recv->value, rtok.value, MAX_STRING_LEN - 1);
+        { free(recv->value); recv->value = ltng_strdup(rtok.value); }
         recv->var_type = TYPE_FLOAT;
     }
     return recv;
@@ -1510,6 +1501,7 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
     /* assumes '{' consumed. is_assignment: 1 when used in set (not a new declaration). */
     ObjSchema schema;
     memset(&schema, 0, sizeof(schema));
+    schema.var = ltng_strdup(""); schema.default_val = ltng_strdup("");
 
     /* skip leading newlines */
     while (lexer_peek(lexer).type == TOKEN_NEWLINE) lexer_next(lexer);
@@ -1537,26 +1529,26 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
         }
 
         Token val = lexer_peek(lexer);
-        ObjField *f = NULL;
-        if (schema.count < MAX_OBJ_FIELDS) f = &schema.fields[schema.count];
+        objschema_ensure(&schema, schema.count + 1);
+        ObjField *f = (schema.count < schema.cap) ? &schema.fields[schema.count] : NULL;
         if (f) {
-            strncpy(f->name, fname.value, MAX_IDENTIFIER_LEN - 1);
+            { free(f->name); f->name = ltng_strdup(fname.value); }
             if (val.type == TOKEN_STRING) {
                 lexer_next(lexer);
                 f->type = TYPE_STRING;
-                strncpy(f->value, val.value, MAX_STRING_LEN - 1);
+                { free(f->value); f->value = ltng_strdup(val.value); }
             } else if (val.type == TOKEN_CHAR) {
                 lexer_next(lexer);
                 f->type = TYPE_STRING;
-                strncpy(f->value, val.value, MAX_STRING_LEN - 1);
+                { free(f->value); f->value = ltng_strdup(val.value); }
             } else if (val.type == TOKEN_INT_LIT) {
                 lexer_next(lexer);
                 f->type = TYPE_INT;
-                strncpy(f->value, val.value, MAX_STRING_LEN - 1);
+                { free(f->value); f->value = ltng_strdup(val.value); }
             } else if (val.type == TOKEN_FLOAT_LIT) {
                 lexer_next(lexer);
                 f->type = TYPE_FLOAT;
-                strncpy(f->value, val.value, MAX_STRING_LEN - 1);
+                { free(f->value); f->value = ltng_strdup(val.value); }
             } else if ((val.type == TOKEN_IDENT || token_is_name(val)) && is_bool_value(val.value)) {
                 lexer_next(lexer);
                 f->type = TYPE_BOOL;
@@ -1566,7 +1558,7 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
                 lexer_next(lexer); /* - */
                 Token num = lexer_next(lexer);
                 f->type = (num.type == TOKEN_FLOAT_LIT) ? TYPE_FLOAT : TYPE_INT;
-                snprintf(f->value, MAX_STRING_LEN, "-%s", num.value);
+                { char *_s = _ltng_cfmt("-%s", num.value); free(f->value); f->value = _s ? _s : ltng_strdup(""); }
             } else {
                 error_state_add(parser_errors, val.line, val.col,
                     "Expected a literal value for object field");
@@ -1585,8 +1577,7 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
     if (lexer_peek(lexer).type == TOKEN_RBRACE) lexer_next(lexer);
 
     const char *cname = symbol_table_get_cname(table, mangled);
-    strncpy(schema.var, cname, MAX_IDENTIFIER_LEN - 1);
-    schema.var[MAX_IDENTIFIER_LEN - 1] = '\0';
+    { free(schema.var); schema.var = ltng_strdup(cname); }
     obj_build_all(&schema);
     obj_register(cname, &schema);
 
@@ -1691,8 +1682,7 @@ void emit_chained_methods_on_array_var(Lexer *lexer, SymbolTable *table,
                     symbol_table_set_array_elem_type(table, target_rm, cur_et);
                 }
                 ASTNode *node = create_node(NODE_ARRAY_INSERT, (char *)target_rm, idx_expr);
-                strncpy(node->array_index, arg_expr, MAX_STRING_LEN - 1);
-                node->array_index[MAX_STRING_LEN - 1] = '\0';
+                { free(node->array_index); node->array_index = ltng_strdup(arg_expr); }
                 node->var_type = arg_type; node->is_expr = 1; emit(node);
             } else if (strcmp(mname.value, "remove") == 0) {
                 char idx_expr[MAX_STRING_LEN];
@@ -1752,15 +1742,15 @@ void emit_chained_methods_on_array_var(Lexer *lexer, SymbolTable *table,
             ASTNode *recv = create_node(NODE_PARAM, "", "");
             if (symbol_table_has(table, target_rm)) {
                 recv->is_variable = 1;
-                strncpy(recv->value, target_rm, MAX_STRING_LEN - 1);
+                { free(recv->value); recv->value = ltng_strdup(target_rm); }
                 recv->var_type = symbol_table_get(table, target_rm);
             } else if (symbol_table_has(table, target_src)) {
                 recv->is_variable = 1;
-                strncpy(recv->value, target_src, MAX_STRING_LEN - 1);
+                { free(recv->value); recv->value = ltng_strdup(target_src); }
                 recv->var_type = symbol_table_get(table, target_src);
             } else {
                 recv->is_expr = 1;
-                strncpy(recv->value, target_src, MAX_STRING_LEN - 1);
+                { free(recv->value); recv->value = ltng_strdup(target_src); }
                 recv->var_type = TYPE_FLOAT;
             }
             ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
@@ -2038,8 +2028,7 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
                         char slrange[MAX_STRING_LEN];
                         snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
                         ASTNode *sl = create_node(NODE_ARRAY_SLICE, dcname, (char *)scname);
-                        strncpy(sl->array_index, slrange, MAX_STRING_LEN - 1);
-                        sl->array_index[MAX_STRING_LEN - 1] = '\0';
+                        { free(sl->array_index); sl->array_index = ltng_strdup(slrange); }
                         sl->is_expr = 1;
                         emit(sl);
                         /* Support chaining: let b = a.slice(1,3).sort() */
@@ -2053,7 +2042,7 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
 
     Token next = lexer_peek(lexer);
     VarType vtype;
-    Token value;
+    Token value = {0};
 
     Token next2 = lexer->tokens[lexer->current + 1];
     int is_type_conv_call = (next.type == TOKEN_IDENT && is_type_conversion(next.value) &&
@@ -2069,15 +2058,15 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
             /* Type declaration without value - init to default (kept locked by default) */
             dtype_decl = 1;
             switch (vtype) {
-                case TYPE_INT: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
-                case TYPE_FLOAT: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
-                case TYPE_STRING: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
-                case TYPE_CHAR: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
-                case TYPE_BOOL: value.type = TOKEN_INT_LIT; strcpy(value.value, "false"); break;
-                case TYPE_OBJECT: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
-                case TYPE_ARRAY: value.type = TOKEN_STRING; strcpy(value.value, ""); break;
+                case TYPE_INT: value.type = TOKEN_INT_LIT; free(value.value); value.value = ltng_strdup("0"); break;
+                case TYPE_FLOAT: value.type = TOKEN_INT_LIT; free(value.value); value.value = ltng_strdup("0"); break;
+                case TYPE_STRING: value.type = TOKEN_STRING; free(value.value); value.value = ltng_strdup(""); break;
+                case TYPE_CHAR: value.type = TOKEN_STRING; free(value.value); value.value = ltng_strdup(""); break;
+                case TYPE_BOOL: value.type = TOKEN_INT_LIT; free(value.value); value.value = ltng_strdup("false"); break;
+                case TYPE_OBJECT: value.type = TOKEN_STRING; free(value.value); value.value = ltng_strdup(""); break;
+                case TYPE_ARRAY: value.type = TOKEN_STRING; free(value.value); value.value = ltng_strdup(""); break;
                 case TYPE_NULL:
-                default: value.type = TOKEN_INT_LIT; strcpy(value.value, "0"); break;
+                default: value.type = TOKEN_INT_LIT; free(value.value); value.value = ltng_strdup("0"); break;
             }
             value.line = let_tok.line;
             value.col = equals.col;
@@ -2325,12 +2314,11 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
                     if (ret_sc) {
                         const char *cname = symbol_table_get_cname(table, mangled);
                         symbol_table_add(table, mangled, TYPE_OBJECT);
-                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
-                        strncpy(ds.var, cname, MAX_IDENTIFIER_LEN - 1);
-                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
-                        ds.count = ret_sc->count;
+                        ObjSchema ds; objschema_deep_copy(&ds, ret_sc);
+                        free(ds.var); ds.var = ltng_strdup(cname);
                         obj_build_all(&ds);
                         obj_register(cname, &ds);
+                        objschema_free(&ds);
                         ASTNode *node = create_node(NODE_LET, cname, expr);
                         node->var_type = TYPE_OBJECT;
                         node->is_expr = 1;
@@ -2370,7 +2358,7 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
             emit(node);
             return;
         }
-        Token typeof_val;
+        Token typeof_val = {0};
         if (try_parse_typeof(lexer, table, &typeof_val)) {
             value = typeof_val;
         } else {
@@ -2657,8 +2645,7 @@ void parse_const(Lexer *lexer, SymbolTable *table) {
                         char slrange[MAX_STRING_LEN];
                         snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
                         ASTNode *sl = create_node(NODE_ARRAY_SLICE, dcname, (char *)scname);
-                        strncpy(sl->array_index, slrange, MAX_STRING_LEN - 1);
-                        sl->array_index[MAX_STRING_LEN - 1] = '\0';
+                        { free(sl->array_index); sl->array_index = ltng_strdup(slrange); }
                         sl->is_expr = 1;
                         emit(sl);
                         /* Support chaining: const b = a.slice(1,3).sort() */
@@ -2742,12 +2729,11 @@ void parse_const(Lexer *lexer, SymbolTable *table) {
                         symbol_table_add_locked(table, mangled, TYPE_OBJECT);
                         symbol_table_set_const(table, mangled, 1);
                         
-                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
-                        strncpy(ds.var, dcname, MAX_IDENTIFIER_LEN - 1);
-                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
-                        ds.count = ret_sc->count;
+                        ObjSchema ds; objschema_deep_copy(&ds, ret_sc);
+                        free(ds.var); ds.var = ltng_strdup(dcname);
                         obj_build_all(&ds);
                         obj_register(dcname, &ds);
+                        objschema_free(&ds);
                         ASTNode *node = create_node(NODE_CONST, dcname, expr);
                         node->var_type = TYPE_OBJECT;
                         node->is_expr = 1;
@@ -2786,7 +2772,7 @@ void parse_const(Lexer *lexer, SymbolTable *table) {
             emit(node);
             return;
         }
-        Token typeof_val;
+        Token typeof_val = {0};
         if (try_parse_typeof(lexer, table, &typeof_val)) {
             value = typeof_val;
         } else {
@@ -3178,8 +3164,7 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
         if (!have_dims) free(dims);
 
         ASTNode *node = create_node(NODE_ARRAY_SET, cname, rhs_expr);
-        strncpy(node->array_index, idx_code, MAX_STRING_LEN - 1);
-        node->array_index[MAX_STRING_LEN - 1] = '\0';
+        { free(node->array_index); node->array_index = ltng_strdup(idx_code); }
         node->var_type = assign_type;
         node->is_expr = 1;
         emit(node);
@@ -3339,8 +3324,7 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                         char slrange[MAX_STRING_LEN];
                         snprintf(slrange, sizeof(slrange), "%s,%s", start_expr, end_expr);
                         ASTNode *sl = create_node(NODE_ARRAY_SLICE, (char *)cname, (char *)scname);
-                        strncpy(sl->array_index, slrange, MAX_STRING_LEN - 1);
-                        sl->array_index[MAX_STRING_LEN - 1] = '\0';
+                        { free(sl->array_index); sl->array_index = ltng_strdup(slrange); }
                         sl->is_expr = 1;
                         emit(sl);
                         /* Support chaining: set b = a.slice(1,3).sort() */
@@ -3478,12 +3462,11 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                         if (!check_set_type_immutable(table, mangled, TYPE_OBJECT, type_tok.line, type_tok.col, lexer)) return;
                         symbol_table_update(table, mangled, TYPE_OBJECT);
                         
-                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
-                        strncpy(ds.var, dcname, MAX_IDENTIFIER_LEN - 1);
-                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
-                        ds.count = ret_sc->count;
+                        ObjSchema ds; objschema_deep_copy(&ds, ret_sc);
+                        free(ds.var); ds.var = ltng_strdup(dcname);
                         obj_build_all(&ds);
                         obj_register(dcname, &ds);
+                        objschema_free(&ds);
                         ASTNode *node = create_node(NODE_SET, dcname, expr);
                         node->var_type = TYPE_OBJECT;
                         node->is_expr = 1;
@@ -3531,7 +3514,7 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             return;
         }
 
-        Token typeof_val;
+        Token typeof_val = {0};
         if (try_parse_typeof(lexer, table, &typeof_val)) {
             value = typeof_val;
         } else {
@@ -3792,12 +3775,11 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                         if (!check_set_type_immutable(table, mangled, TYPE_OBJECT, set_tok.line, set_tok.col, lexer)) return;
                         symbol_table_update(table, mangled, TYPE_OBJECT);
                         
-                        ObjSchema ds; memset(&ds, 0, sizeof(ds));
-                        strncpy(ds.var, dcname, MAX_IDENTIFIER_LEN - 1);
-                        for (int i = 0; i < ret_sc->count && i < MAX_OBJ_FIELDS; i++) ds.fields[i] = ret_sc->fields[i];
-                        ds.count = ret_sc->count;
+                        ObjSchema ds; objschema_deep_copy(&ds, ret_sc);
+                        free(ds.var); ds.var = ltng_strdup(dcname);
                         obj_build_all(&ds);
                         obj_register(dcname, &ds);
+                        objschema_free(&ds);
                         ASTNode *node = create_node(NODE_SET, dcname, expr);
                         node->var_type = TYPE_OBJECT;
                         node->is_expr = 1;
@@ -3840,7 +3822,7 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             emit(node);
             return;
         }
-        Token typeof_val;
+        Token typeof_val = {0};
         if (try_parse_typeof(lexer, table, &typeof_val)) {
             value = typeof_val;
         } else {
@@ -4341,8 +4323,7 @@ ASTNode *parse_do_while(Lexer *lexer, SymbolTable *table) {
             if(_tc){ strncpy(cond, _tc, sizeof(cond)-1); cond[sizeof(cond)-1] = '\0'; free(_tc); }
         }
     }
-    strncpy(node->value, cond, MAX_STRING_LEN - 1);
-    node->value[MAX_STRING_LEN - 1] = '\0';
+    { free(node->value); node->value = ltng_strdup(cond); }
     node->v_sl=csl; node->v_sc=csc; node->v_el=cel; node->v_ec=cec;
     node->var_type = ctype;
     node->is_expr = 1;
@@ -4438,10 +4419,8 @@ ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
         ASTNode *node = create_node(NODE_FOR, cname, "");
     node->line = kw.line; node->col = kw.col;
         node->var_type = elem_vt;
-        strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
-        node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
-        strncpy(node->for_start, acname, MAX_STRING_LEN - 1);
-        node->for_start[MAX_STRING_LEN - 1] = '\0';
+        { free(node->for_var); node->for_var = ltng_strdup(var_tok.value); }
+        { free(node->for_start); node->for_start = ltng_strdup(acname); }
         node->for_step_op = 'E';
         g_break_depth++;
         node->body = parse_block(lexer, loop_scope, 1);
@@ -4546,14 +4525,10 @@ ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
     node->fe_sl=esl; node->fe_sc=esc; node->fe_el=eel; node->fe_ec=eec;
     node->fst_sl=stsl; node->fst_sc=stsc; node->fst_el=stel; node->fst_ec=stec;
     node->var_type = var_type;
-    strncpy(node->for_var, var_tok.value, MAX_IDENTIFIER_LEN - 1);
-    node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
-    strncpy(node->for_start, start_expr, MAX_STRING_LEN - 1);
-    node->for_start[MAX_STRING_LEN - 1] = '\0';
-    strncpy(node->for_end, end_expr, MAX_STRING_LEN - 1);
-    node->for_end[MAX_STRING_LEN - 1] = '\0';
-    strncpy(node->for_step, step_expr, MAX_STRING_LEN - 1);
-    node->for_step[MAX_STRING_LEN - 1] = '\0';
+    { free(node->for_var); node->for_var = ltng_strdup(var_tok.value); }
+    { free(node->for_start); node->for_start = ltng_strdup(start_expr); }
+    { free(node->for_end); node->for_end = ltng_strdup(end_expr); }
+    { free(node->for_step); node->for_step = ltng_strdup(step_expr); }
     node->for_step_op = step_op;
     g_break_depth++;
     node->body = parse_block(lexer, loop_scope, 1);
@@ -4713,9 +4688,21 @@ void skip_newlines(Lexer *lexer) {
     while (lexer_peek(lexer).type == TOKEN_NEWLINE) lexer_next(lexer);
 }
 
+
+void objschema_ensure(ObjSchema *s, int n) {
+    if (!s || n <= s->cap) return;
+    int nc = s->cap ? s->cap * 2 : 8;
+    while (nc < n) nc *= 2;
+    ObjField *nf = (ObjField*)realloc(s->fields, nc * sizeof(ObjField));
+    if (!nf) return;
+    for (int i = s->cap; i < nc; i++) { nf[i].name = ltng_strdup(""); nf[i].value = ltng_strdup(""); nf[i].type = TYPE_NULL; }
+    s->fields = nf; s->cap = nc;
+}
 void build_catch_schema(const char *cname) {
     ObjSchema schema;
     memset(&schema, 0, sizeof(schema));
+    schema.var = ltng_strdup("");
+    schema.default_val = ltng_strdup("");
     static const char *field_names[] = {
         "type", "message", "trace", "line", "column", "function", "value"
     };
@@ -4723,16 +4710,14 @@ void build_catch_schema(const char *cname) {
         TYPE_STRING, TYPE_STRING, TYPE_STRING, TYPE_INT, TYPE_INT, TYPE_STRING, TYPE_STRING
     };
     int n = (int)(sizeof(field_names) / sizeof(field_names[0]));
-    if (n > MAX_OBJ_FIELDS) n = MAX_OBJ_FIELDS;
+    objschema_ensure(&schema, n);
     for (int i = 0; i < n; i++) {
-        strncpy(schema.fields[i].name, field_names[i], MAX_IDENTIFIER_LEN - 1);
-        schema.fields[i].name[MAX_IDENTIFIER_LEN - 1] = '\0';
+        free(schema.fields[i].name); schema.fields[i].name = ltng_strdup(field_names[i]);
         schema.fields[i].type = field_types[i];
-        schema.fields[i].value[0] = '\0';
+        free(schema.fields[i].value); schema.fields[i].value = ltng_strdup("");
     }
     schema.count = n;
-    strncpy(schema.var, cname, MAX_IDENTIFIER_LEN - 1);
-    schema.var[MAX_IDENTIFIER_LEN - 1] = '\0';
+    free(schema.var); schema.var = ltng_strdup(cname);
     obj_build_all(&schema);
     obj_register(cname, &schema);
 }
@@ -4823,10 +4808,8 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
                catches with the same source name cannot collide. */
             symbol_table_add_in_ex(catch_scope, mangled, TYPE_OBJECT, 1);
             const char *cname = symbol_table_get_cname(catch_scope, mangled);
-            strncpy(node->name, cname, MAX_IDENTIFIER_LEN - 1);
-            node->name[MAX_IDENTIFIER_LEN - 1] = '\0';
-            strncpy(node->for_var, catch_var_src, MAX_IDENTIFIER_LEN - 1);
-            node->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            { free(node->name); node->name = ltng_strdup(cname); }
+            { free(node->for_var); node->for_var = ltng_strdup(catch_var_src); }
             build_catch_schema(cname);
         }
 
@@ -5481,7 +5464,7 @@ void eval_default_tokens(Lexer *lexer, SymbolTable *table, int start, int end,
     for (int i = 0; i < n; i++) tmp.tokens[i] = lexer->tokens[start + i];
     for (int i = n; i < tmp.token_capacity; i++) {
         tmp.tokens[i].type = TOKEN_EOF;
-        tmp.tokens[i].value[0] = '\0';
+        { free(tmp.tokens[i].value); tmp.tokens[i].value = ltng_strdup(""); }
         tmp.tokens[i].line = n > 0 ? tmp.tokens[n - 1].line : 1;
         tmp.tokens[i].col = 1;
     }
@@ -5519,13 +5502,13 @@ FuncInfo *resolve_overload(const char *src, ASTNode *args, int line, int col,
         if (!fi->top_level || strcmp(fi->src, src) != 0) continue;
         (*group_count)++;
 
-        int provided[MAX_FUNC_PARAMS];
+        int provided[32 /*MAX_FUNC_PARAMS*/];
         memset(provided, 0, sizeof(provided));
         int ok = 1;
         for (ASTNode *a = args; a && ok; a = a->next) {
             if (!a->for_var[0]) continue;
             int found = -1;
-            for (int p = 0; p < fi->param_count && p < MAX_FUNC_PARAMS; p++) {
+            for (int p = 0; p < fi->param_count && p < 32 /*MAX_FUNC_PARAMS*/; p++) {
                 if (strcmp(fi->param_names[p], a->for_var) == 0) { found = p; break; }
             }
             if (found < 0) { ok = 0; break; }
@@ -5595,17 +5578,17 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
         pc = fi->param_count;
         is_variadic = fi->is_variadic;
     }
-    if (pc > MAX_FUNC_PARAMS) pc = MAX_FUNC_PARAMS;
+    if (pc > 32 /*MAX_FUNC_PARAMS*/) pc = 32 /*MAX_FUNC_PARAMS*/;
 
-    ASTNode *param_node[MAX_FUNC_PARAMS] = {0};
+    ASTNode *param_node[32 /*MAX_FUNC_PARAMS*/] = {0};
     ASTNode *pn = fn_def ? fn_def->params : NULL;
     for (int p = 0; p < pc; p++) {
         param_node[p] = pn;
         if (pn) pn = pn->next;
     }
 
-    ASTNode *chosen[MAX_FUNC_PARAMS] = {0};
-    int provided[MAX_FUNC_PARAMS];
+    ASTNode *chosen[32 /*MAX_FUNC_PARAMS*/] = {0};
+    int provided[32 /*MAX_FUNC_PARAMS*/];
     memset(provided, 0, sizeof(provided));
 
     /* Map named arguments to parameters. */
@@ -5632,7 +5615,7 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
     }
 
     /* Collect positional arguments in source order. */
-    ASTNode *pos[MAX_FUNC_PARAMS * 4];
+    ASTNode *pos[32 /*MAX_FUNC_PARAMS*/ * 4];
     int pos_n = 0;
     for (ASTNode *a = args; a; a = a->next) {
         if (a->for_var[0]) continue;
@@ -5654,14 +5637,14 @@ ASTNode *expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi,
                     outn->is_expr = 1;
                     outn->has_default = 1;
                     if (param_node[p]) {
-                        snprintf(outn->value, MAX_STRING_LEN, "%s", param_node[p]->value);
+                        { char *_s = _ltng_cfmt("%s", param_node[p]->value); free(outn->value); outn->value = _s ? _s : ltng_strdup(""); }
                         outn->var_type = param_node[p]->var_type;
                     } else {
                         char defexpr[MAX_STRING_LEN];
                         VarType dvt = TYPE_STRING;
                         eval_default_tokens(lexer, table, fi->def_start[p], fi->def_end[p],
                                             defexpr, sizeof(defexpr), &dvt);
-                        snprintf(outn->value, MAX_STRING_LEN, "%s", defexpr);
+                        { char *_s = _ltng_cfmt("%s", defexpr); free(outn->value); outn->value = _s ? _s : ltng_strdup(""); }
                         outn->var_type = dvt;
                     }
                 } else {
@@ -5727,8 +5710,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
             indirect_dynamic = 1;
             const char *vcname = symbol_table_get_cname(table, mangled);
             if (!vcname || !vcname[0]) vcname = symbol_table_get_cname(table, fname_tok_val);
-            strncpy(call->for_var, vcname ? vcname : mangled, MAX_IDENTIFIER_LEN - 1);
-            call->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            { free(call->for_var); call->for_var = ltng_strdup(vcname ? vcname : mangled); }
             strncpy(fm, "__ltng_indirect", MAX_IDENTIFIER_LEN - 1);
             fm[MAX_IDENTIFIER_LEN - 1] = '\0';
         } else {
@@ -5755,15 +5737,14 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
             const char *vcname = symbol_table_get_cname(table, mangled_v);
             if (!vcname || !vcname[0]) vcname = symbol_table_get_cname(table, fname_tok_val);
             if (!vcname || !vcname[0]) vcname = mangled_v;
-            strncpy(call->for_var, vcname, MAX_IDENTIFIER_LEN - 1);
-            call->for_var[MAX_IDENTIFIER_LEN - 1] = '\0';
+            { free(call->for_var); call->for_var = ltng_strdup(vcname); }
             strncpy(fm, "__ltng_indirect", MAX_IDENTIFIER_LEN - 1);
             fm[MAX_IDENTIFIER_LEN - 1] = '\0';
             indirect_dynamic = 1;
         }
     }
     if (!direct_overload) {
-        strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
+        { free(call->name); call->name = ltng_strdup(fm); }
         if (!indirect_dynamic && function_first_param_is_base(fm)) {
             call->is_base_assign = 1;
         }
@@ -5792,7 +5773,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
             if (at.type == TOKEN_STRING && !named_arg) {
                 lexer_next(lexer);
                 ASTNode *an = create_node(NODE_PARAM, "", "");
-                snprintf(an->value, MAX_STRING_LEN, "\"%s\"", at.value);
+                { char *_s = _ltng_cfmt("\"%s\"", at.value); free(an->value); an->value = _s ? _s : ltng_strdup(""); }
                 an->var_type = TYPE_STRING;
                 an->is_expr = 1;
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
@@ -5805,7 +5786,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                         g_program_ref->functions = fn;
                     }
                     ASTNode *an = create_node(NODE_PARAM, "", "");
-                    snprintf(an->value, MAX_STRING_LEN, "\"%s\"", fn ? fn->name : "");
+                    { char *_s = _ltng_cfmt("\"%s\"", fn ? fn->name : ""); free(an->value); an->value = _s ? _s : ltng_strdup(""); }
                     an->var_type = TYPE_STRING;
                     an->is_expr = 1;
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
@@ -5821,8 +5802,8 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
             } else if (at.type == TOKEN_CHAR && !named_arg) {
                 lexer_next(lexer);
                 ASTNode *an = create_node(NODE_PARAM, "", "");
-                if (at.value[0]) snprintf(an->value, MAX_STRING_LEN, "'%s'", at.value);
-                else strcpy(an->value, "'\\0'");
+                if (at.value[0]) { char *_s = _ltng_cfmt("'%s'", at.value); free(an->value); an->value = _s ? _s : ltng_strdup(""); }
+                else { free(an->value); an->value = ltng_strdup("'\\0'"); }
                 an->var_type = TYPE_STRING;
                 an->is_expr = 1;
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
@@ -5850,7 +5831,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                         if (simple) an->is_variable = 1;
                     }
                     if (named_arg) {
-                        strncpy(an->for_var, named_key, MAX_IDENTIFIER_LEN - 1);
+                        { free(an->for_var); an->for_var = ltng_strdup(named_key); }
                         has_named_arg = 1;
                     }
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
@@ -5870,7 +5851,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                     if (simple) an->is_variable = 1;
                 }
                 if (named_arg) {
-                    strncpy(an->for_var, named_key, MAX_IDENTIFIER_LEN - 1);
+                    { free(an->for_var); an->for_var = ltng_strdup(named_key); }
                     has_named_arg = 1;
                 }
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
@@ -5911,7 +5892,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
             fm[MAX_IDENTIFIER_LEN - 1] = '\0';
             fn_def = find_function_node_by_cname(fi->name);
         }
-        strncpy(call->name, fm, MAX_IDENTIFIER_LEN - 1);
+        { free(call->name); call->name = ltng_strdup(fm); }
         if (!indirect_dynamic && function_first_param_is_base(fm)) {
             call->is_base_assign = 1;
         }
@@ -5937,13 +5918,11 @@ void record_return_obj_schema(const char *obj_base) {
     if (!obj_lookup(obj_base)) return;
     FuncInfo *fi = find_funcinfo_by_cname(g_enclosing_cname);
     if (fi && fi->return_obj_base[0] == '\0') {
-        strncpy(fi->return_obj_base, obj_base, MAX_IDENTIFIER_LEN - 1);
-        fi->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+        { free(fi->return_obj_base); fi->return_obj_base = ltng_strdup(obj_base); }
     }
     ASTNode *fn = find_function_node_by_cname(g_enclosing_cname);
     if (fn && fn->return_obj_base[0] == '\0') {
-        strncpy(fn->return_obj_base, obj_base, MAX_IDENTIFIER_LEN - 1);
-        fn->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+        { free(fn->return_obj_base); fn->return_obj_base = ltng_strdup(obj_base); }
     }
 }
 
@@ -6085,7 +6064,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                     if (g_enclosing_cname[0]) {
                         FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
                         if (efi) {
-                            for (int pi = 0; pi < efi->param_count && pi < MAX_FUNC_PARAMS; pi++) {
+                            for (int pi = 0; pi < efi->param_count && pi < 32 /*MAX_FUNC_PARAMS*/; pi++) {
                                 if (strcmp(efi->param_names[pi], id.value) == 0) {
                                     if (efi->has_default[pi]) pdt = efi->def_type[pi];
                                     break;
@@ -6114,7 +6093,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                     VarType _pdt2 = TYPE_NULL;
                     FuncInfo *_efi2 = find_funcinfo_by_cname(g_enclosing_cname);
                     if (_efi2) {
-                        for (int _pi = 0; _pi < _efi2->param_count && _pi < MAX_FUNC_PARAMS; _pi++) {
+                        for (int _pi = 0; _pi < _efi2->param_count && _pi < 32 /*MAX_FUNC_PARAMS*/; _pi++) {
                             if (strcmp(_efi2->param_names[_pi], id.value) == 0) {
                                 if (_efi2->has_default[_pi] && _efi2->def_type[_pi] != TYPE_NULL &&
                                     (_efi2->def_type[_pi] == TYPE_INT || _efi2->def_type[_pi] == TYPE_FLOAT || _efi2->def_type[_pi] == TYPE_BOOL))
@@ -6340,7 +6319,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
         name.type = TOKEN_IDENT;
         name.line = kw.line;
         name.col = kw.col;
-        snprintf(name.value, sizeof(name.value), "__anon_%d", g_anon_count++);
+        { char *_s = _ltng_cfmt("__anon_%d", g_anon_count++); free(name.value); name.value = _s ? _s : ltng_strdup(""); }
     } else {
         name = lexer_next(lexer);
         if (!token_is_name(name)) {
@@ -6397,17 +6376,11 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
     /* register lifted C name globally for codegen/prototypes (nested/anon only;
        top-level signatures were already registered by prescan_functions). */
     if (!sig) {
-        if (g_func_count < MAX_FUNCS) {
+        ensure_func_cap(); if (g_func_count < g_func_cap) {
             FuncInfo *nf = &g_funcs[g_func_count++];
-            memset(nf, 0, sizeof(*nf));
-            nf->passthrough_param = -1;
-            strncpy(nf->name, cname, MAX_IDENTIFIER_LEN - 1);
-            nf->name[MAX_IDENTIFIER_LEN - 1] = 0;
-            strncpy(nf->src, name.value, MAX_IDENTIFIER_LEN - 1);
-            nf->src[MAX_IDENTIFIER_LEN - 1] = 0;
-            nf->param_count = 0;
-            nf->required_count = 0;
-            nf->return_type = TYPE_STRING;
+            funcinfo_init(nf);
+            free(nf->name); nf->name = ltng_strdup(cname);
+            free(nf->src); nf->src = ltng_strdup(name.value);
             nf->line = name.line;
             nf->col = name.col;
         }
@@ -6481,9 +6454,9 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             symbol_table_add_param(func_scope, pm, TYPE_FLOAT);
             ASTNode *pn = create_node(NODE_PARAM, pm, "");
             pn->var_type = TYPE_FLOAT;
-            strncpy(pn->for_var, p.value, MAX_IDENTIFIER_LEN - 1);
+            { free(pn->for_var); pn->for_var = ltng_strdup(p.value); }
             pn->has_default = 0;
-            pn->value[0] = '\0';
+            { free(pn->value); pn->value = ltng_strdup(""); }
             if (lexer_peek(lexer).type == TOKEN_EQUALS) {
                 /* Default parameter value: name = expr */
                 lexer_next(lexer); /* = */
@@ -6491,7 +6464,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
                 VarType dvt = collect_expression(lexer, table, defexpr, sizeof(defexpr), 1, 1, NULL, NULL, NULL, NULL);
                 pn->has_default = 1;
                 pn->var_type = dvt;
-                snprintf(pn->value, MAX_STRING_LEN, "%s", defexpr);
+                { char *_s = _ltng_cfmt("%s", defexpr); free(pn->value); pn->value = _s ? _s : ltng_strdup(""); }
             }
             if (!params) params = plast = pn; else { plast->next = pn; plast = pn; }
             pcount++;
@@ -6513,9 +6486,9 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             int pi = 0;
             for (ASTNode *pp = params; pp; pp = pp->next) {
                 if (!pp->has_default) req++;
-                if (pi < MAX_FUNC_PARAMS) {
-                    strncpy(fi->param_names[pi], pp->for_var, MAX_IDENTIFIER_LEN - 1);
-                    fi->param_names[pi][MAX_IDENTIFIER_LEN - 1] = '\0';
+                {
+                    funcinfo_ensure_params(fi, pi + 1);
+                    free(fi->param_names[pi]); fi->param_names[pi] = ltng_strdup(pp->for_var);
                     fi->has_default[pi] = pp->has_default;
                     fi->def_type[pi] = pp->has_default ? pp->var_type : TYPE_NULL;
                     pi++;
@@ -6569,15 +6542,14 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
 
     ASTNode *fn = create_node(NODE_FUNCTION, cname, "");
     fn->line = kw.line; fn->col = kw.col;
-    if (!is_anon) strncpy(fn->for_var, name.value, MAX_IDENTIFIER_LEN - 1);
-    else fn->for_var[0] = '\0';
+    if (!is_anon) { free(fn->for_var); fn->for_var = ltng_strdup(name.value); }
+    else { free(fn->for_var); fn->for_var = ltng_strdup(""); }
     fn->params = params;
     fn->has_return_type = has_return_type;
     fn->return_type = return_type;
     fn->is_variadic = variadic;
     if (variadic) {
-        strncpy(fn->variadic_name, variadic_name, MAX_IDENTIFIER_LEN - 1);
-        fn->variadic_name[MAX_IDENTIFIER_LEN - 1] = '\0';
+        { free(fn->variadic_name); fn->variadic_name = ltng_strdup(variadic_name); }
     }
     if (sig) {
         sig->has_return_type = has_return_type;
@@ -6696,8 +6668,9 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
                 if (strcmp(fn->captures[c], cap_cname) == 0) dup = 1;
             }
             if (dup) continue;
-            strncpy(fn->captures[fn->capture_count], cap_cname, MAX_IDENTIFIER_LEN - 1);
-            fn->captures[fn->capture_count][MAX_IDENTIFIER_LEN - 1] = 0;
+            if (!fn->captures) { fn->captures = (char**)malloc(8 * sizeof(char*)); for (int ci=0;ci<8;ci++) fn->captures[ci] = ltng_strdup(""); }
+            free(fn->captures[fn->capture_count]);
+            fn->captures[fn->capture_count] = ltng_strdup(cap_cname);
             fn->capture_count++;
         }
         free(used); free(locals);
@@ -6725,12 +6698,10 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             }
         }
         if (fi2 && fn->return_obj_base[0] == '\0' && fi2->return_obj_base[0] != '\0') {
-            strncpy(fn->return_obj_base, fi2->return_obj_base, MAX_IDENTIFIER_LEN - 1);
-            fn->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+            { free(fn->return_obj_base); fn->return_obj_base = ltng_strdup(fi2->return_obj_base); }
         }
         if (fi2 && fi2->return_obj_base[0] == '\0' && fn->return_obj_base[0] != '\0') {
-            strncpy(fi2->return_obj_base, fn->return_obj_base, MAX_IDENTIFIER_LEN - 1);
-            fi2->return_obj_base[MAX_IDENTIFIER_LEN - 1] = '\0';
+            { free(fi2->return_obj_base); fi2->return_obj_base = ltng_strdup(fn->return_obj_base); }
         }
     }
     (void)kw;
@@ -7009,8 +6980,7 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
                                 symbol_table_set_array_elem_type(table, rm, cur_et);
                             }
                             ASTNode *node = create_node(NODE_ARRAY_INSERT, rm, idx_expr);
-                            strncpy(node->array_index, arg_expr, MAX_STRING_LEN - 1);
-                            node->array_index[MAX_STRING_LEN - 1] = '\0';
+                            { free(node->array_index); node->array_index = ltng_strdup(arg_expr); }
                             node->var_type = arg_type;
                             node->is_expr = 1;
                             emit(node);
@@ -7097,15 +7067,15 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
                         mangle_name(t.value, rm2, MAX_IDENTIFIER_LEN);
                         if (symbol_table_has(table, rm2)) {
                             recv->is_variable = 1;
-                            strncpy(recv->value, rm2, MAX_STRING_LEN - 1);
+                            { free(recv->value); recv->value = ltng_strdup(rm2); }
                             recv->var_type = symbol_table_get(table, rm2);
                         } else if (symbol_table_has(table, t.value)) {
                             recv->is_variable = 1;
-                            strncpy(recv->value, t.value, MAX_STRING_LEN - 1);
+                            { free(recv->value); recv->value = ltng_strdup(t.value); }
                             recv->var_type = symbol_table_get(table, t.value);
                         } else {
                             recv->is_expr = 1;
-                            strncpy(recv->value, t.value, MAX_STRING_LEN - 1);
+                            { free(recv->value); recv->value = ltng_strdup(t.value); }
                             recv->var_type = TYPE_FLOAT;
                         }
                         ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
@@ -7159,16 +7129,16 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
                     mangle_name(t.value, rm, MAX_IDENTIFIER_LEN);
                     if (symbol_table_has(table, rm)) {
                         recv->is_variable = 1;
-                        strncpy(recv->value, rm, MAX_STRING_LEN - 1);
+                        { free(recv->value); recv->value = ltng_strdup(rm); }
                         recv->var_type = symbol_table_get(table, rm);
                     } else if (symbol_table_has(table, t.value)) {
                         recv->is_variable = 1;
-                        strncpy(recv->value, t.value, MAX_STRING_LEN - 1);
+                        { free(recv->value); recv->value = ltng_strdup(t.value); }
                         recv->var_type = symbol_table_get(table, t.value);
                     } else {
                         /* pass as expression/value - best effort */
                         recv->is_expr = 1;
-                        strncpy(recv->value, t.value, MAX_STRING_LEN - 1);
+                        { free(recv->value); recv->value = ltng_strdup(t.value); }
                         recv->var_type = TYPE_FLOAT;
                     }
                     ASTNode *call = parse_call_node(lexer, table, mname.value, mname.line, mname.col, recv);
@@ -7321,17 +7291,14 @@ void prescan_functions(Lexer *lexer) {
         Token nm = lexer->tokens[i + 1];
         if (nm.type != TOKEN_IDENT) continue;
         if (lexer->tokens[i + 2].type != TOKEN_LPAREN) continue;
-        if (g_func_count >= MAX_FUNCS) break;
+        ensure_func_cap(); if (g_func_count >= g_func_cap) break;
 
         FuncInfo *fi = &g_funcs[g_func_count];
-        memset(fi, 0, sizeof(*fi));
-        fi->passthrough_param = -1;
+        funcinfo_init(fi);
         fi->top_level = 1;
-        strncpy(fi->src, nm.value, MAX_IDENTIFIER_LEN - 1);
-        fi->src[MAX_IDENTIFIER_LEN - 1] = '\0';
+        free(fi->src); fi->src = ltng_strdup(nm.value);
         fi->line = nm.line;
         fi->col = nm.col;
-        fi->return_type = TYPE_STRING;
 
         int k = i + 3;
         int pc = 0, req = 0, variadic = 0;
@@ -7345,10 +7312,10 @@ void prescan_functions(Lexer *lexer) {
                 break;
             }
             if (lexer->tokens[k].type != TOKEN_IDENT) break;
-            if (pc < MAX_FUNC_PARAMS) {
+            {
+                funcinfo_ensure_params(fi, pc+1);
                 int hasdef = 0, ds = -1, de = -1;
-                strncpy(fi->param_names[pc], lexer->tokens[k].value, MAX_IDENTIFIER_LEN - 1);
-                fi->param_names[pc][MAX_IDENTIFIER_LEN - 1] = '\0';
+                free(fi->param_names[pc]); fi->param_names[pc] = ltng_strdup(lexer->tokens[k].value);
                 k++;
                 if (k < lexer->count && lexer->tokens[k].type == TOKEN_EQUALS) {
                     hasdef = 1;
@@ -7360,14 +7327,10 @@ void prescan_functions(Lexer *lexer) {
                 fi->has_default[pc] = hasdef;
                 fi->def_start[pc] = ds;
                 fi->def_end[pc] = de;
-                if (!hasdef) req++;
-            } else {
-                /* Too many parameters to track; keep scanning to find the close. */
-                while (k < lexer->count && lexer->tokens[k].type != TOKEN_RPAREN &&
-                       lexer->tokens[k].type != TOKEN_COMMA &&
-                       lexer->tokens[k].type != TOKEN_NEWLINE) k++;
+                fi->def_type[pc] = TYPE_NULL;
+                pc++;
+                if (!hasdef) req = pc;
             }
-            pc++;
             while (k < lexer->count && lexer->tokens[k].type == TOKEN_NEWLINE) k++;
             if (k < lexer->count && lexer->tokens[k].type == TOKEN_COMMA) { k++; continue; }
             break;
@@ -7405,10 +7368,9 @@ void prescan_functions(Lexer *lexer) {
         char mangled[MAX_IDENTIFIER_LEN];
         mangle_name(g_funcs[a].src, mangled, sizeof(mangled));
         if (group <= 1) {
-            strncpy(g_funcs[a].name, mangled, MAX_IDENTIFIER_LEN - 1);
-            g_funcs[a].name[MAX_IDENTIFIER_LEN - 1] = '\0';
+            { free(g_funcs[a].name); g_funcs[a].name = ltng_strdup(mangled); }
         } else {
-            snprintf(g_funcs[a].name, MAX_IDENTIFIER_LEN, "%s__ov%d", mangled, idx);
+            { char *_s = _ltng_cfmt("%s__ov%d", mangled, idx); free(g_funcs[a].name); g_funcs[a].name = _s ? _s : ltng_strdup(""); }
         }
     }
 
@@ -7493,7 +7455,7 @@ VarType parse_expression_from_string(const char *expr, SymbolTable *table,
     lexer_init(tmp_lexer, buf);
     ErrorState tmp_errors;
     memset(&tmp_errors, 0, sizeof(tmp_errors));
-    tmp_errors.filename = strdup("<expr>");
+    tmp_errors.filename = ltng_strdup("<expr>");
     lexer_tokenize(tmp_lexer, &tmp_errors);
     ErrorState *target = codegen_get_errors();
     if (!target) target = parser_errors;

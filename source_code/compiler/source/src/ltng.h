@@ -88,10 +88,15 @@ typedef enum {
 
 typedef struct {
     TokenType type;
-    char value[MAX_STRING_LEN];
+    char *value;
     int line;
     int col;
 } Token;
+
+Token token_create(TokenType type, const char *value, int line, int col);
+void token_free(Token *t);
+char *ltng_strdup(const char *s);
+char *_ltng_cfmt(const char *fmt, ...);
 
 typedef struct {
     Token *tokens;           /* dynamically allocated token array */
@@ -156,8 +161,8 @@ typedef enum {
 
 typedef struct ASTNode {
     NodeType type;
-    char name[MAX_IDENTIFIER_LEN];
-    char value[MAX_STRING_LEN];
+    char *name;
+    char *value;
     VarType var_type;
     int is_variable;
     int is_expr;
@@ -172,14 +177,14 @@ typedef struct ASTNode {
     VarType return_type;/* NODE_FUNCTION: annotated return type */
     int is_variadic;    /* NODE_FUNCTION: has a trailing '...rest' parameter */
     int is_variadic_rest; /* NODE_PARAM: this param is the variadic rest collector */
-    char variadic_name[MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: source name of ...rest */
+    char *variadic_name; /* NODE_FUNCTION: source name of ...rest */
     int capture_count;  /* NODE_FUNCTION: number of captured variables from enclosing scope */
-    char captures[8][MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: cnames of captured variables */
-    char return_obj_base[MAX_IDENTIFIER_LEN]; /* NODE_FUNCTION: schema var for object return */
-    char for_var[MAX_IDENTIFIER_LEN];
-    char for_start[MAX_STRING_LEN];
-    char for_end[MAX_STRING_LEN];
-    char for_step[MAX_STRING_LEN];
+    char **captures; /* NODE_FUNCTION: cnames of captured variables */
+    char *return_obj_base; /* NODE_FUNCTION: schema var for object return */
+    char *for_var;
+    char *for_start;
+    char *for_end;
+    char *for_step;
     char for_step_op; /* '+', '-', '*', '/' or 0 for default (+) */
     int line;
     int col;
@@ -201,7 +206,7 @@ typedef struct ASTNode {
     int array_dim_count;     /* number of dimensions (0 if not an array) */
     int *array_dims;         /* dynamically allocated size of each dimension */
     int array_elem_count;    /* total number of elements */
-    char array_index[MAX_STRING_LEN]; /* for array element set: C index expression */
+    char *array_index; /* for array element set: C index expression */
     VarType array_elem_type; /* inferred homogeneous element type for array literals/vars (TYPE_NULL = unknown/mixed) */
     struct ASTNode *index1;  /* first index expression */
     struct ASTNode *index2;  /* second index expression */
@@ -210,8 +215,8 @@ typedef struct ASTNode {
 } ASTNode;
 
 typedef struct {
-    char name[MAX_IDENTIFIER_LEN];   /* lookup key (mangled source name) */
-    char cname[MAX_IDENTIFIER_LEN];  /* emitted C identifier */
+    char *name;   /* lookup key (mangled source name) */
+    char *cname;  /* emitted C identifier */
     VarType type;
     int is_const;
     int is_locked;   /* dtype lock: once locked, dtype cannot change (even null->type) */
@@ -220,29 +225,27 @@ typedef struct {
     int *array_dims;      /* dynamically allocated size of each array dimension */
     VarType array_elem_type; /* inferred homogeneous element type (TYPE_NULL = unknown/mixed) */
     int is_func_ref;     /* variable holds a known function reference (cname) */
-    char func_ref_cname[MAX_IDENTIFIER_LEN];
+    char *func_ref_cname;
     int func_ref_param_count;
 } VarEntry;
 
-#define MAX_OBJ_FIELDS 32
 typedef struct {
-    char name[MAX_IDENTIFIER_LEN];   /* source field name */
-    char value[MAX_STRING_LEN];      /* stringified value */
+    char *name;   /* source field name */
+    char *value;  /* stringified value */
     VarType type;
 } ObjField;
 
 typedef struct {
-    char var[MAX_IDENTIFIER_LEN];    /* mangled var name */
-    ObjField fields[MAX_OBJ_FIELDS];
+    char *var;    /* mangled var name */
+    ObjField *fields;
     int count;
-    char default_val[MAX_STRING_LEN];
+    int cap;
+    char *default_val;
 } ObjSchema;
-
-#define MAX_FUNCBINDS 64
 #define ARRAY_PUSH_RESERVE 16
 typedef struct {
-    char src[MAX_IDENTIFIER_LEN];   /* source name as written */
-    char cname[MAX_IDENTIFIER_LEN]; /* lifted/global C (mangled) name */
+    char *src;   /* source name as written */
+    char *cname; /* lifted/global C (mangled) name */
     int param_count;
 } FuncBind;
 
@@ -251,8 +254,9 @@ typedef struct Scope {
     int count;
     int vars_cap;
     int disallow_decl;       /* 1 = let/const not allowed (control blocks) */
-    FuncBind funcs[MAX_FUNCBINDS];
+    FuncBind *funcs;
     int func_count;
+    int funcs_cap;
     struct Scope *parent;
 } Scope;
 

@@ -2,6 +2,30 @@
 
 static ErrorState *lexer_errors = NULL;
 
+char *ltng_strdup(const char *s) {
+    if (!s) { char *p = (char*)malloc(1); if (p) p[0] = 0; return p; }
+    size_t n = strlen(s);
+    char *p = (char*)malloc(n + 1);
+    if (!p) return NULL;
+    memcpy(p, s, n + 1);
+    return p;
+}
+
+Token token_create(TokenType type, const char *value, int line, int col) {
+    Token t;
+    t.type = type;
+    t.value = ltng_strdup(value ? value : "");
+    t.line = line;
+    t.col = col;
+    return t;
+}
+
+void token_free(Token *t) {
+    if (!t) return;
+    free(t->value);
+    t->value = NULL;
+}
+
 void lexer_init(Lexer *lexer, char *source) {
     lexer->source = source;
     lexer->source_len = strlen(source);
@@ -53,127 +77,68 @@ static void lexer_skip_whitespace(Lexer *lexer) {
 static void lexer_read_string(Lexer *lexer, Token *token) {
     token->col = lexer->col;
     lexer_advance(lexer);
-    int i = 0;
-
+    int cap = 64, i = 0;
+    char *buf = (char*)malloc(cap);
+    if (!buf) { free(token->value); token->value = ltng_strdup(""); return; }
     while (lexer->pos < lexer->source_len && lexer_peek_char(lexer) != '"' && lexer_peek_char(lexer) != '\n') {
         char c = lexer_advance(lexer);
         if (c == '\\' && lexer->pos < lexer->source_len) {
             c = lexer_advance(lexer);
             switch (c) {
-                case 'n': token->value[i++] = '\n'; break;
-                case 't': token->value[i++] = '\t'; break;
-                case '\\': token->value[i++] = '\\'; break;
-                case '"': token->value[i++] = '"'; break;
-                case '\'': token->value[i++] = '\''; break;
-                case '<': token->value[i++] = '<'; break;
-                case '>': token->value[i++] = '>'; break;
-                case '0': token->value[i++] = '\0'; break;
-                default: token->value[i++] = c; break;
+                case 'n': c = '\n'; break; case 't': c = '\t'; break; case '\\': c = '\\'; break;
+                case '"': c = '"'; break; case '\'': c = '\''; break; case '<': c = '<'; break;
+                case '>': c = '>'; break; case '0': c = '\0'; break; default: break;
             }
-        } else {
-            token->value[i++] = c;
         }
-        if (i >= MAX_STRING_LEN - 1) {
-            if (lexer_errors) {
-                error_state_add(lexer_errors, lexer->line, lexer->col, "String too long");
-            }
-            break;
-        }
+        if (i + 2 >= cap) { cap *= 2; char *nb = (char*)realloc(buf, cap); if(!nb){free(buf); free(token->value); token->value=ltng_strdup(""); return;} buf=nb; }
+        buf[i++] = c;
     }
-
-    if (lexer->pos < lexer->source_len && lexer_peek_char(lexer) == '"') {
-        token->value[i] = '\0';
-        /* Check for format specifiers */
-        for (int j = 0; token->value[j]; j++) {
-            if (token->value[j] == '%') {
-                if (token->value[j + 1] == '%') {
-                    j++;
-                    continue;
-                }
-                if (lexer_errors) {
-                    error_state_add(lexer_errors, token->line, token->col, "Format specifiers are not allowed");
-                }
-                break;
-            }
-        }
-        lexer_advance(lexer);
-    } else {
-        token->value[i] = '\0';
-        for (int j = 0; token->value[j]; j++) {
-            if (token->value[j] == '%') {
-                if (token->value[j + 1] == '%') {
-                    j++;
-                    continue;
-                }
-                if (lexer_errors) {
-                    error_state_add(lexer_errors, token->line, token->col, "Format specifiers are not allowed");
-                }
-                break;
-            }
-        }
-        if (lexer_errors) {
-            error_state_add(lexer_errors, token->line, token->col, "Unterminated string literal");
-        }
-    }
+    buf[i] = '\0';
+    for (int j = 0; buf[j]; j++) { if (buf[j] == '%') { if (buf[j+1]=='%'){j++; continue;} if (lexer_errors) { error_state_add(lexer_errors, token->line, token->col, "Format specifiers are not allowed"); } break; } }
+    if (lexer->pos < lexer->source_len && lexer_peek_char(lexer) == '"') lexer_advance(lexer);
+    else if (lexer_errors) error_state_add(lexer_errors, token->line, token->col, "Unterminated string literal");
+    free(token->value); token->value = buf;
 }
 
 static void lexer_read_char(Lexer *lexer, Token *token) {
     token->col = lexer->col;
     lexer_advance(lexer);
-    int i = 0;
-
+    int cap = 8, i = 0;
+    char *buf = (char*)malloc(cap);
+    if (!buf) { free(token->value); token->value = ltng_strdup(""); return; }
     if (lexer->pos >= lexer->source_len || lexer_peek_char(lexer) == '\'') {
-        if (lexer_errors) {
-            error_state_add(lexer_errors, lexer->line, lexer->col, "Empty char literal");
-        }
+        if (lexer_errors) error_state_add(lexer_errors, lexer->line, lexer->col, "Empty char literal");
         if (lexer->pos < lexer->source_len) lexer_advance(lexer);
-        token->value[0] = '\0';
-        return;
+        buf[0] = '\0'; free(token->value); token->value = buf; return;
     }
-
     char c = lexer_advance(lexer);
     if (c == '\\' && lexer->pos < lexer->source_len) {
         c = lexer_advance(lexer);
-        switch (c) {
-            case 'n': token->value[i++] = '\n'; break;
-            case 't': token->value[i++] = '\t'; break;
-            case '\\': token->value[i++] = '\\'; break;
-            case '"': token->value[i++] = '"'; break;
-            case '\'': token->value[i++] = '\''; break;
-            case '0': token->value[i++] = '\0'; break;
-            default: token->value[i++] = c; break;
-        }
-    } else {
-        token->value[i++] = c;
+        switch (c) { case 'n': c='\n'; break; case 't': c='\t'; break; case '\\': c='\\'; break; case '"': c='"'; break; case '\'': c='\''; break; case '0': c='\0'; break; default: break; }
     }
-
+    if (i + 2 >= cap) { cap *= 2; char *nb=(char*)realloc(buf,cap); if(!nb){free(buf); free(token->value); token->value=ltng_strdup(""); return;} buf=nb; }
+    buf[i++] = c;
     if (lexer->pos >= lexer->source_len || lexer_peek_char(lexer) != '\'') {
-        if (lexer_errors) {
-            error_state_add(lexer_errors, lexer->line, lexer->col, "Unterminated char literal");
-        }
-        if (lexer->pos < lexer->source_len && lexer_peek_char(lexer) != '\'') {
-            token->value[i] = '\0';
-            return;
-        }
+        if (lexer_errors) error_state_add(lexer_errors, lexer->line, lexer->col, "Unterminated char literal");
+        buf[i] = '\0'; free(token->value); token->value = buf; return;
     }
     if (lexer->pos < lexer->source_len) lexer_advance(lexer);
-
-    token->value[i] = '\0';
+    buf[i] = '\0'; free(token->value); token->value = buf;
 }
 
 static void lexer_read_identifier(Lexer *lexer, Token *token) {
     token->col = lexer->col;
-    int i = 0;
+    int cap = 32, i = 0;
+    char *buf = (char*)malloc(cap);
+    if (!buf) { free(token->value); token->value = ltng_strdup(""); return; }
     while (lexer->pos < lexer->source_len) {
         char c = lexer_peek_char(lexer);
         if (isalnum(c) || c == '_') {
-            token->value[i++] = lexer_advance(lexer);
-        } else {
-            break;
-        }
-        if (i >= MAX_IDENTIFIER_LEN - 1) break;
+            if (i + 2 >= cap) { cap *= 2; char *nb=(char*)realloc(buf,cap); if(!nb){free(buf); free(token->value); token->value=ltng_strdup(""); return;} buf=nb; }
+            buf[i++] = lexer_advance(lexer);
+        } else break;
     }
-    token->value[i] = '\0';
+    buf[i] = '\0'; free(token->value); token->value = buf;
 
     if (strcmp(token->value, "let") == 0) {
         token->type = TOKEN_LET;
@@ -240,25 +205,26 @@ static void lexer_read_identifier(Lexer *lexer, Token *token) {
 
 static void lexer_read_number(Lexer *lexer, Token *token) {
     token->col = lexer->col;
-    int i = 0;
-    int is_float = 0;
-
+    int cap = 32, i = 0, is_float = 0;
+    char *buf = (char*)malloc(cap);
+    if (!buf) { free(token->value); token->value = ltng_strdup(""); token->type = TOKEN_INT_LIT; return; }
     while (lexer->pos < lexer->source_len && isdigit(lexer_peek_char(lexer))) {
-        token->value[i++] = lexer_advance(lexer);
+        if (i + 2 >= cap) { cap *= 2; char *nb=(char*)realloc(buf,cap); if(!nb){free(buf); free(token->value); token->value=ltng_strdup(""); token->type=TOKEN_INT_LIT; return;} buf=nb; }
+        buf[i++] = lexer_advance(lexer);
     }
-
     if (lexer->pos < lexer->source_len && lexer_peek_char(lexer) == '.') {
         char next = (lexer->pos + 1 < lexer->source_len) ? lexer->source[lexer->pos + 1] : '\0';
         if (isdigit(next)) {
             is_float = 1;
-            token->value[i++] = lexer_advance(lexer);
+            if (i + 2 >= cap) { cap *= 2; char *nb=(char*)realloc(buf,cap); if(!nb){free(buf); free(token->value); token->value=ltng_strdup(""); token->type=TOKEN_FLOAT_LIT; return;} buf=nb; }
+            buf[i++] = lexer_advance(lexer);
             while (lexer->pos < lexer->source_len && isdigit(lexer_peek_char(lexer))) {
-                token->value[i++] = lexer_advance(lexer);
+                if (i + 2 >= cap) { cap *= 2; char *nb=(char*)realloc(buf,cap); if(!nb){free(buf); free(token->value); token->value=ltng_strdup(""); token->type=TOKEN_FLOAT_LIT; return;} buf=nb; }
+                buf[i++] = lexer_advance(lexer);
             }
         }
     }
-
-    token->value[i] = '\0';
+    buf[i] = '\0'; free(token->value); token->value = buf;
     token->type = is_float ? TOKEN_FLOAT_LIT : TOKEN_INT_LIT;
 }
 
@@ -288,51 +254,51 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
         char c = lexer_peek_char(lexer);
 
         if (c == '\n') {
-            Token token = {TOKEN_NEWLINE, "", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_NEWLINE, "", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '"') {
-            Token token = {TOKEN_STRING, "", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_STRING, "", lexer->line, lexer->col);
             lexer_read_string(lexer, &token);
             lexer_add_token(lexer, token);
         } else if (c == '\'') {
-            Token token = {TOKEN_CHAR, "", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_CHAR, "", lexer->line, lexer->col);
             lexer_read_char(lexer, &token);
             lexer_add_token(lexer, token);
         } else if (c == '(') {
-            Token token = {TOKEN_LPAREN, "(", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_LPAREN, "(", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == ')') {
-            Token token = {TOKEN_RPAREN, ")", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_RPAREN, ")", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '{') {
-            Token token = {TOKEN_LBRACE, "{", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_LBRACE, "{", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '}') {
-            Token token = {TOKEN_RBRACE, "}", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_RBRACE, "}", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '[') {
-            Token token = {TOKEN_LBRACKET, "[", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_LBRACKET, "[", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == ']') {
-            Token token = {TOKEN_RBRACKET, "]", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_RBRACKET, "]", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == ':') {
-            Token token = {TOKEN_COLON, ":", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_COLON, ":", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '?') {
-            Token token = {TOKEN_QUESTION, "?", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_QUESTION, "?", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == ',') {
-            Token token = {TOKEN_COMMA, ",", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_COMMA, ",", lexer->line, lexer->col);
             lexer_advance(lexer);
             lexer_add_token(lexer, token);
         } else if (c == '.') {
@@ -341,132 +307,132 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
                 lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '.') {
                 lexer_advance(lexer);
                 lexer_advance(lexer);
-                Token token = {TOKEN_ELLIPSIS, "...", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_ELLIPSIS, "...", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_DOT, ".", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_DOT, ".", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (c == '=') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '=') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_EQ_EQ, "==", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_EQ_EQ, "==", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_EQUALS, "=", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_EQUALS, "=", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (c == '!' && lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '=') {
             lexer_advance(lexer);
             lexer_advance(lexer);
-            Token token = {TOKEN_BANG_EQ, "!=", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_BANG_EQ, "!=", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '!') {
             lexer_advance(lexer);
-            Token token = {TOKEN_BANG, "!", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_BANG, "!", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '<' && lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '=') {
             lexer_advance(lexer);
             lexer_advance(lexer);
-            Token token = {TOKEN_LT_EQ, "<=", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_LT_EQ, "<=", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '<') {
             lexer_advance(lexer);
-            Token token = {TOKEN_LT, "<", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_LT, "<", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '>' && lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '=') {
             lexer_advance(lexer);
             lexer_advance(lexer);
-            Token token = {TOKEN_GT_EQ, ">=", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_GT_EQ, ">=", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '>') {
             lexer_advance(lexer);
-            Token token = {TOKEN_GT, ">", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_GT, ">", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '&' && lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '&') {
             lexer_advance(lexer);
             lexer_advance(lexer);
-            Token token = {TOKEN_AMP_AMP, "&&", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_AMP_AMP, "&&", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '|' && lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '|') {
             lexer_advance(lexer);
             lexer_advance(lexer);
-            Token token = {TOKEN_PIPE_PIPE, "||", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_PIPE_PIPE, "||", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '^' && lexer->pos + 1 < lexer->source_len && lexer->source[lexer->pos + 1] == '^') {
             lexer_advance(lexer);
             lexer_advance(lexer);
-            Token token = {TOKEN_CARET_CARET, "^^", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_CARET_CARET, "^^", lexer->line, lexer->col);
             lexer_add_token(lexer, token);
         } else if (c == '+') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '+') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_PLUS_PLUS, "++", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_PLUS_PLUS, "++", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else if (lexer_peek_char(lexer) == '=') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_PLUS_EQUALS, "+=", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_PLUS_EQUALS, "+=", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_PLUS, "+", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_PLUS, "+", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (c == '-') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '>') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_ARROW, "->", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_ARROW, "->", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else if (lexer_peek_char(lexer) == '-') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_MINUS_MINUS, "--", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_MINUS_MINUS, "--", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else if (lexer_peek_char(lexer) == '=') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_MINUS_EQUALS, "-=", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_MINUS_EQUALS, "-=", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_MINUS, "-", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_MINUS, "-", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (c == '*') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '=') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_STAR_EQUALS, "*=", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_STAR_EQUALS, "*=", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_STAR, "*", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_STAR, "*", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (c == '/') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '=') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_SLASH_EQUALS, "/=", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_SLASH_EQUALS, "/=", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_SLASH, "/", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_SLASH, "/", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (c == '%') {
             lexer_advance(lexer);
             if (lexer_peek_char(lexer) == '=') {
                 lexer_advance(lexer);
-                Token token = {TOKEN_PERCENT_EQUALS, "%=", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_PERCENT_EQUALS, "%=", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             } else {
-                Token token = {TOKEN_PERCENT, "%", lexer->line, lexer->col};
+                Token token = token_create(TOKEN_PERCENT, "%", lexer->line, lexer->col);
                 lexer_add_token(lexer, token);
             }
         } else if (isdigit(c)) {
-            Token token = {TOKEN_INT_LIT, "", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_INT_LIT, "", lexer->line, lexer->col);
             lexer_read_number(lexer, &token);
             lexer_add_token(lexer, token);
         } else if (isalpha(c) || c == '_') {
-            Token token = {TOKEN_IDENT, "", lexer->line, lexer->col};
+            Token token = token_create(TOKEN_IDENT, "", lexer->line, lexer->col);
             lexer_read_identifier(lexer, &token);
             lexer_add_token(lexer, token);
         } else if (c == ';') {
@@ -481,14 +447,14 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
         }
     }
 
-    Token eof = {TOKEN_EOF, "", lexer->line, lexer->col};
+    Token eof = token_create(TOKEN_EOF, "", lexer->line, lexer->col);
     lexer_add_token(lexer, eof);
     lexer_errors = NULL;
 }
 
 Token lexer_next(Lexer *lexer) {
     if (lexer->current >= lexer->count) {
-        Token eof = {TOKEN_EOF, "", lexer->line, lexer->col};
+        Token eof = token_create(TOKEN_EOF, "", lexer->line, lexer->col);
         return eof;
     }
     return lexer->tokens[lexer->current++];
@@ -496,7 +462,7 @@ Token lexer_next(Lexer *lexer) {
 
 Token lexer_peek(Lexer *lexer) {
     if (lexer->current >= lexer->count) {
-        Token eof = {TOKEN_EOF, "", lexer->line, lexer->col};
+        Token eof = token_create(TOKEN_EOF, "", lexer->line, lexer->col);
         return eof;
     }
     return lexer->tokens[lexer->current];

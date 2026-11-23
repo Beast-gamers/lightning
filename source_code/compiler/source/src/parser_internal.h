@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 
 /* ---- shared globals ---- */
 extern ErrorState *parser_errors;
@@ -16,30 +17,30 @@ extern int g_stmt_line;
 extern int g_stmt_col;
 extern int g_expr_sl, g_expr_sc, g_expr_el, g_expr_ec;
 
-#define MAX_FUNCS 256
-#define MAX_FUNC_PARAMS 32
 typedef struct {
-    char name[MAX_IDENTIFIER_LEN];
-    char src[MAX_IDENTIFIER_LEN];
+    char *name;
+    char *src;
     int param_count;
     int required_count;
     int is_variadic;
     int has_return_type;
     VarType return_type;
-    char return_obj_base[MAX_IDENTIFIER_LEN];
+    char *return_obj_base;
     int line, col;
     int defined;
     int top_level;
-    char param_names[MAX_FUNC_PARAMS][MAX_IDENTIFIER_LEN];
-    int has_default[MAX_FUNC_PARAMS];
-    VarType def_type[MAX_FUNC_PARAMS];
-    int def_start[MAX_FUNC_PARAMS];
-    int def_end[MAX_FUNC_PARAMS];
+    char **param_names;
+    int *has_default;
+    VarType *def_type;
+    int *def_start;
+    int *def_end;
+    int param_cap;
     int passthrough_param;
 } FuncInfo;
 
-extern FuncInfo g_funcs[MAX_FUNCS];
+extern FuncInfo *g_funcs;
 extern int g_func_count;
+extern int g_func_cap;
 extern int g_in_function;
 extern int g_in_catch;
 extern Program *g_program_ref;
@@ -71,6 +72,13 @@ VarType effective_param_default_type(const char *src_name, VarType sym_type);
 void skip_to_newline(Lexer *lexer);
 int is_operator(TokenType t);
 
+void ensure_func_cap(void);
+void funcinfo_init(FuncInfo *fi);
+void funcinfo_ensure_params(FuncInfo *fi, int n);
+void objschema_ensure(ObjSchema *s, int n);
+void objschema_free(ObjSchema *s);
+void objschema_deep_copy(ObjSchema *dst, const ObjSchema *src);
+
 /* symbol table / obj / func helpers */
 void obj_register(const char *mangled_var, ObjSchema *schema);
 ObjSchema *obj_lookup(const char *mangled_var);
@@ -80,7 +88,6 @@ void register_function(const char *name, int param_count);
 int is_function_name(const char *name);
 int is_function_name_scoped(SymbolTable *table, const char *src);
 int is_callable_ident(SymbolTable *table, const char *src);
-void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
 const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);
 void scope_init(Scope *scope, Scope *parent, int disallow_decl);
 int symbol_table_has_in_parents(SymbolTable *table, const char *name);
@@ -125,14 +132,14 @@ void normalize_value_expr(char *buf, int buf_size, int array_access_used, Symbol
 int split_top_level(const char *s, const char *op, char *left, int lsz, char *right, int rsz);
 void normalize_or_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table);
 void normalize_mixed_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table);
-const char *var_type_name(VarType t);
+const char * var_type_name(VarType t);
 VarType infer_expression_text_type(const char *expr, SymbolTable *table);
 void append_resolved_text(char *resolved, int *rlen, const char *text);
 int resolve_typeof_interpolation(const char *vname, SymbolTable *table, int line, int col, char *resolved, int *rlen);
 void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int col);
 void parse_write(Lexer *lexer, SymbolTable *table);
 void parse_read(Lexer *lexer, SymbolTable *table);
-FuncInfo *find_funcinfo_by_cname(const char *cname);
+FuncInfo * find_funcinfo_by_cname(const char *cname);
 void append_arg_expr(char *out, int *pos, int out_size, ASTNode *a);
 void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size);
 int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size);
@@ -141,7 +148,7 @@ void emit_chained_methods_on_array_var(Lexer *lexer, SymbolTable *table, const c
 void parse_let(Lexer *lexer, SymbolTable *table);
 void parse_const(Lexer *lexer, SymbolTable *table);
 void token_append_source(char *out, int *pos, int out_size, Token tok);
-const char *type_name_str(VarType t);
+const char * type_name_str(VarType t);
 int check_set_type_immutable(SymbolTable *table, const char *mangled, VarType new_type, int line, int col, Lexer *lexer);
 void parse_set(Lexer *lexer, SymbolTable *table);
 ASTNode * parse_switch(Lexer *lexer, SymbolTable *table);
@@ -168,7 +175,7 @@ int analyze_function_passthrough(ASTNode *node, int *pt_param, int *saw_return, 
 int get_function_passthrough_param(const char *fname);
 int find_local_func_binding(SymbolTable *table, const char *src, char *out, int out_size);
 void eval_default_tokens(Lexer *lexer, SymbolTable *table, int start, int end, char *out, int out_size, VarType *out_type);
-static FuncInfo * resolve_overload(const char *src, ASTNode *args, int line, int col, int *group_count);
+FuncInfo * resolve_overload(const char *src, ASTNode *args, int line, int col, int *group_count);
 ASTNode * expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi, ASTNode *fn_def, ASTNode *args, const char *fname, int line, int col, ASTNode **out_rest);
 void record_return_obj_schema(const char *obj_base);
 void parse_return(Lexer *lexer, SymbolTable *table);
@@ -186,6 +193,7 @@ Program * parse(Lexer *lexer, ErrorState *errors);
 VarType parse_expression_from_string(const char *expr, SymbolTable *table, char *out, int out_size);
 void free_node_list(ASTNode *node);
 void codegen_free(Program *program);
+void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
 int is_c_reserved(const char *name);
 void mangle_name(const char *in, char *out, int out_size);
 void symbol_table_add_local(SymbolTable *table, const char *name, VarType type);

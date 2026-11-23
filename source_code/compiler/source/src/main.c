@@ -197,6 +197,7 @@ int main(int argc, char *argv[]) {
     Lexer lexer;
     lexer_init(&lexer, source);
     lexer_tokenize(&lexer, &errors);
+    
 
     if (debug) log_stage("parse", "parsing");
     Program *program = parse(&lexer, &errors);
