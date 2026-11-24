@@ -997,8 +997,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         if (symbol_table_has(table, mangled_v)) cname_v = symbol_table_get_cname(table, mangled_v);
                                         else if (symbol_table_has(table, vname)) cname_v = symbol_table_get_cname(table, vname);
                                         if (!cname_v) cname_v = mangled_v;
-                                        strncpy(bufs[bi], cname_v, MAX_STRING_LEN - 1);
-                                        bufs[bi][MAX_STRING_LEN - 1] = '\0';
+                                        strncpy(bufs[bi], cname_v, 65535);
+                                        bufs[bi][65535] = '\0';
                                         *types[bi] = TYPE_STRING; /* treat as dynamic/string */
                                     }
                                     free(mangled_v);
@@ -1222,7 +1222,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     int _ck_bool = (strcmp(tok.value,"tobool")==0||strcmp(tok.value,"bool")==0);
                     int _ck_char = (strcmp(tok.value,"tochar")==0||strcmp(tok.value,"char")==0);
                     lexer_next(lexer); /* consume ( */
-                    char inner[MAX_STRING_LEN];
+                    char *inner = (char*)malloc(65536);
+                    if (!inner) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; }
                     int ipos = 0;
                     int depth = 1;
                     while (lexer->current < lexer->count && depth > 0) {
@@ -1231,7 +1232,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
                         else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
                         itok = lexer_next(lexer);
-                        token_append_source(inner, &ipos, MAX_STRING_LEN, itok);
+                        token_append_source(inner, &ipos, 65536, itok);
                     }
                     /* Trim trailing whitespace from inner */
                     while (ipos > 0 && (inner[ipos-1] == ' ' || inner[ipos-1] == '\t')) ipos--;
@@ -2188,21 +2189,23 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     snprintf(_final_expr,4096,"__apr%d",_chain_step);
                                                 } else if (strcmp(_cm.value, "pop") == 0) {
                                                     if (lexer_peek(lexer).type == TOKEN_RPAREN) { lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop(%s,&%s); ",_chain_step,_wa,_wl); snprintf(_final_expr,4096,"__pv%d",_chain_step); }
-                                                    else { char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie); snprintf(_final_expr,4096,"__pv%d",_chain_step); }
+                                                    else { char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,ie,65536,1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ie);_chain_err=1;break;} lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie); snprintf(_final_expr,4096,"__pv%d",_chain_step); free(ie); }
                                                 } else if (strcmp(_cm.value, "insert") == 0) {
-                                                    char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,1,NULL,NULL,NULL,NULL);
-                                                    if(lexer_peek(lexer).type!=TOKEN_COMMA){_chain_err=1;break;} lexer_next(lexer);
-                                                    char ae[MAX_STRING_LEN]; VarType at=collect_expression(lexer,table,ae,sizeof(ae),1,0,NULL,NULL,NULL,NULL);
-                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
+                                                    char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,ie,65536,1,1,NULL,NULL,NULL,NULL);
+                                                    if(lexer_peek(lexer).type!=TOKEN_COMMA){free(ie);_chain_err=1;break;} lexer_next(lexer);
+                                                    char *ae = (char*)malloc(65536); if(!ae){free(ie);_chain_err=1;break;} ae[0]=0; VarType at=collect_expression(lexer,table,ae,65536,1,0,NULL,NULL,NULL,NULL);
+                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ae);free(ie);_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__aiv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",_chain_step,fmt,cast,ae,_wa,_wl,_wc,ie,_chain_step,_chain_step,_chain_step,_chain_step);
                                                     snprintf(_final_expr,4096,"__air%d",_chain_step);
+                                                    free(ae); free(ie);
                                                 } else if (strcmp(_cm.value, "remove") == 0) {
-                                                    char ie[MAX_STRING_LEN]; collect_expression(lexer,table,ie,sizeof(ie),1,0,NULL,NULL,NULL,NULL);
-                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
+                                                    char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,ie,65536,1,0,NULL,NULL,NULL,NULL);
+                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ie);_chain_err=1;break;} lexer_next(lexer);
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__rv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie);
                                                     snprintf(_final_expr,4096,"__rv%d",_chain_step);
+                                                    free(ie);
                                                 } else if (strcmp(_cm.value, "sort") == 0) {
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp,"_ltng_arr_sort(%s,%s); ",_wa,_wl);
@@ -2212,15 +2215,16 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp,"_ltng_arr_reverse(%s,%s); ",_wa,_wl);
                                                     snprintf(_final_expr,4096,"({ _ltng_retbuf_fmt(\"true\"); })");
                                                 } else if (strcmp(_cm.value, "contains") == 0) {
-                                                    char ae[MAX_STRING_LEN]; VarType at=collect_expression(lexer,table,ae,sizeof(ae),1,0,NULL,NULL,NULL,NULL);
-                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
+                                                    char *ae = (char*)malloc(65536); if(!ae){_chain_err=1;break;} ae[0]=0; VarType at=collect_expression(lexer,table,ae,65536,1,0,NULL,NULL,NULL,NULL);
+                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ae);_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__cv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
                                                     snprintf(_final_expr,4096,"({ _ltng_retbuf_fmt(\"%%s\",__cr%d?\"true\":\"false\"); })",_chain_step);
+                                                    free(ae);
                                                 } else if (strcmp(_cm.value, "index_of") == 0) {
-                                                    char ae[MAX_STRING_LEN]; VarType at=collect_expression(lexer,table,ae,sizeof(ae),1,0,NULL,NULL,NULL,NULL);
-                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
+                                                    char *ae = (char*)malloc(65536); if(!ae){_chain_err=1;break;} ae[0]=0; VarType at=collect_expression(lexer,table,ae,65536,1,0,NULL,NULL,NULL,NULL);
+                                                    if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ae);_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__iv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
@@ -3091,8 +3095,10 @@ const char *var_type_name(VarType t) {
    into the enclosing interpolation. Used by `$[typeof(...)]` for array elements
    and call results, which need the same typing rules as direct `typeof(...)`. */
 VarType infer_expression_text_type(const char *expr, SymbolTable *table) {
-    char buf[MAX_STRING_LEN];
-    snprintf(buf, sizeof(buf), "%s\n", expr);
+    size_t blen = strlen(expr ? expr : "") + 2;
+    char *buf = (char*)malloc(blen);
+    if (!buf) return TYPE_NULL;
+    snprintf(buf, blen, "%s\n", expr ? expr : "");
     Lexer lexer;
     lexer_init(&lexer, buf);
     ErrorState tmp_errors;
@@ -3102,17 +3108,19 @@ VarType infer_expression_text_type(const char *expr, SymbolTable *table) {
 
     ErrorState *saved = parser_errors;
     parser_errors = &tmp_errors;
-    char scratch[MAX_STRING_LEN];
-    VarType type = collect_expression(&lexer, table, scratch, sizeof(scratch),
-                                       1, 0, NULL, NULL, NULL, NULL);
+    char *scratch = (char*)malloc(65536);
+    VarType type = scratch ? collect_expression(&lexer, table, scratch, 65536,
+                                       1, 0, NULL, NULL, NULL, NULL) : TYPE_NULL;
     parser_errors = saved;
     lexer_free(&lexer);
     free(tmp_errors.filename);
+    free(scratch);
+    free(buf);
     return type;
 }
 
 void append_resolved_text(char *resolved, int *rlen, const char *text) {
-    int avail = MAX_STRING_LEN - *rlen;
+    int avail = 65536 - *rlen;
     if (avail <= 0) return;
     int n = snprintf(resolved + *rlen, (size_t)avail, "%s", text);
     if (n > 0) *rlen += (n < avail ? n : avail - 1);
@@ -3327,8 +3335,11 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
     if (tok->type != TOKEN_STRING) return;
     if (!strchr(tok->value, '$')) return;
 
-    char resolved[MAX_STRING_LEN];
-    int rlen = 0;
+    size_t res_cap = 65536;
+    char *resolved = (char*)malloc(res_cap);
+    if (!resolved) return;
+    size_t rlen = 0;
+    #define RES_ENSURE(n) do { size_t _need = rlen + (size_t)(n) + 1; if (_need > res_cap) { while (res_cap < _need) res_cap *= 2; char *_nr = (char*)realloc(resolved, res_cap); if (!_nr) { free(resolved); return; } resolved = _nr; } } while(0)
     for (const char *sp = tok->value; *sp; sp++) {
         if (*sp == '$' && sp[1] == '[') {
             const char *vstart = sp + 2;
@@ -3345,9 +3356,13 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                 if (!vname) { sp++; continue; }
                 memcpy(vname, vstart, (size_t)vlen);
                 vname[vlen] = '\0';
-                if (resolve_typeof_interpolation(vname, table, line, col, resolved, &rlen)) {
-                    /* skip generic variable/expression validation below */
-                } else {
+                {
+                    int _rlen_i = (int)rlen;
+                    if (resolve_typeof_interpolation(vname, table, line, col, resolved, &_rlen_i)) {
+                        rlen = (size_t)_rlen_i;
+                        /* skip generic variable/expression validation below */
+                    } else {
+                    rlen = (size_t)_rlen_i;
                     int is_expr = 0;
                     for (const char *c = vname; *c; c++) {
                         if (*c == '+' || *c == '-' || *c == '*' || *c == '/' || *c == '%' ||
@@ -3369,12 +3384,11 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                         free(mvname);
                         int voff = (int)(vstart - 2 - tok->value);
                         int vtotal = (int)(sp - (vstart - 2) + 1);
-                        for (int ci = voff; ci < voff + vtotal && rlen < MAX_STRING_LEN - 1; ci++) {
+                        for (int ci = voff; ci < voff + vtotal; ci++) {
+                            RES_ENSURE(1);
                             resolved[rlen++] = tok->value[ci];
                         }
                     } else {
-                        /* Interpolation expressions: try safe constant folding for conversion calls,
-                           otherwise preserve $[...] for runtime evaluation by codegen. */
                         int folded = 0;
                         const char *conv_name = NULL; int prefix = 0;
                         if (strncmp(vname, "toint(", 6) == 0) { conv_name = "toint"; prefix = 6; }
@@ -3388,85 +3402,86 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                         else if (strncmp(vname, "tochar(", 7) == 0) { conv_name = "tochar"; prefix = 7; }
                         else if (strncmp(vname, "char(", 5) == 0) { conv_name = "tochar"; prefix = 5; }
                         if (conv_name && vname[vlen - 1] == ')') {
-                            char inner[MAX_STRING_LEN];
                             int ilen = vlen - prefix - 1; if (ilen < 0) ilen = 0;
-                            if (ilen >= MAX_STRING_LEN) ilen = MAX_STRING_LEN - 1;
-                            memcpy(inner, vname + prefix, ilen); inner[ilen] = '\0';
-                            while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--; inner[ilen] = '\0';
-                            int is_str_lit = (ilen >= 2 && inner[0] == '"' && inner[ilen-1] == '"');
-                            int is_num_lit = 0, has_dot = 0;
-                            if (!is_str_lit && ilen > 0) {
-                                const char *p = inner; if (*p=='+'||*p=='-') p++;
-                                int d=0,v=1; for(;*p;p++){ if(isdigit((unsigned char)*p)) d=1; else if(*p=='.'&&!has_dot) has_dot=1; else {v=0;break;} } if(d&&v) is_num_lit=1;
-                            }
-                            int is_bool_lit = (!is_str_lit && !is_num_lit && (strcmp(inner,"true")==0||strcmp(inner,"false")==0||strcmp(inner,"t")==0||strcmp(inner,"f")==0));
-                            if (strcmp(conv_name, "toint") == 0) {
-                                if (is_str_lit) {
-                                    /* value of numeric string literal as string */
-                                    for (int i=1;i<ilen-1 && rlen<MAX_STRING_LEN-1;i++) resolved[rlen++]=inner[i];
-                                    resolved[rlen]='\0'; folded=1;
-                                } else if (is_num_lit) {
-                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", inner); folded=1;
+                            char *inner = (char*)malloc((size_t)ilen + 1);
+                            if (inner) {
+                                memcpy(inner, vname + prefix, (size_t)ilen); inner[ilen] = '\0';
+                                while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--; inner[ilen] = '\0';
+                                int is_str_lit = (ilen >= 2 && inner[0] == '"' && inner[ilen-1] == '"');
+                                int is_num_lit = 0, has_dot = 0;
+                                if (!is_str_lit && ilen > 0) {
+                                    const char *p2n = inner; if (*p2n=='+'||*p2n=='-') p2n++;
+                                    int d=0,v=1; for(;*p2n;p2n++){ if(isdigit((unsigned char)*p2n)) d=1; else if(*p2n=='.'&&!has_dot) has_dot=1; else {v=0;break;} } if(d&&v) is_num_lit=1;
                                 }
-                            } else if (strcmp(conv_name, "tofloat") == 0) {
-                                if (is_str_lit) {
-                                    char sval[MAX_STRING_LEN]; int cpos=0;
-                                    for (int i=1;i<ilen-1 && cpos<MAX_STRING_LEN-1;i++){ if(inner[i]=='\\' && i+1<ilen-1) sval[cpos++]=inner[++i]; else sval[cpos++]=inner[i]; }
-                                    sval[cpos]='\0';
-                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%g", atof(sval)); folded=1;
-                                } else if (is_num_lit) {
-                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%g", atof(inner)); folded=1;
+                                int is_bool_lit = (!is_str_lit && !is_num_lit && (strcmp(inner,"true")==0||strcmp(inner,"false")==0||strcmp(inner,"t")==0||strcmp(inner,"f")==0));
+                                if (strcmp(conv_name, "toint") == 0) {
+                                    if (is_str_lit) {
+                                        for (int i=1;i<ilen-1;i++) { RES_ENSURE(1); resolved[rlen++]=inner[i]; }
+                                        resolved[rlen]='\0'; folded=1;
+                                    } else if (is_num_lit) {
+                                        int n = snprintf(NULL,0,"%s", inner);
+                                        RES_ENSURE(n); rlen += (size_t)snprintf(resolved + rlen, res_cap - rlen, "%s", inner); folded=1;
+                                    }
+                                } else if (strcmp(conv_name, "tofloat") == 0) {
+                                    if (is_str_lit) {
+                                        int cpos2=0; char *sval = (char*)malloc((size_t)ilen + 1);
+                                        if (sval) { for (int i=1;i<ilen-1;i++){ if(inner[i]=='\\' && i+1<ilen-1) sval[cpos2++]=inner[++i]; else sval[cpos2++]=inner[i]; } sval[cpos2]='\0';
+                                            int n = snprintf(NULL,0,"%g", atof(sval)); RES_ENSURE(n); rlen += (size_t)snprintf(resolved + rlen, res_cap - rlen, "%g", atof(sval)); folded=1; free(sval);
+                                        }
+                                    } else if (is_num_lit) {
+                                        int n = snprintf(NULL,0,"%g", atof(inner)); RES_ENSURE(n); rlen += (size_t)snprintf(resolved + rlen, res_cap - rlen, "%g", atof(inner)); folded=1;
+                                    }
+                                } else if (strcmp(conv_name, "tostring") == 0) {
+                                    if (is_str_lit) {
+                                        for (int i=1;i<ilen-1;i++) { RES_ENSURE(1); resolved[rlen++]=inner[i]; }
+                                        resolved[rlen]='\0'; folded=1;
+                                    } else if (ilen==4 && memcmp(inner,"true",4)==0) { RES_ENSURE(4); memcpy(resolved+rlen,"true",4); rlen+=4; resolved[rlen]='\0'; folded=1; }
+                                    else if (ilen==5 && memcmp(inner,"false",5)==0) { RES_ENSURE(5); memcpy(resolved+rlen,"false",5); rlen+=5; resolved[rlen]='\0'; folded=1; }
+                                    else if (ilen==1 && inner[0]=='t') { RES_ENSURE(4); memcpy(resolved+rlen,"true",4); rlen+=4; resolved[rlen]='\0'; folded=1; }
+                                    else if (ilen==1 && inner[0]=='f') { RES_ENSURE(5); memcpy(resolved+rlen,"false",5); rlen+=5; resolved[rlen]='\0'; folded=1; }
+                                    else if (is_num_lit) { int n = snprintf(NULL,0,"%s", inner); RES_ENSURE(n); rlen += (size_t)snprintf(resolved + rlen, res_cap - rlen, "%s", inner); folded=1; }
+                                } else if (strcmp(conv_name, "tobool") == 0) {
+                                    if (is_num_lit) { const char *bv = (atof(inner)!=0.0)?"true":"false"; int n=(int)strlen(bv); RES_ENSURE(n); memcpy(resolved+rlen,bv,(size_t)n); rlen+=(size_t)n; resolved[rlen]='\0'; folded=1; }
+                                    else if (is_bool_lit) { const char *bv = (inner[0]=='t')?"true":"false"; int n=(int)strlen(bv); RES_ENSURE(n); memcpy(resolved+rlen,bv,(size_t)n); rlen+=(size_t)n; resolved[rlen]='\0'; folded=1; }
+                                    else if (is_str_lit) {
+                                        const char *bv;
+                                        if (ilen==2 || (ilen==3 && inner[1]=='0') || (ilen==3 && inner[1]=='f') || (ilen==7 && memcmp(inner+1,"false",5)==0)) bv="false"; else bv="true";
+                                        int n=(int)strlen(bv); RES_ENSURE(n); memcpy(resolved+rlen,bv,(size_t)n); rlen+=(size_t)n; resolved[rlen]='\0'; folded=1;
+                                    }
+                                } else if (strcmp(conv_name, "tochar") == 0) {
+                                    if (is_str_lit) {
+                                        char ch = (ilen>=3)?inner[1]:'\0';
+                                        if (ch=='\\' && ilen>=4) { RES_ENSURE(2); resolved[rlen++]=inner[1]; resolved[rlen++]=inner[2]; resolved[rlen]='\0'; }
+                                        else { RES_ENSURE(1); resolved[rlen++]=ch; resolved[rlen]='\0'; }
+                                        folded=1;
+                                    } else if (is_num_lit && !has_dot) {
+                                        RES_ENSURE(1); resolved[rlen++] = (char)(unsigned char)atoi(inner); resolved[rlen]='\0'; folded=1;
+                                    }
                                 }
-                            } else if (strcmp(conv_name, "tostring") == 0) {
-                                if (is_str_lit) {
-                                    for (int i=1;i<ilen-1 && rlen<MAX_STRING_LEN-1;i++) resolved[rlen++]=inner[i];
-                                    resolved[rlen]='\0'; folded=1;
-                                } else if (ilen==4 && memcmp(inner,"true",4)==0) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true"); folded=1; }
-                                else if (ilen==5 && memcmp(inner,"false",5)==0) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false"); folded=1; }
-                                else if (ilen==1 && inner[0]=='t') { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true"); folded=1; }
-                                else if (ilen==1 && inner[0]=='f') { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false"); folded=1; }
-                                else if (is_num_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", inner); folded=1; }
-                            } else if (strcmp(conv_name, "tobool") == 0) {
-                                if (is_num_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", (atof(inner)!=0.0)?"true":"false"); folded=1; }
-                                else if (is_bool_lit) { rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%s", (inner[0]=='t')?"true":"false"); folded=1; }
-                                else if (is_str_lit) {
-                                    if (ilen==2 || (ilen==3 && inner[1]=='0') || (ilen==3 && inner[1]=='f') || (ilen==7 && memcmp(inner+1,"false",5)==0))
-                                        rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "false");
-                                    else rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "true");
-                                    folded=1;
-                                }
-                            } else if (strcmp(conv_name, "tochar") == 0) {
-                                if (is_str_lit) {
-                                    char ch = (ilen>=3)?inner[1]:'\0';
-                                    if (ch=='\\' && ilen>=4) { if (rlen < MAX_STRING_LEN-2){ resolved[rlen++]=inner[1]; resolved[rlen++]=inner[2]; resolved[rlen]='\0'; } }
-                                    else { if (rlen < MAX_STRING_LEN-1){ resolved[rlen++]=ch; resolved[rlen]='\0'; } }
-                                    folded=1;
-                                } else if (is_num_lit && !has_dot) {
-                                    rlen += snprintf(resolved + rlen, MAX_STRING_LEN - rlen, "%c", (unsigned char)atoi(inner)); folded=1;
-                                }
+                                free(inner);
                             }
                         }
                         if (!folded) {
-                            /* Validate/parse expression, but preserve original $[...] for runtime evaluation */
-                            char check[MAX_STRING_LEN];
-                            (void)parse_expression_from_string(vname, table, check, sizeof(check));
+                            char *check = (char*)malloc(65536);
+                            if (check) { check[0]=0; (void)parse_expression_from_string(vname, table, check, 65536); free(check); }
                             int voff = (int)(vstart - 2 - tok->value);
                             int vtotal = (int)(sp - (vstart - 2) + 1);
-                            for (int ci = voff; ci < voff + vtotal && rlen < MAX_STRING_LEN - 1; ci++) {
-                                resolved[rlen++] = tok->value[ci];
-                            }
+                            for (int ci = voff; ci < voff + vtotal; ci++) { RES_ENSURE(1); resolved[rlen++] = tok->value[ci]; }
                         }
+                    }
                     }
                 }
                 free(vname);
             } else {
-                if (rlen + 2 < MAX_STRING_LEN) { resolved[rlen++] = '$'; resolved[rlen++] = '['; }
+                RES_ENSURE(2); resolved[rlen++] = '$'; resolved[rlen++] = '[';
             }
         } else {
-            if (rlen < MAX_STRING_LEN - 1) resolved[rlen++] = *sp;
+            RES_ENSURE(1); resolved[rlen++] = *sp;
         }
     }
     resolved[rlen] = '\0';
     { free(tok->value); tok->value = ltng_strdup(resolved); }
+    free(resolved);
+    #undef RES_ENSURE
 }
 
