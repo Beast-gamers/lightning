@@ -3331,13 +3331,13 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                         }
                     }
                     if (!is_expr) {
-                        char mvname[MAX_IDENTIFIER_LEN];
-                        mangle_name(vname, mvname, MAX_IDENTIFIER_LEN);
+                        char *mvname = mangle_name_alloc(vname);
                         if (!symbol_table_has(table, mvname) && !is_type_keyword(vname) && !is_bool_value(vname)) {
                             char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in string interpolation)", vname);
                             error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
                             free(errmsg);
                         }
+                        free(mvname);
                         int voff = (int)(vstart - 2 - tok->value);
                         int vtotal = (int)(sp - (vstart - 2) + 1);
                         for (int ci = voff; ci < voff + vtotal && rlen < MAX_STRING_LEN - 1; ci++) {
