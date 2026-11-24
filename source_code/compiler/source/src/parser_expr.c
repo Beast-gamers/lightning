@@ -1590,20 +1590,21 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     Token mname = lexer_next(lexer);
                     /* Array .length property (general ident context) */
                     {
-                        char tmangled[MAX_IDENTIFIER_LEN];
-                        mangle_name(tok.value, tmangled, MAX_IDENTIFIER_LEN);
+                        char *tmangled = mangle_name_alloc(tok.value);
                         if (symbol_table_has(table, tmangled) &&
                             symbol_table_get(table, tmangled) == TYPE_ARRAY &&
                             strcmp(mname.value, "length") == 0 &&
                             lexer_peek(lexer).type != TOKEN_LPAREN) {
                             const char *tcname = symbol_table_get_cname(table, tmangled);
-                            char tlenname[MAX_IDENTIFIER_LEN];
-                            snprintf(tlenname, sizeof(tlenname), "%s_len", tcname);
+                            char *tlenname = _ltng_cfmt("%s_len", tcname ? tcname : "");
                             pos += snprintf(out + pos, out_size - pos,
-                                "(int)(%s)", tlenname);
+                                "(int)(%s)", tlenname ? tlenname : "0");
+                            free(tlenname);
+                            free(tmangled);
                             result_type = TYPE_INT;
                             break;
                         }
+                        free(tmangled);
                     }
                     if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
                         lexer_peek(lexer).type == TOKEN_LPAREN &&
