@@ -2370,10 +2370,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                     free(errmsg);
                                     pos += snprintf(out + pos, out_size - pos, "0");
                                 } else {
-                                    char arrname[MAX_IDENTIFIER_LEN];
-                                    snprintf(arrname, sizeof(arrname), "%s_data", mangled);
-                                    char lenname[MAX_IDENTIFIER_LEN];
-                                    snprintf(lenname, sizeof(lenname), "%s_len", mangled);
+                                    char *arrname = _ltng_cfmt("%s_data", mangled);
+                                    char *lenname = _ltng_cfmt("%s_len", mangled);
 
                                     pos += snprintf(out + pos, out_size - pos, "({ ");
                                     for (int d = 0; d < index_count; d++) {
@@ -2436,6 +2434,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             array_access_used = 1;
                                         }
                                     }
+                                    free(arrname); free(lenname);
                                 }
                                 if (!have_dims) free(dims);
                                 free(index_exprs);
