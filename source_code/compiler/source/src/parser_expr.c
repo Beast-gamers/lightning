@@ -3208,11 +3208,11 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
     {
         const char *dot = strchr(inner, '.');
         if (dot) {
-            char base[MAX_IDENTIFIER_LEN];
             int blen = (int)(dot - inner);
+            char *base = (char*)malloc((size_t)blen + 1);
             const char *field = dot + 1;
             int simple_member = 0;
-            if (blen > 0 && *field != '\0' && !strchr(field, '.')) {
+            if (base && blen > 0 && *field != '\0' && !strchr(field, '.')) {
                 int base_ok = 1, field_ok = 1;
                 if (!(isalpha((unsigned char)inner[0]) || inner[0] == '_')) base_ok = 0;
                 for (int bi = 0; base_ok && bi < blen; bi++) {
@@ -3225,10 +3225,11 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 simple_member = base_ok && field_ok;
             }
             if (simple_member) {
-                if (blen >= (int)sizeof(base)) blen = (int)sizeof(base) - 1;
-                memcpy(base, inner, blen);
+                memcpy(base, inner, (size_t)blen);
                 base[blen] = '\0';
                 char *mvbase = mangle_name_alloc(base);
+                free(base);
+                base = NULL;
                 if (!symbol_table_has(table, mvbase)) {
                     char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in typeof)", inner);
                     error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
@@ -3251,6 +3252,7 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 free(mvbase);
                 return 1;
             }
+            free(base);
             /* Complex expression containing '.' (e.g. float literals, method chains): infer */
             VarType t = infer_expression_text_type(inner, table);
             append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
