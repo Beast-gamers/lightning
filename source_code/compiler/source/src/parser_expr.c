@@ -1655,12 +1655,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                     } else if (mname.type == TOKEN_IDENT || token_is_name(mname)) {
                         /* property access: obj.field */
-                        char mangled[MAX_IDENTIFIER_LEN];
-                        mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
-                        char fv[MAX_IDENTIFIER_LEN*2+8];
+                        char *mangled = mangle_name_alloc(tok.value);
                         const char *field_base = symbol_table_get_cname(table, mangled);
                         if (!field_base || !field_base[0]) field_base = mangled;
-                        obj_resolve_field(field_base, mname.value, fv, sizeof(fv));
+                        char *fv = obj_resolve_field_alloc(field_base, mname.value);
                         VarType ftype = TYPE_STRING;
                         ObjSchema *osc = obj_lookup(field_base);
                         if (!osc) osc = obj_lookup(mangled);
@@ -1685,6 +1683,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             pos += snprintf(out + pos, out_size - pos, "%s", fv);
                             if (!type_locked) result_type = TYPE_STRING;
                         }
+                        free(fv);
+                        free(mangled);
                     } else {
                         lexer->current = saved_m;
                         goto collect_ident_var;
