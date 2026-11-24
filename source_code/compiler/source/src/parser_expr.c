@@ -3110,10 +3110,10 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
     int vlen = (int)strlen(vname);
     if (strncmp(vname, "typeof(", 7) != 0 || vlen < 8 || vname[vlen - 1] != ')') return 0;
 
-    char inner[MAX_IDENTIFIER_LEN];
     int ilen = vlen - 8;
-    if (ilen >= (int)sizeof(inner)) ilen = (int)sizeof(inner) - 1;
-    memcpy(inner, vname + 7, ilen);
+    char *inner = (char*)malloc((size_t)ilen + 1);
+    if (!inner) return 0;
+    memcpy(inner, vname + 7, (size_t)ilen);
     inner[ilen] = '\0';
 
     /* Conversion calls: only fast-path when the call is the entire inner expression. */
@@ -3143,71 +3143,77 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 /* Sole conversion call: validate invalid literal numeric strings for toint/tofloat */
                 if (strcmp(_conv_tname, "int") == 0 || strcmp(_conv_tname, "float") == 0) {
                     if (_il > _conv_prefix + 2 && inner[_conv_prefix] == '"' && inner[_il - 2] == '"') {
-                        char sv[MAX_STRING_LEN]; int sl = _il - _conv_prefix - 3;
-                        if (sl >= (int)sizeof(sv)) sl = (int)sizeof(sv) - 1;
-                        memcpy(sv, inner + _conv_prefix + 1, sl); sv[sl] = '\0';
-                        int ok = 0, k = 0; if (sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1;
-                        for (; sv[k]; k++) { if (isdigit((unsigned char)sv[k])) digits=1; else if (sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} }
-                        if (valid && digits) ok = 1;
-                        if (!ok) {
-                            char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%s\" with %s", sv, _conv_cname);
-                            error_state_add(parser_errors, line, col, msg ? msg : "");
-                            free(msg);
+                        int sl = _il - _conv_prefix - 3;
+                        char *sv = (char*)malloc((size_t)sl + 1);
+                        if (sv) {
+                            memcpy(sv, inner + _conv_prefix + 1, (size_t)sl); sv[sl] = '\0';
+                            int ok = 0, k = 0; if (sv[k]=='+'||sv[k]=='-') k++; int digits=0,dot=0,valid=1;
+                            for (; sv[k]; k++) { if (isdigit((unsigned char)sv[k])) digits=1; else if (sv[k]=='.'&&!dot) dot=1; else {valid=0;break;} }
+                            if (valid && digits) ok = 1;
+                            if (!ok) {
+                                char *msg = _ltng_cfmt("Invalid conversion: cannot convert \"%s\" with %s", sv, _conv_cname);
+                                error_state_add(parser_errors, line, col, msg ? msg : "");
+                                free(msg);
+                            }
+                            free(sv);
                         }
                     }
                 }
-                append_resolved_text(resolved, rlen, _conv_tname); return 1;
+                append_resolved_text(resolved, rlen, _conv_tname); free(inner); return 1;
             }
             /* Part of a larger expression: infer from full expression */
             VarType t = infer_expression_text_type(inner, table);
             append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
-            return 1;
+            free(inner); return 1;
         }
     }
 
-    const char *p = inner;
-    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
-    if (p > inner && *p == '(') {
-        char fname[MAX_IDENTIFIER_LEN];
-        int flen = (int)(p - inner);
-        if (flen >= (int)sizeof(fname)) flen = (int)sizeof(fname) - 1;
-        memcpy(fname, inner, flen);
-        fname[flen] = '\0';
-        if (find_function_ast_by_name(fname) || is_callable_ident(table, fname) ||
-            is_function_name_scoped(table, fname)) {
-            VarType t = infer_expression_text_type(inner, table);
-            append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+    const char *p2 = inner;
+    while (*p2 && (isalnum((unsigned char)*p2) || *p2 == '_')) p2++;
+    if (p2 > inner && *p2 == '(') {
+        int flen = (int)(p2 - inner);
+        char *fname = (char*)malloc((size_t)flen + 1);
+        if (fname) {
+            memcpy(fname, inner, (size_t)flen);
+            fname[flen] = '\0';
+            if (find_function_ast_by_name(fname) || is_callable_ident(table, fname) ||
+                is_function_name_scoped(table, fname)) {
+                VarType t = infer_expression_text_type(inner, table);
+                append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+            } else {
+                append_resolved_text(resolved, rlen, "string");
+            }
+            free(fname);
         } else {
             append_resolved_text(resolved, rlen, "string");
         }
-        return 1;
+        free(inner); return 1;
     }
 
     if (strchr(inner, '[')) {
         VarType t = infer_expression_text_type(inner, table);
         append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
-        return 1;
+        free(inner); return 1;
     }
 
-    /* Nested typeof(...) keeps the legacy string fallback. */
     const char *q = inner;
     while (strncmp(q, "typeof(", 7) == 0) {
         int nl = (int)strlen(q);
         if (nl < 8 || q[nl - 1] != ')') break;
-        char stripped[MAX_IDENTIFIER_LEN];
         int slen = nl - 8;
-        if (slen >= (int)sizeof(stripped)) slen = (int)sizeof(stripped) - 1;
-        memcpy(stripped, q + 7, slen);
+        char *stripped = (char*)malloc((size_t)slen + 1);
+        if (!stripped) break;
+        memcpy(stripped, q + 7, (size_t)slen);
         stripped[slen] = '\0';
-        snprintf(inner, sizeof(inner), "%s", stripped);
+        free(inner);
+        inner = stripped;
         q = inner;
     }
     if (q != inner || strncmp(inner, "typeof(", 7) == 0) {
         append_resolved_text(resolved, rlen, "string");
-        return 1;
+        free(inner); return 1;
     }
 
-    /* Simple member/property access inside typeof: typeof(o.n) where base and field are identifiers. */
     {
         const char *dot = strchr(inner, '.');
         if (dot) {
@@ -3238,6 +3244,7 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                     error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
                     free(errmsg);
                     free(mvbase);
+                    free(inner);
                     return 1;
                 }
                 VarType ftype = TYPE_STRING;
@@ -3253,17 +3260,17 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 }
                 append_resolved_text(resolved, rlen, var_type_name(ftype));
                 free(mvbase);
+                free(inner);
                 return 1;
             }
             free(base);
-            /* Complex expression containing '.' (e.g. float literals, method chains): infer */
             VarType t = infer_expression_text_type(inner, table);
             append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
+            free(inner);
             return 1;
         }
     }
 
-    /* Simple identifier, literal keyword, or type keyword */
     {
         int simple_ident = 0;
         if (is_bool_value(inner) || is_type_keyword(inner)) simple_ident = 1;
@@ -3288,15 +3295,16 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 append_resolved_text(resolved, rlen, inner);
             }
             free(mvname);
+            free(inner);
             return 1;
         }
     }
 
-    /* General expression fallback */
     {
         VarType t = infer_expression_text_type(inner, table);
         append_resolved_text(resolved, rlen, var_type_name(t == TYPE_NULL ? TYPE_STRING : t));
     }
+    free(inner);
     return 1;
 }
 
@@ -3318,9 +3326,9 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
             }
             if (*sp == ']') {
                 int vlen = (int)(sp - vstart);
-                char vname[MAX_IDENTIFIER_LEN];
-                if (vlen >= MAX_IDENTIFIER_LEN) vlen = MAX_IDENTIFIER_LEN - 1;
-                memcpy(vname, vstart, vlen);
+                char *vname = (char*)malloc((size_t)vlen + 1);
+                if (!vname) { sp++; continue; }
+                memcpy(vname, vstart, (size_t)vlen);
                 vname[vlen] = '\0';
                 if (resolve_typeof_interpolation(vname, table, line, col, resolved, &rlen)) {
                     /* skip generic variable/expression validation below */
@@ -3435,6 +3443,7 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                         }
                     }
                 }
+                free(vname);
             } else {
                 if (rlen + 2 < MAX_STRING_LEN) { resolved[rlen++] = '$'; resolved[rlen++] = '['; }
             }
