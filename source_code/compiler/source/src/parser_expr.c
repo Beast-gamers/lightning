@@ -102,8 +102,7 @@ int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
                 snprintf(val, sizeof(val), "%s", t1.value);
                 this_elem_type = TYPE_STRING;
             } else if (t1.type == TOKEN_IDENT && !is_bool_value(t1.value) && !is_type_keyword(t1.value)) {
-                char m[MAX_IDENTIFIER_LEN];
-                mangle_name(t1.value, m, sizeof(m));
+                char *m = mangle_name_alloc(t1.value);
                 if (symbol_table_has(table, m) || symbol_table_has(table, t1.value)) {
                     const char *cname = symbol_table_has(table, m) ? symbol_table_get_cname(table, m) : symbol_table_get_cname(table, t1.value);
                     val[0] = '\x01';
@@ -112,6 +111,7 @@ int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
                 } else {
                     snprintf(val, sizeof(val), "%s", t1.value);
                 }
+                free(m);
                 /* variable reference element: runtime type unknown */
                 this_elem_type = TYPE_NULL;
             } else if (t1.type == TOKEN_IDENT && is_bool_value(t1.value)) {
@@ -1720,8 +1720,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     else if (arg.type == TOKEN_CHAR) vt = TYPE_STRING;
                     else if ((arg.type == TOKEN_IDENT || token_is_name(arg)) && is_bool_value(arg.value)) vt = TYPE_BOOL;
                     else if (arg.type == TOKEN_IDENT || token_is_name(arg)) {
-                        char mangled[MAX_IDENTIFIER_LEN]; mangle_name(arg.value, mangled, MAX_IDENTIFIER_LEN);
+                        char *mangled = mangle_name_alloc(arg.value);
                         if (symbol_table_has(table, mangled)) vt = symbol_table_get(table, mangled);
+                        free(mangled);
                     }
                     pos += snprintf(out + pos, out_size - pos, "\"%s\"", type_name_str(vt));
                     if (!type_locked) result_type = TYPE_STRING;
@@ -2498,10 +2499,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             if (_rtok.type == TOKEN_INT_LIT || _rtok.type == TOKEN_FLOAT_LIT) {
                                 _right_numeric = 1;
                             } else if ((_rtok.type == TOKEN_IDENT || token_is_name(_rtok)) && !is_bool_value(_rtok.value)) {
-                                char _rm[MAX_IDENTIFIER_LEN]; mangle_name(_rtok.value, _rm, MAX_IDENTIFIER_LEN);
+                                char *_rm = mangle_name_alloc(_rtok.value);
                                 VarType _rvt = TYPE_NULL;
                                 if (symbol_table_has(table, _rm)) _rvt = symbol_table_get(table, _rm);
                                 if (_rvt == TYPE_INT || _rvt == TYPE_FLOAT || _rvt == TYPE_BOOL) _right_numeric = 1;
+                                free(_rm);
                             } else if (_rtok.type == TOKEN_LPAREN) {
                                 /* nested subexpr - could be numeric */
                                 _right_numeric = 1;
@@ -2565,10 +2567,12 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 }
                                 _numeric_mul = _left_num;
                             } else if ((_rtok.type == TOKEN_IDENT || token_is_name(_rtok)) && !is_bool_value(_rtok.value)) {
-                                char _rm[MAX_IDENTIFIER_LEN]; mangle_name(_rtok.value, _rm, MAX_IDENTIFIER_LEN);
+                                char *_rm = mangle_name_alloc(_rtok.value);
                                 VarType _rvt = TYPE_NULL;
                                 if (symbol_table_has(table, _rm)) _rvt = symbol_table_get(table, _rm);
-                                if (_rvt == TYPE_INT || _rvt == TYPE_FLOAT || _rvt == TYPE_BOOL) {
+                                int _rn = (_rvt == TYPE_INT || _rvt == TYPE_FLOAT || _rvt == TYPE_BOOL);
+                                free(_rm);
+                                if (_rn) {
                                     /* right is numeric; check if left is also numeric */
                                     int _left_num = 0;
                                     if (pos >= 1) {
@@ -3223,12 +3227,12 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                 if (blen >= (int)sizeof(base)) blen = (int)sizeof(base) - 1;
                 memcpy(base, inner, blen);
                 base[blen] = '\0';
-                char mvbase[MAX_IDENTIFIER_LEN];
-                mangle_name(base, mvbase, MAX_IDENTIFIER_LEN);
+                char *mvbase = mangle_name_alloc(base);
                 if (!symbol_table_has(table, mvbase)) {
                     char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in typeof)", inner);
                     error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
                     free(errmsg);
+                    free(mvbase);
                     return 1;
                 }
                 VarType ftype = TYPE_STRING;
@@ -3243,6 +3247,7 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
                     }
                 }
                 append_resolved_text(resolved, rlen, var_type_name(ftype));
+                free(mvbase);
                 return 1;
             }
             /* Complex expression containing '.' (e.g. float literals, method chains): infer */
@@ -3263,8 +3268,7 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
             }
         }
         if (simple_ident) {
-            char mvname[MAX_IDENTIFIER_LEN];
-            mangle_name(inner, mvname, MAX_IDENTIFIER_LEN);
+            char *mvname = mangle_name_alloc(inner);
             if (!symbol_table_has(table, mvname) && !is_type_keyword(inner) && !is_bool_value(inner)) {
                 char *errmsg = _ltng_cfmt("Variable '%s' not declared (used in typeof)", inner);
                 error_state_add(parser_errors, line, col, errmsg ? errmsg : "");
@@ -3277,6 +3281,7 @@ int resolve_typeof_interpolation(const char *vname, SymbolTable *table,
             } else {
                 append_resolved_text(resolved, rlen, inner);
             }
+            free(mvname);
             return 1;
         }
     }
