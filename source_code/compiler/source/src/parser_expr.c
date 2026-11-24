@@ -2709,9 +2709,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
             case TOKEN_RETURN: case TOKEN_BREAK: case TOKEN_CONTINUE: case TOKEN_FUNCTION:
             case TOKEN_SWITCH: case TOKEN_CASE: case TOKEN_DEFAULT:
             case TOKEN_FROM: case TOKEN_TO: case TOKEN_STEP: {
-                /* keyword-as-identifier in expressions (C-reserved compat) */
-                char mangled[MAX_IDENTIFIER_LEN];
-                mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
+                char *mangled = mangle_name_alloc(tok.value);
                 if (!symbol_table_has(table, mangled)) {
                     char *errmsg = _ltng_cfmt("Variable '%s' not declared", tok.value);
                     error_state_add(parser_errors, tok.line, tok.col, errmsg ? errmsg : "");
@@ -2724,6 +2722,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     else if (vtype == TYPE_BOOL) pos += snprintf(out + pos, out_size - pos, "(%s[0]=='t'||%s[0]=='T'||%s[0]=='1'?1:0)", mangled, mangled, mangled);
                     else { pos += snprintf(out + pos, out_size - pos, "atof(%s)", mangled); if (!type_locked) result_type = TYPE_INT; }
                 }
+                free(mangled);
                 break;
             }
             case TOKEN_COMMA:
