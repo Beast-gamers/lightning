@@ -1879,12 +1879,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         lexer_next(lexer); /* consume . */
                                         Token mname = lexer_next(lexer);
 
-                                        char arrname[MAX_IDENTIFIER_LEN];
-                                        snprintf(arrname, sizeof(arrname), "%s_data", cname);
-                                        char lenname[MAX_IDENTIFIER_LEN];
-                                        snprintf(lenname, sizeof(lenname), "%s_len", cname);
-                                        char capname[MAX_IDENTIFIER_LEN];
-                                        snprintf(capname, sizeof(capname), "%s_cap", cname);
+                                        char *arrname = _ltng_cfmt("%s_data", cname);
+                                        char *lenname = _ltng_cfmt("%s_len", cname);
+                                        char *capname = _ltng_cfmt("%s_cap", cname);
 
                                         /* .length property (no parens) */
                                         if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
@@ -1893,6 +1890,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             pos += snprintf(out + pos, out_size - pos,
                                                 "(int)(%s)", lenname);
                                             result_type = TYPE_INT;
+                                            free(arrname); free(lenname); free(capname);
                                             return result_type;
                                         }
 
@@ -1917,11 +1915,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             /* Array method call(s) with chaining support.
                                                Value-consumed context: operate on a temp copy to keep
                                                the original receiver intact, return method result. */
-                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");goto _arr_method_result_done;} _chain_prefix[0]=0;
+                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");free(arrname); free(lenname); free(capname); goto _arr_method_result_done;} _chain_prefix[0]=0;
                                             int _cp = 0;
                                             int _chain_step = 0;
                                             char *_final_expr = (char*)calloc(1,4096);
-                                            if(!_final_expr){ pos+=snprintf(out+pos,out_size-pos,"0"); goto _arr_method_result_done; }
+                                            if(!_final_expr){ pos+=snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             int _is_chained = 0;
                                             int _chain_err = 0;
                                             Token _cm = mname;
@@ -2129,7 +2127,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     "({ %sfor(int _fi=0;_fi<__tl;_fi++){if(__td[_fi])free(__td[_fi]);} free(__td); (char *)\"0\"; })",
                                                     _chain_prefix);
                                             }
-                                            goto _arr_method_result_done;
+                                            free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                         }
 
                                         /* copy()/slice() in general expression: create temp array,
@@ -2141,16 +2139,16 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 error_state_add(parser_errors, mname.line, mname.col, "Expected '(' after array method");
                                                 skip_to_newline(lexer);
                                                 pos += snprintf(out + pos, out_size - pos, "0");
-                                                goto _arr_method_result_done;
+                                                free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                             }
                                             lexer_next(lexer); /* consume ( */
-                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");goto _arr_method_result_done;} _chain_prefix[0]=0; int _cp = 0;
+                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");free(arrname); free(lenname); free(capname); goto _arr_method_result_done;} _chain_prefix[0]=0; int _cp = 0;
                                             _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
                                                 "char **__td=NULL; int __tl=0; int __tc=0; ");
                                             if (strcmp(mname.value, "copy") == 0) {
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after copy()");
-                                                    skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); goto _arr_method_result_done;
+                                                    skip_to_newline(lexer); pos += snprintf(out + pos, out_size - pos, "0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* consume ) */
                                                 _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
@@ -2158,18 +2156,18 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     arrname, lenname);
                                             } else { /* slice */
                                                 char *s0 = (char*)malloc(65536); char *s1 = (char*)malloc(65536);
-                                                if (!s0 || !s1) { free(s0); free(s1); pos += snprintf(out + pos, out_size - pos, "0"); goto _arr_method_result_done; }
+                                                if (!s0 || !s1) { free(s0); free(s1); pos += snprintf(out + pos, out_size - pos, "0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                                 s0[0]=0; s1[0]=0;
                                                 collect_expression(lexer, table, s0, 65536, 1, 1, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_COMMA) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ',' after slice start");
-                                                    skip_to_newline(lexer); free(s0); free(s1); pos += snprintf(out + pos, out_size - pos, "0"); goto _arr_method_result_done;
+                                                    skip_to_newline(lexer); free(s0); free(s1); pos += snprintf(out + pos, out_size - pos, "0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* , */
                                                 collect_expression(lexer, table, s1, 65536, 1, 0, NULL, NULL, NULL, NULL);
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                                                     error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Expected ')' after slice end");
-                                                    skip_to_newline(lexer); free(s0); free(s1); pos += snprintf(out + pos, out_size - pos, "0"); goto _arr_method_result_done;
+                                                    skip_to_newline(lexer); free(s0); free(s1); pos += snprintf(out + pos, out_size - pos, "0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* ) */
                                                 _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
@@ -2179,7 +2177,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             }
                                             const char *_wa = "__td", *_wl = "__tl", *_wc = "__tc";
                                             char *_final_expr = (char*)calloc(1,4096);
-                                            if(!_final_expr){ pos+=snprintf(out+pos,out_size-pos,"0"); goto _arr_method_result_done; }
+                                            if(!_final_expr){ pos+=snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             int _chain_err = 0;
                                             int _has_scalar_result = 0;
                                             int _chain_step = 0;
@@ -2205,8 +2203,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 lexer_next(lexer);
                                                 _has_scalar_result = 1;
                                                 if (strcmp(_cm.value, "push") == 0) {
-                                                    char arg_expr[MAX_STRING_LEN]; VarType at = collect_expression(lexer, table, arg_expr, sizeof(arg_expr), 1, 0, NULL, NULL, NULL, NULL);
-                                                    if (lexer_peek(lexer).type != TOKEN_RPAREN) { _chain_err=1; break; } lexer_next(lexer);
+                                                    char *arg_expr = (char*)malloc(65536); if(!arg_expr){_chain_err=1;break;} arg_expr[0]=0;
+                                                    VarType at = collect_expression(lexer, table, arg_expr, 65536, 1, 0, NULL, NULL, NULL, NULL);
+                                                    if (lexer_peek(lexer).type != TOKEN_RPAREN) { free(arg_expr); _chain_err=1; break; } lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
                                                     _cp += snprintf(_chain_prefix+_cp,16384-_cp, "char *__apv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ", _chain_step,fmt,cast,arg_expr,_wa,_wl,_wc,_chain_step,_chain_step,_chain_step,_chain_step);
@@ -2264,7 +2263,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     else lexer->current = sd;
                                                 }
                                             }
-                                            if (_chain_err) { pos += snprintf(out+pos,out_size-pos,"0"); goto _arr_method_result_done; }
+                                            if (_chain_err) { pos += snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             if (!_has_scalar_result) {
                                                 /* No chain - return array formatted as string */
                                                 snprintf(_final_expr,4096,
@@ -2274,7 +2273,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 "({ %schar *__fres=(char*)(%s); for(int _fi=0;_fi<__tl;_fi++){if(__td[_fi])free(__td[_fi]);} free(__td); __fres; })",
                                                 _chain_prefix, _final_expr);
                                             result_type = TYPE_STRING;
-                                            goto _arr_method_result_done;
+                                            free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                         }
 
                                         /* Not a recognized array operation - rewind to the dot */
