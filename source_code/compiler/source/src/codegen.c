@@ -262,9 +262,11 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                 if (is_simple_var_or_keyword(vname, codegen_table)) {
                     fprintf(out, "%%s");
                 } else {
-                    char expr_out[MAX_STRING_LEN];
-                    VarType etype = parse_expression_from_string(vname, codegen_table,
-                        expr_out, sizeof(expr_out));
+                    int expr_out_sz = 65536;
+                    char *expr_out = (char*)malloc(expr_out_sz);
+                    if (!expr_out) expr_out_sz = 0;
+                    if (expr_out) expr_out[0] = 0;
+                    VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
                     if (etype == TYPE_FLOAT) {
                         fprintf(out, "%%g");
                     } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -274,6 +276,7 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                     } else {
                         fprintf(out, "%%lld");
                     }
+                    free(expr_out);
                 }
                 free(vname);
                 arg_count++;
@@ -308,9 +311,9 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                 }
                 if (*p == ']') {
                     int len = (int)(p - start);
-                    char vname[MAX_IDENTIFIER_LEN];
-                    if (len >= MAX_IDENTIFIER_LEN) len = MAX_IDENTIFIER_LEN - 1;
-                    memcpy(vname, start, len);
+                    char *vname = (char*)malloc((size_t)len + 1);
+                    if (!vname) { p++; continue; }
+                    memcpy(vname, start, (size_t)len);
                     vname[len] = '\0';
                     if (strcmp(vname, "true") == 0 || strcmp(vname, "t") == 0) {
                         fprintf(out, ", \"true\"");
@@ -325,9 +328,11 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                         }
                         free(mvname);
                     } else {
-                        char expr_out[MAX_STRING_LEN];
-                        VarType etype = parse_expression_from_string(vname, codegen_table,
-                            expr_out, sizeof(expr_out));
+                        int expr_out_sz = 65536;
+                        char *expr_out = (char*)malloc(expr_out_sz);
+                        if (!expr_out) expr_out_sz = 0;
+                        if (expr_out) expr_out[0] = 0;
+                        VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
                         if (etype == TYPE_FLOAT) {
                             fprintf(out, ", (double)(%s)", expr_out);
                         } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -337,7 +342,10 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                         } else {
                             fprintf(out, ", (long long)(%s)", expr_out);
                         }
+                        free(expr_out);
                     }
+                    free(vname);
+                    arg_count++;
                     p++;
                 }
             } else {
@@ -379,9 +387,11 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                 if (is_simple_var_or_keyword(vname, codegen_table)) {
                     fprintf(out, "%%s");
                 } else {
-                    char expr_out[MAX_STRING_LEN];
-                    VarType etype = parse_expression_from_string(vname, codegen_table,
-                        expr_out, sizeof(expr_out));
+                    int expr_out_sz = 65536;
+                    char *expr_out = (char*)malloc(expr_out_sz);
+                    if (!expr_out) expr_out_sz = 0;
+                    if (expr_out) expr_out[0] = 0;
+                    VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
                     if (etype == TYPE_FLOAT) {
                         fprintf(out, "%%g");
                     } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -391,6 +401,7 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                     } else {
                         fprintf(out, "%%lld");
                     }
+                    free(expr_out);
                 }
                 free(vname);
                 arg_count++;
@@ -442,9 +453,11 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                         }
                         free(mvname);
                     } else {
-                        char expr_out[MAX_STRING_LEN];
-                        VarType etype = parse_expression_from_string(vname, codegen_table,
-                            expr_out, sizeof(expr_out));
+                        int expr_out_sz = 65536;
+                        char *expr_out = (char*)malloc(expr_out_sz);
+                        if (!expr_out) expr_out_sz = 0;
+                        if (expr_out) expr_out[0] = 0;
+                        VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
                         if (etype == TYPE_FLOAT) {
                             fprintf(out, ", (double)(%s)", expr_out);
                         } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -454,6 +467,7 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                         } else {
                             fprintf(out, ", (long long)(%s)", expr_out);
                         }
+                        free(expr_out);
                     }
                     free(vname);
                     arg_count++;
@@ -629,8 +643,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             { const char *v=sc->default_val; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
             fprintf(out, "\");\n");
             for (int i = 0; i < sc->count; i++) {
-                char fv[MAX_IDENTIFIER_LEN*2+8];
-                obj_resolve_field(node->name, sc->fields[i].name, fv, sizeof(fv));
+                char *fv = obj_resolve_field_alloc(node->name, sc->fields[i].name);
                 if (declare_here) {
                     pad(out, indent);
                     fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", fv);
@@ -639,6 +652,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
                 fprintf(out, "_ltng_ds_set(&%s, \"", fv);
                 { const char *v=sc->fields[i].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
                 fprintf(out, "\");\n");
+                free(fv);
             }
         } else {
             pad(out, indent);
@@ -651,8 +665,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         return;
     }
     if (node->var_type == TYPE_ARRAY) {
-        char arrname[MAX_IDENTIFIER_LEN];
-        snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+        char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
         /* Array from expression returning an _ltng_ah handle (e.g. function call). */
         if (node->is_expr && node->array_elem_count == 0) {
             pad(out, indent);
@@ -664,6 +677,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             pad(out, indent);
             fprintf(out, "{ char *__ahv = _ltng_ds_new(%s); _ltng_ah *__ah = _ltng_ah_unpack(__ahv); if (__ah) { _ltng_arr_copy(__ah->d, &%s, &%s_len, &%s_cap, __ah->len); _ltng_ah_free(__ah); } free(__ahv); }\n",
                 node->value, arrname, node->name, node->name);
+            free(arrname);
             return;
         }
         /* Generate dynamic array declaration:
@@ -716,6 +730,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
             val = end;
             elem_idx++;
         }
+        free(arrname);
         return;
     }
     int _is_captured = (g_codegen_current_fn && g_codegen_all_fns &&
@@ -846,14 +861,15 @@ static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
                 int found = 0;
 
                 for (int i = 0; i < table->count && !found; i++) {
-                    char mv[MAX_IDENTIFIER_LEN];
-                    mangle_name(table->vars[i].name, mv, MAX_IDENTIFIER_LEN);
-                    if (strcmp(mv, margname) == 0 || strcmp(table->vars[i].name, argname) == 0) {
+                    char *mv = mangle_name_alloc(table->vars[i].name);
+                    int match = (strcmp(mv, margname) == 0 || strcmp(table->vars[i].name, argname) == 0);
+                    free(mv);
+                    if (match) {
                         switch (table->vars[i].type) {
                             case TYPE_INT: type_str = "int"; break;
-                            case TYPE_FLOAT: type_str = "int"; break; /* float merged into int */
+                            case TYPE_FLOAT: type_str = "int"; break;
                             case TYPE_STRING: type_str = "string"; break;
-                            case TYPE_CHAR: type_str = "string"; break; /* char merged into string */
+                            case TYPE_CHAR: type_str = "string"; break;
                             case TYPE_BOOL: type_str = "bool"; break;
                             case TYPE_OBJECT: type_str = "object"; break;
                             case TYPE_NULL: type_str = "null"; break;
@@ -954,8 +970,7 @@ static void codegen_read(FILE *out, ASTNode *node, int indent) {
 
 static void codegen_set(FILE *out, ASTNode *node, int indent) {
     if (node->var_type == TYPE_ARRAY) {
-        char arrname[MAX_IDENTIFIER_LEN];
-        snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+        char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
         if (node->is_expr && node->array_elem_count == 0) {
             /* Reassign from array-returning expression (ah handle). */
             pad(out, indent);
@@ -966,6 +981,7 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
             pad(out, indent);
             fprintf(out, "{ char *__ahv = _ltng_ds_new(%s); _ltng_ah *__ah = _ltng_ah_unpack(__ahv); if (__ah) { _ltng_arr_copy(__ah->d, &%s, &%s_len, &%s_cap, __ah->len); _ltng_ah_free(__ah); } free(__ahv); }\n",
                 node->value, arrname, node->name, node->name);
+            free(arrname);
             return;
         }
         if (!node->is_expr) {
@@ -1009,12 +1025,12 @@ static void codegen_set(FILE *out, ASTNode *node, int indent) {
             { const char *v=sc->default_val; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
             fprintf(out, "\");\n");
             for (int i = 0; i < sc->count; i++) {
-                char fv[MAX_IDENTIFIER_LEN*2+8];
-                obj_resolve_field(node->name, sc->fields[i].name, fv, sizeof(fv));
+                char *fv = obj_resolve_field_alloc(node->name, sc->fields[i].name);
                 pad(out, indent);
                 fprintf(out, "_ltng_ds_set(&%s, \"", fv);
                 { const char *v=sc->fields[i].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
                 fprintf(out, "\");\n");
+                free(fv);
             }
         } else {
             pad(out, indent);
@@ -1371,8 +1387,7 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
 
     if (!sc) return;
     for (int i = 0; i < sc->count; i++) {
-        char fv[MAX_IDENTIFIER_LEN*2+8];
-        obj_resolve_field(cname, sc->fields[i].name, fv, sizeof(fv));
+        char *fv = obj_resolve_field_alloc(cname, sc->fields[i].name);
         const char *fname = sc->fields[i].name;
         pad(out, indent);
         fprintf(out, "char *%s = _ltng_ds_new(\"\");\n", fv);
@@ -1396,6 +1411,7 @@ static void codegen_catch_bind(FILE *out, ASTNode *node, int indent) {
         } else {
             fprintf(out, "_ltng_ds_set(&%s, \"\" );\n", fv);
         }
+        free(fv);
     }
 }
 
@@ -1655,8 +1671,7 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             else if (node->var_type == TYPE_FLOAT) { fmt = "%g"; cast = "(double)("; }
             else if (node->var_type == TYPE_BOOL) { fmt = "%s"; cast = "("; }
             else { fmt = "%s"; cast = ""; }
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
             if (node->var_type == TYPE_BOOL) {
                 fprintf(out, "{ char *__apv = _ltng_ds_fmt(\"%s\", (%s) ? \"true\" : \"false\"); _ltng_arr_push(&%s, &%s_len, &%s_cap, __apv); free(__apv); }\n",
@@ -1666,11 +1681,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
                     fmt, cast, node->value, cast[0] ? ")" : "",
                     arrname, node->name, node->name);
             }
+            free(arrname);
             break;
         }
         case NODE_ARRAY_POP: {
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
             if (node->value[0] == '\0') {
                 /* pop() - no args, discard result */
@@ -1680,11 +1695,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
                 fprintf(out, "{ int __pi = (int)(%s); _ltng_arr_pop_index(%s, &%s_len, __pi); }\n",
                     node->value, arrname, node->name);
             }
+            free(arrname);
             break;
         }
         case NODE_ARRAY_SET: {
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
             if (node->is_expr) {
                 if (node->var_type == TYPE_INT) {
@@ -1704,11 +1719,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
                 fprintf(out, "{ int __aidx = %s; _ltng_arr_set(%s, &%s_len, &%s_cap, __aidx, \"%s\"); }\n",
                     node->array_index, arrname, node->name, node->name, node->value);
             }
+            free(arrname);
             break;
         }
         case NODE_ARRAY_INSERT: {
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             /* arr.insert(i, x) statement: node->name = arr cname,
                node->value = index expr, node->array_index = element expr. */
             const char *fmt;
@@ -1725,52 +1740,52 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             fprintf(out, "{ int __ii = (int)(%s); char *__aiv = _ltng_ds_fmt(\"%s\", %s%s%s); _ltng_arr_insert(&%s, &%s_len, &%s_cap, __ii, __aiv); free(__aiv); }\n",
                 node->value, fmt, cast, node->array_index, cast[0] ? ")" : "",
                 arrname, node->name, node->name);
+            free(arrname);
             break;
         }
         case NODE_ARRAY_REMOVE: {
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             /* arr.remove(i): node->name = arr cname, node->value = index expr. */
             pad(out, indent);
             fprintf(out, "_ltng_arr_remove(%s, &%s_len, (int)(%s));\n",
                 arrname, node->name, node->value);
+            free(arrname);
             break;
         }
         case NODE_ARRAY_COPY: {
             /* let b = a.copy(): node->name = dst cname, node->value = src cname. */
-            char srcname[MAX_IDENTIFIER_LEN];
-            snprintf(srcname, sizeof(srcname), "%s_data", node->value);
-            char dstname[MAX_IDENTIFIER_LEN];
-            snprintf(dstname, sizeof(dstname), "%s_data", node->name);
+            char *srcname = _ltng_cfmt("%s_data", node->value ? node->value : "");
+            char *dstname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
             fprintf(out, "_ltng_arr_copy(%s, &%s_data, &%s_len, &%s_cap, %s_len);\n",
                 srcname, node->name, node->name, node->name, node->value);
+            free(srcname); free(dstname);
             break;
         }
         case NODE_ARRAY_SLICE: {
             /* let b = a.slice(s, e): node->name = dst cname, node->value = src cname,
                node->array_index = "start,end" C expressions. */
-            char srcname[MAX_IDENTIFIER_LEN];
-            snprintf(srcname, sizeof(srcname), "%s_data", node->value);
+            char *srcname = _ltng_cfmt("%s_data", node->value ? node->value : "");
             pad(out, indent);
             fprintf(out, "_ltng_arr_slice(%s, %s_len, %s, &%s_data, &%s_len, &%s_cap);\n",
                 srcname, node->value, node->array_index, node->name, node->name, node->name);
+            free(srcname);
             break;
         }
         case NODE_ARRAY_SORT: {
             /* arr.sort() statement */
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
             fprintf(out, "_ltng_arr_sort(%s, %s_len);\n", arrname, node->name);
+            free(arrname);
             break;
         }
         case NODE_ARRAY_REVERSE: {
             /* arr.reverse() statement */
-            char arrname[MAX_IDENTIFIER_LEN];
-            snprintf(arrname, sizeof(arrname), "%s_data", node->name);
+            char *arrname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
             fprintf(out, "_ltng_arr_reverse(%s, %s_len);\n", arrname, node->name);
+            free(arrname);
             break;
         }
         case NODE_BLOCK:
@@ -1891,13 +1906,13 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             if (node->is_base_assign && node->args && node->args->value[0] != '\0') {
                 const char *recv = node->args->value;
                 if (node->args->var_type == TYPE_ARRAY) {
-                    char arrname[MAX_IDENTIFIER_LEN];
-                    snprintf(arrname, sizeof(arrname), "%s_data", recv);
+                    char *arrname = _ltng_cfmt("%s_data", recv);
                     pad(out, indent);
                     fprintf(out, "{ char *__ahv = _ltng_ds_new(");
                     emit_call_expr(out, node);
                     fprintf(out, "); _ltng_ah *__ah = _ltng_ah_unpack(__ahv); if (__ah) { _ltng_arr_copy(__ah->d,&%s,&%s_len,&%s_cap,__ah->len); _ltng_ah_free(__ah); } free(__ahv); }\n",
                         arrname, node->args->value, node->args->value);
+                    free(arrname);
                 } else {
                     pad(out, indent);
                     fprintf(out, "_ltng_ds_set(&%s, ", recv);
@@ -2301,13 +2316,13 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
             }
             for (ASTNode *p = fn->params; p; p = p->next) {
                 if (p->var_type == TYPE_ARRAY) {
-                    char arrname[MAX_IDENTIFIER_LEN];
-                    snprintf(arrname, sizeof(arrname), "%s_data", p->name);
+                    char *arrname = _ltng_cfmt("%s_data", p->name ? p->name : "");
                     fprintf(out, "    int %s_len = 0;\n", p->name);
                     fprintf(out, "    int %s_cap = 0;\n", p->name);
                     fprintf(out, "    char **%s = NULL;\n", arrname);
                     fprintf(out, "    { char *__ahv = _ltng_ds_new(_a_%s ? _a_%s : \"\"); _ltng_ah *__ah = _ltng_ah_unpack(__ahv); if (__ah) { _ltng_arr_copy(__ah->d, &%s, &%s_len, &%s_cap, __ah->len); _ltng_ah_free(__ah); } free(__ahv); }\n",
                         p->name, p->name, arrname, p->name, p->name);
+                    free(arrname);
                 } else if (is_var_captured_by_nested(fn, program->functions, p->name)) {
                     fprintf(out, "    char *%s = _ltng_ds_new(\"\");\n", p->name);
                     fprintf(out, "    _ltng_ds_set(&%s, _a_%s ? _a_%s : \"\");\n",
@@ -2337,12 +2352,11 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
                 int fcount = merge_param_schemas(&combined, fn->name, pidx);
                 if (fcount > 0) {
                     for (int fi = 0; fi < combined.count; fi++) {
-                        char fv[MAX_IDENTIFIER_LEN*2+8];
-                        obj_resolve_field(p->name, combined.fields[fi].name, fv, sizeof(fv));
-                        int bsz = (strcmp(combined.fields[fi].name, "obj") == 0) ? 512 : 256;
+                        char *fv = obj_resolve_field_alloc(p->name, combined.fields[fi].name);
                         fprintf(out, "    char *%s = _ltng_ds_new(\"", fv);
-                        { const char *v=combined.fields[fi].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\\n'){fputs("\\n",out);} else if(*v=='\\t'){fputs("\\t",out);} else fputc(*v,out);} }
+                        { const char *v=combined.fields[fi].value; for(;*v;v++){ if(*v=='\\'||*v=='\"') fputc('\\',out); if(*v=='\n'){fputs("\\n",out);} else if(*v=='\t'){fputs("\\t",out);} else fputc(*v,out);} }
                         fprintf(out, "\");\n");
+                        free(fv);
                     }
                 }
             }
