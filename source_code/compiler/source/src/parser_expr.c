@@ -1523,8 +1523,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                     }
                 } else if (lexer_peek(lexer).type == TOKEN_LPAREN && strcmp(tok.value, "typeof") != 0) {
-                    char mangled[MAX_IDENTIFIER_LEN];
-                    mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
+                    char *mangled = mangle_name_alloc(tok.value);
                     if (symbol_table_has(table, mangled) || symbol_table_has(table, tok.value)) {
                         /* dynamic indirect call through variable */
                         lexer_next(lexer); /* consume ( */
@@ -1534,10 +1533,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 "function with 'base' parameter must be called with method syntax (receiver.method(args))");
                             skip_to_newline(lexer);
                             pos += snprintf(out + pos, out_size - pos, "0");
+                            free(mangled);
                             break;
                         }
                         char *cexpr = (char*)malloc(65536);
-                        if (!cexpr) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; }
+                        if (!cexpr) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); free(mangled); break; }
                         cexpr[0] = 0;
                         build_call_cexpr(call, cexpr, 65536);
                         int chained_call = append_immediate_call_chains(lexer, table, cexpr, 65536);
@@ -1579,7 +1579,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             free(fr_cname2);
                             }
                         }
+                        free(mangled);
                     } else {
+                        free(mangled);
                         goto collect_ident_var;
                     }
                 } else if (lexer_peek(lexer).type == TOKEN_DOT) {
@@ -1755,8 +1757,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     pending_divmod = _pd_save; pending_divmod_is_mod = _pd_mod_save;
                     pending_divmod_line = _pd_l_save; pending_divmod_col = _pd_c_save;
                     pending_mod_op_pos = _pd_mop_save;
-                    char mangled[MAX_IDENTIFIER_LEN];
-                    mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
+                    char *mangled = mangle_name_alloc(tok.value);
                     if (!symbol_table_has(table, mangled)) {
                         ASTNode *fndef = find_function_ast_by_name(tok.value);
                         if (fndef) {
@@ -2361,8 +2362,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 {
                     Token nxt = lexer_peek(lexer);
                     if (nxt.type == TOKEN_LBRACKET) {
-                        char mangled[MAX_IDENTIFIER_LEN];
-                        mangle_name(tok.value, mangled, MAX_IDENTIFIER_LEN);
+                        char *mangled = mangle_name_alloc(tok.value);
                         VarType vt = symbol_table_get(table, mangled);
 
                         if (vt == TYPE_ARRAY) {

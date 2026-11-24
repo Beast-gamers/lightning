@@ -155,11 +155,17 @@ void objschema_deep_copy(ObjSchema *dst, const ObjSchema *src) {
 }
 void obj_build_all(ObjSchema *s) {
     /* "obj" field = all values in order, space-separated */
-    char buf[MAX_STRING_LEN];
+    size_t cap = 256, len = 0;
+    char *buf = (char*)malloc(cap);
+    if (!buf) return;
     buf[0] = 0;
     for (int i = 0; i < s->count; i++) {
-        if (i > 0) strncat(buf, " ", sizeof(buf)-strlen(buf)-1);
-        if (s->fields[i].value) strncat(buf, s->fields[i].value, sizeof(buf)-strlen(buf)-1);
+        const char *v = s->fields[i].value ? s->fields[i].value : "";
+        size_t vlen = strlen(v);
+        size_t need = len + vlen + 2;
+        if (need > cap) { while (cap < need) cap *= 2; char *nb = (char*)realloc(buf, cap); if (!nb) { free(buf); return; } buf = nb; }
+        if (i > 0) buf[len++] = ' ';
+        memcpy(buf + len, v, vlen); len += vlen; buf[len] = '\0';
     }
     /* store as a synthesized field named "obj" if not present, else update */
     int found = 0;
@@ -186,6 +192,7 @@ void obj_build_all(ObjSchema *s) {
             break;
         }
     }
+    free(buf);
 }
 
 void register_function(const char *name, int param_count) {

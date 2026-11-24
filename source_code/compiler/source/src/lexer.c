@@ -34,8 +34,8 @@ void lexer_init(Lexer *lexer, char *source) {
     lexer->col = 1;
     lexer->count = 0;
     lexer->current = 0;
-    lexer->token_capacity = MAX_TOKENS;
-    lexer->tokens = malloc(MAX_TOKENS * sizeof(Token));
+    lexer->token_capacity = 4096;
+    lexer->tokens = malloc(4096 * sizeof(Token));
     if (!lexer->tokens) {
         fprintf(stderr, "Error: Cannot allocate token buffer\n");
         exit(1);
