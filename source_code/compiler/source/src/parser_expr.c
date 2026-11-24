@@ -2255,8 +2255,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     if (nxt.type == TOKEN_PLUS_PLUS || nxt.type == TOKEN_MINUS_MINUS) {
                         lexer_next(lexer); /* consume postfix op */
                         if (!is_bool_value(tok.value) && !is_type_keyword(tok.value) && !is_ltng_reserved(tok.value)) {
-                            char mangled2[MAX_IDENTIFIER_LEN];
-                            mangle_name(tok.value, mangled2, MAX_IDENTIFIER_LEN);
+                            char *mangled2 = mangle_name_alloc(tok.value);
                             if (symbol_table_has(table, mangled2) && !symbol_table_is_const(table, mangled2)) {
                                 /* Rewind output: replace variable conversion with statement expression */
                                 pos = saved_pos;
@@ -2297,12 +2296,14 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         if (!type_locked) result_type = TYPE_INT;
                                     }
                                 }
+                                free(mangled2);
                                 continue;
                             } else {
                                 pos = saved_pos;
                                 pos += snprintf(out + pos, out_size - pos,
                                     "({ snprintf(%s, sizeof(%s), \"%%s\", %s); %s; })",
                                     mangled2, mangled2, mangled2, mangled2);
+                                free(mangled2);
                                 continue;
                             }
                         }
