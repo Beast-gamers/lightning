@@ -975,7 +975,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 if (off == 14) { /* (double)atoll(name) */ if (*p==')' && *(p+1)==')' && *(p+2)=='\0') close_ok = 1; }
                                 else { if (*p==')' && *(p+1)=='\0') close_ok = 1; }
                                 if (n > 0 && close_ok) {
-                                    char mangled_v[MAX_IDENTIFIER_LEN]; mangle_name(vname, mangled_v, MAX_IDENTIFIER_LEN);
+                                    char *mangled_v = mangle_name_alloc(vname);
                                     int is_dyn = 0;
                                     if (symbol_table_has(table, mangled_v) && symbol_table_is_param(table, mangled_v) &&
                                         !symbol_table_get_locked(table, mangled_v)) {
@@ -997,6 +997,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         bufs[bi][MAX_STRING_LEN - 1] = '\0';
                                         *types[bi] = TYPE_STRING; /* treat as dynamic/string */
                                     }
+                                    free(mangled_v);
                                 }
                             }
                         }
@@ -1079,11 +1080,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         "Cannot use reserved word as variable name");
                     break;
                 }
-                char mangled[MAX_IDENTIFIER_LEN];
-                mangle_name(name.value, mangled, MAX_IDENTIFIER_LEN);
+                char *mangled = mangle_name_alloc(name.value);
                 if (!symbol_table_has(table, mangled)) {
                     error_state_add(parser_errors, name.line, name.col,
                         "Variable not declared");
+                    free(mangled);
                     break;
                 }
                 VarType vt = symbol_table_get(table, mangled);
@@ -1118,6 +1119,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             mangled, mangled, mangled);
                     if (!type_locked) result_type = TYPE_INT;
                 }
+                free(mangled);
                 break;
             }
             case TOKEN_INT_LIT:
@@ -1576,10 +1578,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             strcmp(_am, "contains") == 0 || strcmp(_am, "index_of") == 0 ||
                             strcmp(_am, "sort") == 0 || strcmp(_am, "reverse") == 0 ||
                             strcmp(_am, "copy") == 0 || strcmp(_am, "slice") == 0) {
-                            char _am_mangled[MAX_IDENTIFIER_LEN];
-                            mangle_name(tok.value, _am_mangled, MAX_IDENTIFIER_LEN);
-                            if (symbol_table_has(table, _am_mangled) &&
-                                symbol_table_get(table, _am_mangled) == TYPE_ARRAY) {
+                            char *_am_mangled = mangle_name_alloc(tok.value);
+                            int _am_is_arr = symbol_table_has(table, _am_mangled) &&
+                                symbol_table_get(table, _am_mangled) == TYPE_ARRAY;
+                            free(_am_mangled);
+                            if (_am_is_arr) {
                                 /* Don't consume - TYPE_ARRAY case handles array methods */
                                 goto collect_ident_var;
                             }
