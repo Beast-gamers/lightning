@@ -266,7 +266,7 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                     char *expr_out = (char*)malloc(expr_out_sz);
                     if (!expr_out) expr_out_sz = 0;
                     if (expr_out) expr_out[0] = 0;
-                    VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
+                    VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, &expr_out, &expr_out_sz) : TYPE_INT;
                     if (etype == TYPE_FLOAT) {
                         fprintf(out, "%%g");
                     } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -332,7 +332,7 @@ static void codegen_assign_interpolated(FILE *out, const char *varname, const ch
                         char *expr_out = (char*)malloc(expr_out_sz);
                         if (!expr_out) expr_out_sz = 0;
                         if (expr_out) expr_out[0] = 0;
-                        VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
+                        VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, &expr_out, &expr_out_sz) : TYPE_INT;
                         if (etype == TYPE_FLOAT) {
                             fprintf(out, ", (double)(%s)", expr_out);
                         } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -391,7 +391,7 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                     char *expr_out = (char*)malloc(expr_out_sz);
                     if (!expr_out) expr_out_sz = 0;
                     if (expr_out) expr_out[0] = 0;
-                    VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
+                    VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, &expr_out, &expr_out_sz) : TYPE_INT;
                     if (etype == TYPE_FLOAT) {
                         fprintf(out, "%%g");
                     } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {
@@ -457,7 +457,7 @@ static void codegen_write_interpolated(FILE *out, const char *str, int indent) {
                         char *expr_out = (char*)malloc(expr_out_sz);
                         if (!expr_out) expr_out_sz = 0;
                         if (expr_out) expr_out[0] = 0;
-                        VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, expr_out, expr_out_sz) : TYPE_INT;
+                        VarType etype = expr_out ? parse_expression_from_string(vname, codegen_table, &expr_out, &expr_out_sz) : TYPE_INT;
                         if (etype == TYPE_FLOAT) {
                             fprintf(out, ", (double)(%s)", expr_out);
                         } else if (etype == TYPE_STRING || etype == TYPE_CHAR || etype == TYPE_OBJECT) {

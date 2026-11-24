@@ -823,8 +823,9 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                                     free(errmsg);
                                 }
                             } else {
-                                char *check = (char*)malloc(65536); if(check) check[0]=0;
-                                parse_expression_from_string(vname, table, check, 65536);
+                                int check_cap = 65536;
+                                char *check = (char*)malloc(check_cap); if(check) check[0]=0;
+                                parse_expression_from_string(vname, table, &check, &check_cap);
                             }
                             int voff = (int)(vstart - 2 - arg.value);
                             int vtotal = (int)(sp - (vstart - 2) + 1);
@@ -2201,8 +2202,9 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
                 /* Complex/runtime arg: compile conversion expression via general path, then adapt for typed storage */
                 char *conv_expr_src = (char*)malloc(65536); if(conv_expr_src) conv_expr_src[0]=0;
                 snprintf(conv_expr_src, 65536, "%s(%s)", conv.value, inner_raw);
-                char *compiled = (char*)malloc(65536); if(compiled) compiled[0]=0; compiled[0] = '\0';
-                VarType ctype = parse_expression_from_string(conv_expr_src, table, compiled, 65536);
+                int compiled_cap = 65536;
+                char *compiled = (char*)malloc(compiled_cap); if(compiled) compiled[0]=0; compiled[0] = '\0';
+                VarType ctype = parse_expression_from_string(conv_expr_src, table, &compiled, &compiled_cap);
                 if (compiled[0] == '\0') snprintf(compiled, 65536, "0");
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
@@ -3172,8 +3174,9 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
         expr_rhs_src[rpos] = '\0';
         char *full_expr = (char*)malloc(65536); if(full_expr) full_expr[0]=0;
         snprintf(full_expr, 65536, "%s %c (%s)", name.value, opchar, expr_rhs_src);
-        char *expr_out = (char*)malloc(65536); if(expr_out) expr_out[0]=0;
-        VarType etype = parse_expression_from_string(full_expr, table, expr_out, 65536);
+        int expr_out_cap = 65536;
+        char *expr_out = (char*)malloc(expr_out_cap); if(expr_out) expr_out[0]=0;
+        VarType etype = parse_expression_from_string(full_expr, table, &expr_out, &expr_out_cap);
         if (!check_set_type_immutable(table, mangled, etype, set_tok.line, set_tok.col, lexer))
             return;
         symbol_table_update(table, mangled, etype);
@@ -3656,8 +3659,9 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             if (!handled) {
                 char *conv_expr_src = (char*)malloc(65536); if(conv_expr_src) conv_expr_src[0]=0;
                 snprintf(conv_expr_src, 65536, "%s(%s)", conv.value, inner_raw);
-                char *compiled = (char*)malloc(65536); if(compiled) compiled[0]=0; compiled[0] = '\0';
-                VarType ctype = parse_expression_from_string(conv_expr_src, table, compiled, 65536);
+                int compiled_cap = 65536;
+                char *compiled = (char*)malloc(compiled_cap); if(compiled) compiled[0]=0; compiled[0] = '\0';
+                VarType ctype = parse_expression_from_string(conv_expr_src, table, &compiled, &compiled_cap);
                 if (compiled[0] == '\0') snprintf(compiled, 65536, "0");
                 if (strcmp(conv.value, "toint") == 0 || strcmp(conv.value, "int") == 0) {
                     expr_type = TYPE_INT;
@@ -4063,8 +4067,9 @@ void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
         }
         char *full_expr = (char*)malloc(65536); if(full_expr) full_expr[0]=0;
         snprintf(full_expr, 65536, "%s + 1", name.value);
-        char *expr_out = (char*)malloc(65536); if(expr_out) expr_out[0]=0;
-        VarType etype = parse_expression_from_string(full_expr, table, expr_out, 65536);
+        int expr_out_cap = 65536;
+        char *expr_out = (char*)malloc(expr_out_cap); if(expr_out) expr_out[0]=0;
+        VarType etype = parse_expression_from_string(full_expr, table, &expr_out, &expr_out_cap);
         if (!symbol_table_has(table, mangled)) {
             symbol_table_update(table, mangled, etype);
         } else {
@@ -4084,8 +4089,9 @@ void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
         if (symbol_table_is_const(table, mangled)) { skip_to_newline(lexer); return; }
         char *full_expr = (char*)malloc(65536); if(full_expr) full_expr[0]=0;
         snprintf(full_expr, 65536, "%s - 1", name.value);
-        char *expr_out = (char*)malloc(65536); if(expr_out) expr_out[0]=0;
-        VarType etype = parse_expression_from_string(full_expr, table, expr_out, 65536);
+        int expr_out_cap = 65536;
+        char *expr_out = (char*)malloc(expr_out_cap); if(expr_out) expr_out[0]=0;
+        VarType etype = parse_expression_from_string(full_expr, table, &expr_out, &expr_out_cap);
         if (!symbol_table_has(table, mangled)) {
             symbol_table_update(table, mangled, etype);
         } else {
@@ -4109,8 +4115,9 @@ void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
             if (!symbol_table_has(table, mangled) || symbol_table_is_const(table, mangled)) { lexer->current = saved; return; }
             char *full_expr = (char*)malloc(65536); if(full_expr) full_expr[0]=0;
             snprintf(full_expr, 65536, "%s + 1", name.value);
-            char *expr_out = (char*)malloc(65536); if(expr_out) expr_out[0]=0;
-            VarType etype = parse_expression_from_string(full_expr, table, expr_out, 65536);
+            int expr_out_cap = 65536;
+            char *expr_out = (char*)malloc(expr_out_cap); if(expr_out) expr_out[0]=0;
+            VarType etype = parse_expression_from_string(full_expr, table, &expr_out, &expr_out_cap);
             symbol_table_update(table, mangled, etype);
             const char *cname = symbol_table_get_cname(table, mangled);
             ASTNode *node = create_node(NODE_SET, cname, expr_out);
@@ -4126,8 +4133,9 @@ void transform_inc_dec_stmt(Lexer *lexer, SymbolTable *table) {
             if (!symbol_table_has(table, mangled) || symbol_table_is_const(table, mangled)) { lexer->current = saved; return; }
             char *full_expr = (char*)malloc(65536); if(full_expr) full_expr[0]=0;
             snprintf(full_expr, 65536, "%s - 1", name.value);
-            char *expr_out = (char*)malloc(65536); if(expr_out) expr_out[0]=0;
-            VarType etype = parse_expression_from_string(full_expr, table, expr_out, 65536);
+            int expr_out_cap = 65536;
+            char *expr_out = (char*)malloc(expr_out_cap); if(expr_out) expr_out[0]=0;
+            VarType etype = parse_expression_from_string(full_expr, table, &expr_out, &expr_out_cap);
             symbol_table_update(table, mangled, etype);
             const char *cname = symbol_table_get_cname(table, mangled);
             ASTNode *node = create_node(NODE_SET, cname, expr_out);
@@ -7394,26 +7402,40 @@ Program *parse(Lexer *lexer, ErrorState *errors) {
 }
 
 VarType parse_expression_from_string(const char *expr, SymbolTable *table,
-                                     char *out, int out_size) {
+                                     char **out, int *out_cap) {
     char *buf = (char*)malloc(65536); if(buf) buf[0]=0;
     snprintf(buf, 65536, "%s\n", expr);
-    Lexer *tmp_lexer = (Lexer *)malloc(sizeof(Lexer));
-    if (!tmp_lexer) { out[0] = '\0'; return TYPE_INT; }
-    lexer_init(tmp_lexer, buf);
-    ErrorState tmp_errors;
-    memset(&tmp_errors, 0, sizeof(tmp_errors));
-    tmp_errors.filename = ltng_strdup("<expr>");
-    lexer_tokenize(tmp_lexer, &tmp_errors);
-    ErrorState *target = codegen_get_errors();
-    if (!target) target = parser_errors;
-    if (!target) target = &tmp_errors;
-    ErrorState *saved = parser_errors;
-    parser_errors = target;
-    VarType result = collect_expression(tmp_lexer, table, out, out_size, 0, 0, NULL, NULL, NULL, NULL);
-    parser_errors = saved;
-    free(tmp_lexer);
-    free(tmp_errors.filename);
-    return result;
+    int cap = (out_cap && *out_cap > 0) ? *out_cap : 65536;
+    if (!out || !*out) { cap = 65536; if (out) *out = (char*)malloc(cap); }
+    if (!out || !*out) { free(buf); return TYPE_INT; }
+    (*out)[0] = '\0';
+    for (int attempt = 0; attempt < 8; attempt++) {
+        Lexer *tmp_lexer = (Lexer *)malloc(sizeof(Lexer));
+        if (!tmp_lexer) { (*out)[0] = '\0'; free(buf); return TYPE_INT; }
+        lexer_init(tmp_lexer, buf);
+        ErrorState tmp_errors;
+        memset(&tmp_errors, 0, sizeof(tmp_errors));
+        tmp_errors.filename = ltng_strdup("<expr>");
+        lexer_tokenize(tmp_lexer, &tmp_errors);
+        ErrorState *target = codegen_get_errors();
+        if (!target) target = parser_errors;
+        if (!target) target = &tmp_errors;
+        ErrorState *saved = parser_errors;
+        parser_errors = target;
+        VarType result = collect_expression(tmp_lexer, table, *out, cap, 0, 0, NULL, NULL, NULL, NULL);
+        parser_errors = saved;
+        free(tmp_lexer);
+        free(tmp_errors.filename);
+        if ((int)strlen(*out) < cap - 1) { if (out_cap) *out_cap = cap; free(buf); return result; }
+        cap *= 2;
+        char *nb = (char*)realloc(*out, cap);
+        if (!nb) { free(buf); return result; }
+        *out = nb;
+        (*out)[0] = '\0';
+    }
+    if (out_cap) *out_cap = cap;
+    free(buf);
+    return TYPE_INT;
 }
 
 void free_node_list(ASTNode *node) {

@@ -191,7 +191,7 @@ int name_in_list(char **names, int count, const char *name);
 int skip_default_expr(Lexer *lexer, int start);
 void prescan_functions(Lexer *lexer);
 Program * parse(Lexer *lexer, ErrorState *errors);
-VarType parse_expression_from_string(const char *expr, SymbolTable *table, char *out, int out_size);
+VarType parse_expression_from_string(const char *expr, SymbolTable *table, char **out, int *out_cap);
 void free_node_list(ASTNode *node);
 void codegen_free(Program *program);
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);

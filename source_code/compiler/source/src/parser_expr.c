@@ -1298,7 +1298,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     }
 
                     /* Determine arg form/type. Compile complex expressions; keep simple idents/lits raw. */
-                    char *inner_c = (char*)malloc(65536); if (!inner_c) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; } inner_c[0] = '\0';
+                    int inner_c_cap = 65536;
+                    char *inner_c = (char*)malloc(inner_c_cap); if (!inner_c) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; } inner_c[0] = '\0';
                     const char *inner_expr = inner;
                     VarType inner_ctype = TYPE_STRING;
                     int inner_compiled = 0;
@@ -1335,7 +1336,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             free(mname);
                         } else {
                             /* Complex expression: compile */
-                            inner_ctype = parse_expression_from_string(inner, table, inner_c, 65536);
+                            inner_ctype = parse_expression_from_string(inner, table, &inner_c, &inner_c_cap);
                             if (inner_c[0] != '\0') { inner_expr = inner_c; inner_compiled = 1; }
                             else { inner_ctype = TYPE_STRING; }
                         }
@@ -3486,8 +3487,9 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                             }
                         }
                         if (!folded) {
-                            char *check = (char*)malloc(65536);
-                            if (check) { check[0]=0; (void)parse_expression_from_string(vname, table, check, 65536); free(check); }
+                            int check_cap = 65536;
+                            char *check = (char*)malloc(check_cap);
+                            if (check) { check[0]=0; (void)parse_expression_from_string(vname, table, &check, &check_cap); free(check); }
                             int voff = (int)(vstart - 2 - tok->value);
                             int vtotal = (int)(sp - (vstart - 2) + 1);
                             for (int ci = voff; ci < voff + vtotal; ci++) { RES_ENSURE(1); resolved[rlen++] = tok->value[ci]; }

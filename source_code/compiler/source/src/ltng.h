@@ -7,9 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#define MAX_TOKENS 1024  /* initial token capacity */
-#define MAX_STRING_LEN 4096
-#define MAX_IDENTIFIER_LEN 256
+/* Legacy fixed-limit macros removed: buffers are dynamic. */
 
 typedef enum {
     TOKEN_WRITE,
@@ -310,7 +308,7 @@ void mangle_name(const char *in, char *out, int out_size);
 char *mangle_name_alloc(const char *in);
 
 VarType parse_expression_from_string(const char *expr, SymbolTable *table,
-                                     char *out, int out_size);
+                                     char **out, int *out_cap);
 ErrorState *codegen_get_errors(void);
 int symbol_table_has(SymbolTable *table, const char *name);
 VarType symbol_table_get(SymbolTable *table, const char *name);
