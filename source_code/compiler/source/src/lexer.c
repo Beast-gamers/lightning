@@ -440,8 +440,8 @@ void lexer_tokenize(Lexer *lexer, ErrorState *errors) {
                 "Semicolons are not allowed in ltng");
             lexer_advance(lexer);
         } else {
-            char *msg = (char*)malloc(64);
-            if (msg) { snprintf(msg, 64, "Unexpected character '%c'", c); error_state_add(errors, lexer->line, lexer->col, msg); free(msg); }
+            char *msg = _ltng_cfmt("Unexpected character '%c'", c);
+            if (msg) { error_state_add(errors, lexer->line, lexer->col, msg); free(msg); }
             else { error_state_add(errors, lexer->line, lexer->col, "Unexpected character"); }
             lexer_advance(lexer);
         }
