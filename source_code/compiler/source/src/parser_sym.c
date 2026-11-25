@@ -927,11 +927,13 @@ int has_operator_ahead(Lexer *lexer) {
 
 void transform_string_multiply(char *expr, int size) {
     if (strstr(expr, "*") == NULL) return;
-    char *tmp = (char*)malloc(2048); if(!tmp) return;
-    strncpy(tmp, expr, 2047);
-    tmp[2047] = 0;
+    size_t elen = expr ? strlen(expr) : 0;
+    size_t bufcap = elen + 64;
+    if (bufcap < 2048) bufcap = 2048;
+    char *tmp = (char*)malloc(bufcap); if(!tmp) return;
+    memcpy(tmp, expr, elen + 1);
     char *start = tmp;
-    char *left = (char*)calloc(1,512); char *right = (char*)calloc(1,512);
+    char *left = (char*)calloc(1,bufcap); char *right = (char*)calloc(1,bufcap);
     if(!left||!right){free(tmp);free(left);free(right);return;}
     int found = 0;
     int depth_brace = 0;
@@ -965,8 +967,8 @@ void transform_string_multiply(char *expr, int size) {
                 *e = 0;
                 e--;
             }
-            strncpy(left, s, 511);
-            left[511] = 0;
+            strncpy(left, s, bufcap - 1);
+            left[bufcap - 1] = 0;
             s = p + 1;
             while (*s == ' ' || *s == '\t') s++;
             e = s + strlen(s) - 1;
@@ -974,8 +976,8 @@ void transform_string_multiply(char *expr, int size) {
                 *e = 0;
                 e--;
             }
-            strncpy(right, s, 511);
-            right[511] = 0;
+            strncpy(right, s, bufcap - 1);
+            right[bufcap - 1] = 0;
             /* trim trailing tokens that belong to outer context (e.g. closing parens of wrapper) */
             /* keep only the first simple operand: number, identifier, or parenthesized expr */
             {
@@ -1031,7 +1033,8 @@ void transform_string_multiply(char *expr, int size) {
         }
     }
     if (!found) { free(tmp); free(left); free(right); return; }
-    char *result = (char*)malloc(2048); if(!result){free(tmp);free(left);free(right);return;}
+    size_t result_cap = bufcap * 2;
+    char *result = (char*)malloc(result_cap); if(!result){free(tmp);free(left);free(right);return;}
     /* determine whether the count operand (right) is a pure numeric literal;
        if it's a variable/string buffer, convert with atoi() so we don't cast a pointer */
     int right_is_num = 1;
@@ -1052,8 +1055,9 @@ void transform_string_multiply(char *expr, int size) {
     if (right_is_num) {
         count_expr = right;
     } else {
-        cntbuf = (char*)malloc(512); if(!cntbuf){free(tmp);free(left);free(right);free(result);return;}
-        snprintf(cntbuf, 512, "atoll(%s)", right);
+        size_t ccap = strlen(right) + 16;
+        cntbuf = (char*)malloc(ccap); if(!cntbuf){free(tmp);free(left);free(right);free(result);return;}
+        snprintf(cntbuf, ccap, "atoll(%s)", right);
         count_expr = cntbuf;
     }
     int left_is_num = 1;
@@ -1071,13 +1075,13 @@ void transform_string_multiply(char *expr, int size) {
     }
     if (left_is_num && (right[0] == '"' || (right[0] == '\'' && strlen(right) >= 3))) {
         /* number * "string" */
-        snprintf(result, 2047, "_ltng_repeat_dyn(%s,(long long)(%s))", right, left);
+        snprintf(result, result_cap, "_ltng_repeat_dyn(%s,(long long)(%s))", right, left);
     } else if (right_is_num && (left[0] == '"' || (left[0] == '\'' && strlen(left) >= 3))) {
         /* "string" * number */
-        snprintf(result, 2047, "_ltng_repeat_dyn(%s,(long long)(%s))", left, right);
+        snprintf(result, result_cap, "_ltng_repeat_dyn(%s,(long long)(%s))", left, right);
     } else {
         /* variable cases: assume left is string, right is count */
-        snprintf(result, 2047, "_ltng_repeat_dyn(%s,(long long)(%s))", left, count_expr);
+        snprintf(result, result_cap, "_ltng_repeat_dyn(%s,(long long)(%s))", left, count_expr);
     }
     strncpy(expr, result, size - 1);
     expr[size - 1] = 0;
@@ -1108,20 +1112,24 @@ int part_is_stringy(const char *part);
    parentheses. */
 void normalize_string_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
     if (!buf || buf_size < 2) return;
-    char *work = (char*)malloc(8192); if(!work) return;
-    char *content = (char*)malloc(4096);
-    char *ires = (char*)malloc(4096);
-    char *lhs = (char*)malloc(4096);
-    char *rhs = (char*)malloc(2048);
-    char *str_operand = (char*)malloc(4096);
-    char *nse_left = (char*)malloc(4096);
-    char *nse_right = (char*)malloc(1024);
-    char (*parts)[2048] = (char(*)[2048])malloc(16 * 2048);
+    size_t work_cap = strlen(buf) + 256; if (work_cap < 8192) work_cap = 8192;
+    size_t big_cap = work_cap;
+    size_t mid_cap = work_cap / 2; if (mid_cap < 4096) mid_cap = 4096;
+    size_t small_cap = work_cap / 4; if (small_cap < 2048) small_cap = 2048;
+    int parts_cap = 16; size_t part_w = 2048;
+    char *work = (char*)malloc(work_cap); if(!work) return;
+    char *content = (char*)malloc(mid_cap);
+    char *ires = (char*)malloc(mid_cap);
+    char *lhs = (char*)malloc(mid_cap);
+    char *rhs = (char*)malloc(small_cap);
+    char *str_operand = (char*)malloc(mid_cap);
+    char *nse_left = (char*)malloc(mid_cap);
+    char *nse_right = (char*)malloc(small_cap);
+    char (*parts)[2048] = (char(*)[2048])malloc((size_t)parts_cap * part_w);
     if(!content||!ires||!lhs||!rhs||!str_operand||!nse_left||!nse_right||!parts){
         free(content);free(ires);free(lhs);free(rhs);free(str_operand);free(nse_left);free(nse_right);free(parts);free(work);return;
     }
-    strncpy(work, buf, 8192 - 1);
-    work[8192 - 1] = 0;
+    memcpy(work, buf, strlen(buf) + 1);
     int just_wrapped = 0;
 
     for (int pass = 0; pass < (int)strlen(work); pass++) {
@@ -1200,10 +1208,10 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                 else if (cc == '*' && d == 0) hm = 1;
             }
             if (hp || hm) {
-                char *wbuf = (char*)malloc(8192); if(!wbuf){free(work); return;}
-                snprintf(wbuf, 8192, "(%s)", work);
-                strncpy(work, wbuf, 8192 - 1); work[8192 - 1] = 0;
-                free(wbuf);
+                size_t need = strlen(work) + 3;
+                if (need > work_cap) { while (work_cap < need) work_cap *= 2; char *nw = (char*)realloc(work, work_cap); if(!nw){return;} work = nw; }
+                memmove(work + 1, work, strlen(work) + 1);
+                work[0] = '('; strcat(work, ")");
                 just_wrapped = 1;
                 continue;
             }
@@ -1211,7 +1219,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
         }
         int clen = be - bs - 1;
         content[0]=0;
-        if (clen >= (int)4096) clen = 4096 - 1;
+        if (clen >= (int)mid_cap) clen = (int)mid_cap - 1;
         memcpy(content, work + bs + 1, clen);
         content[clen] = 0;
 
@@ -1227,14 +1235,14 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                 else if (*pp == '+' && idp == 0 && idb == 0 && idbr == 0) {
                     *pp = 0; char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++;
                     char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; }
-                    strncpy(parts[nip++], s2, 2048 - 1); parts[nip - 1][2048 - 1] = 0; ist = pp + 1;
+                    strncpy(parts[nip++], s2, (int)small_cap - 1); parts[nip - 1][(int)small_cap - 1] = 0; ist = pp + 1;
                 }
             }
-            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } strncpy(parts[nip++], s2, 2048 - 1); parts[nip - 1][2048 - 1] = 0; }
+            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } strncpy(parts[nip++], s2, (int)small_cap - 1); parts[nip - 1][(int)small_cap - 1] = 0; }
             if (nip < 2) break;
             /* Helper logic inline: normalize a part and make it stringy for concat */
             ires[0]=0;
-            strncpy(ires, parts[0], 4096 - 1); ires[4096 - 1] = 0;
+            strncpy(ires, parts[0], (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
             normalize_string_expr(ires, 4096, array_access_used, table);
             for (int k = 1; k < nip; k++) {
                 char *nse_p = (char*)malloc(2048); if(!nse_p) continue;
@@ -1267,7 +1275,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                             while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
                             if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
                                 char *tmp = (char*)malloc(512); if(!tmp){sides[si][0]=0;} else { int tl = (int)(inner - start);
-                                if (tl >= (int)512) tl = 512-1;
+                                if (tl >= (int)512) tl = (int)small_cap-1;
                                 memcpy(tmp, start, tl); tmp[tl]=0;
                                 strncpy(sides[si], tmp, slens[si]-1); sides[si][slens[si]-1]=0; free(tmp); }
                                 *numwrap[si] = 1;
@@ -1280,7 +1288,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
 
                 /* Build char* args for concat helpers (_ltng_add_sn/_ltng_concat_dyn take const char*). */
                 char *lhs_arg = (char*)malloc(4200); char *rhs_arg = (char*)malloc(4200);
-                if(!lhs_arg||!rhs_arg){free(lhs_arg);free(rhs_arg); free(nse_p); strncpy(ires,work,4096-1); ires[4096-1]=0; continue;}
+                if(!lhs_arg||!rhs_arg){free(lhs_arg);free(rhs_arg); free(nse_p); strncpy(ires,work,(int)mid_cap-1); ires[(int)mid_cap-1]=0; continue;}
                 #define _LTNG_SN_ARG(src, dst, dstsz, is_str) do { \
                     const char *_ps = (src); while (*_ps==' '||*_ps=='\t') _ps++; \
                     if (is_str) { \
@@ -1323,7 +1331,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                             while (*end==' '||*end=='\t') end++;
                             if (*end == '\0') {
                                 char *nm = (char*)malloc(512); if(nm){ int nl = (int)(qe - sp);
-                                if (nl >= (int)512) nl = (int)512-1;
+                                if (nl >= (int)512) nl = (int)(int)small_cap-1;
                                 memcpy(nm, sp, nl); nm[nl] = 0;
                                 if (symbol_table_has(table, nm)) {
                                     VarType vt = symbol_table_get(table, nm);
@@ -1386,13 +1394,13 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                         snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 }
                 free(lhs_arg); free(rhs_arg);
-                strncpy(ires, st, 4096 - 1); ires[4096 - 1] = 0;
+                strncpy(ires, st, (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
                 free(st);
                 free(nse_p);
             }
             char *nb = (char*)malloc(8192); if(!nb) nb=(char*)calloc(1,1);
             snprintf(nb, 8192, "%.*s%s%s", bs, work, ires, work + be + 1);
-            strncpy(work, nb, 8192 - 1); work[8192 - 1] = 0;
+            strncpy(work, nb, (int)work_cap - 1); work[(int)work_cap - 1] = 0;
             free(nb);
         } else if (do_mul) {
             int d = 0, inq = 0; char qc = 0; int star = -1;
@@ -1412,9 +1420,9 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
             }
             if (star < 0) break;
             nse_left[0]=0; nse_right[0]=0;
-            int llen = star; if (llen >= (int)4096) llen = 4096 - 1;
+            int llen = star; if (llen >= (int)mid_cap) llen = (int)mid_cap - 1;
             memcpy(nse_left, content, llen); nse_left[llen] = 0;
-            int rlen = clen - star - 1; if (rlen >= (int)1024) rlen = 1024 - 1;
+            int rlen = clen - star - 1; if (rlen >= (int)small_cap) rlen = (int)small_cap - 1;
             memcpy(nse_right, content + star + 1, rlen); nse_right[rlen] = 0;
             { char *s = nse_left; while (*s == ' ' || *s == '\t') s++; if (s != nse_left) memmove(nse_left, s, strlen(s) + 1); }
             { char *e = nse_left + strlen(nse_left) - 1; while (e >= nse_left && (*e == ' ' || *e == '\t')) { *e = 0; e--; } }
@@ -1441,22 +1449,22 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
             char *countbuf = NULL;
             if (left_is_num && !right_is_num) {
                 /* number * "string" (or number * string-expr) */
-                strncpy(str_operand, nse_right, 4096-1); str_operand[4096-1]=0;
+                strncpy(str_operand, nse_right, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
                 normalize_string_expr(str_operand, 4096, array_access_used, table);
                 countbuf = _ltng_cfmt("%s", nse_left);
             } else if (right_is_num) {
-                strncpy(str_operand, nse_left, 4096-1); str_operand[4096-1]=0;
+                strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
                 normalize_string_expr(str_operand, 4096, array_access_used, table);
                 countbuf = _ltng_cfmt("%s", nse_right);
             } else {
                 /* variable * variable: assume nse_left is string, nse_right is count */
-                strncpy(str_operand, nse_left, 4096-1); str_operand[4096-1]=0;
+                strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
                 normalize_string_expr(str_operand, 4096, array_access_used, table);
                 countbuf = _ltng_cfmt("atoll(%s)", nse_right);
             }
             char *rep = _ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf ? countbuf : "0");
             char *nb = _ltng_cfmt("%.*s%s%s", bs, work, rep, work + be + 1);
-            strncpy(work, nb, 8192 - 1); work[8192 - 1] = 0;
+            strncpy(work, nb, (int)work_cap - 1); work[(int)work_cap - 1] = 0;
             free(countbuf); free(rep); free(nb);
         }
     }
