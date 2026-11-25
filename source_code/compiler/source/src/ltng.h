@@ -331,7 +331,7 @@ void symbol_table_set_array_elem_type(SymbolTable *table, const char *name, VarT
 VarType symbol_table_get_array_elem_type(SymbolTable *table, const char *name);
 
 void symbol_table_add_func(SymbolTable *table, const char *src, const char *cname, int param_count);
-const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);
+char *resolve_func_name(SymbolTable *table, const char *src);
 int is_function_name_scoped(SymbolTable *table, const char *src);
 
 void obj_register(const char *mangled_var, ObjSchema *schema);

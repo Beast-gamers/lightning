@@ -247,29 +247,18 @@ void symbol_table_add_func(SymbolTable *table, const char *src, const char *cnam
     b->param_count = param_count;
 }
 
-const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size) {
+char *resolve_func_name(SymbolTable *table, const char *src) {
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->func_count; i++) {
             if (strcmp(s->funcs[i].src, src) == 0) {
-                if (out && out_size > 0) {
-                    strncpy(out, s->funcs[i].cname, out_size - 1);
-                    out[out_size - 1] = 0;
-                    return out;
-                }
-                return s->funcs[i].cname;
+                return ltng_strdup(s->funcs[i].cname);
             }
         }
     }
     char *mangled = mangle_name_alloc(src);
     for (int i = 0; i < g_func_count; i++) {
         if (strcmp(g_funcs[i].name, mangled) == 0 || strcmp(g_funcs[i].src, src) == 0) {
-            if (out && out_size > 0) {
-                strncpy(out, g_funcs[i].name, out_size - 1);
-                out[out_size - 1] = 0;
-                free(mangled);
-                return out;
-            }
-            const char *r = g_funcs[i].name;
+            char *r = ltng_strdup(g_funcs[i].name);
             free(mangled);
             return r;
         }
@@ -279,7 +268,9 @@ const char *resolve_func_name(SymbolTable *table, const char *src, char *out, in
 }
 
 int is_function_name_scoped(SymbolTable *table, const char *src) {
-    return resolve_func_name(table, src, NULL, 0) != NULL;
+    char *r = resolve_func_name(table, src);
+    if (r) { free(r); return 1; }
+    return 0;
 }
 
 void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char *func_cname, int param_count);
@@ -1758,7 +1749,7 @@ void token_append_source(char *out, int *pos, int out_size, Token tok);
 /* Find a function AST node by its short source name or mangled C name. */
 ASTNode *find_function_ast_by_name(const char *name);
 ASTNode *find_function_node_by_cname(const char *cname);
-int resolve_func_ref_info(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_pc);
+int resolve_func_ref_info(SymbolTable *table, const char *name, char **out_cname, int *out_pc);
 
 /* Infer the return type of a user-defined function by scanning its return statements. */
 VarType infer_function_return_type(const char *fname);
@@ -1768,11 +1759,11 @@ VarType infer_call_result_type(ASTNode *call);
    value (explicit `-> string` annotation, or inferred from its returns). */
 int function_returns_string(const char *fname);
 VarType collect_expression(Lexer *lexer, SymbolTable *table,
-                                  char *out, int out_size,
+                                  char **outp, int *out_cap,
                                   int stop_on_rparen, int stop_on_comma,
                                   int *out_sl, int *out_sc, int *out_el, int *out_ec);
 VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
-                                     char *out, int out_size,
+                                     char **outp, int *out_cap,
                                      int stop_on_rparen, int stop_on_comma,
                                      int *out_sl, int *out_sc, int *out_el, int *out_ec,
                                      int stop_on_ternary_colon);

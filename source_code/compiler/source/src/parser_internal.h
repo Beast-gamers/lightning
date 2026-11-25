@@ -89,7 +89,7 @@ void register_function(const char *name, int param_count);
 int is_function_name(const char *name);
 int is_function_name_scoped(SymbolTable *table, const char *src);
 int is_callable_ident(SymbolTable *table, const char *src);
-const char *resolve_func_name(SymbolTable *table, const char *src, char *out, int out_size);
+char *resolve_func_name(SymbolTable *table, const char *src);
 void scope_init(Scope *scope, Scope *parent, int disallow_decl);
 int symbol_table_has_in_parents(SymbolTable *table, const char *name);
 void symbol_table_add_in(SymbolTable *table, const char *name, VarType type);
@@ -101,11 +101,11 @@ int symbol_table_get_func_ref(SymbolTable *table, const char *name, char *out_cn
 
 /* expression / parser cross-file */
 VarType collect_expression(Lexer *lexer, SymbolTable *table,
-                           char *out, int out_size,
+                           char **outp, int *out_cap,
                            int stop_on_rparen, int stop_on_comma,
                            int *out_sl, int *out_sc, int *out_el, int *out_ec);
 VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
-                              char *out, int out_size,
+                              char **outp, int *out_cap,
                               int stop_on_rparen, int stop_on_comma,
                               int *out_sl, int *out_sc, int *out_el, int *out_ec,
                               int stop_on_ternary_colon);
@@ -121,7 +121,7 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
 int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node);
 ASTNode *find_function_ast_by_name(const char *name);
 ASTNode *find_function_node_by_cname(const char *cname);
-int resolve_func_ref_info(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_pc);
+int resolve_func_ref_info(SymbolTable *table, const char *name, char **out_cname, int *out_pc);
 VarType infer_function_return_type(const char *fname);
 VarType infer_call_result_type(ASTNode *call);
 int function_returns_string(const char *fname);
@@ -175,7 +175,7 @@ VarType analyze_function_returns(ASTNode *node, int *has_return);
 int analyze_function_passthrough(ASTNode *node, int *pt_param, int *saw_return, int *disqualified);
 int get_function_passthrough_param(const char *fname);
 int find_local_func_binding(SymbolTable *table, const char *src, char *out, int out_size);
-void eval_default_tokens(Lexer *lexer, SymbolTable *table, int start, int end, char *out, int out_size, VarType *out_type);
+void eval_default_tokens(Lexer *lexer, SymbolTable *table, int start, int end, char **out, int *out_cap, VarType *out_type);
 FuncInfo * resolve_overload(const char *src, ASTNode *args, int line, int col, int *group_count);
 ASTNode * expand_call_args(Lexer *lexer, SymbolTable *table, FuncInfo *fi, ASTNode *fn_def, ASTNode *args, const char *fname, int line, int col, ASTNode **out_rest);
 void record_return_obj_schema(const char *obj_base);
