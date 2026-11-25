@@ -1116,7 +1116,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
     size_t big_cap = work_cap;
     size_t mid_cap = work_cap / 2; if (mid_cap < 4096) mid_cap = 4096;
     size_t small_cap = work_cap / 4; if (small_cap < 2048) small_cap = 2048;
-    int parts_cap = 16; size_t part_w = 2048;
+    int parts_cap = 16; size_t part_w = small_cap;
     char *work = (char*)malloc(work_cap); if(!work) return;
     char *content = (char*)malloc(mid_cap);
     char *ires = (char*)malloc(mid_cap);
@@ -1125,9 +1125,9 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
     char *str_operand = (char*)malloc(mid_cap);
     char *nse_left = (char*)malloc(mid_cap);
     char *nse_right = (char*)malloc(small_cap);
-    char (*parts)[2048] = (char(*)[2048])malloc((size_t)parts_cap * part_w);
-    if(!content||!ires||!lhs||!rhs||!str_operand||!nse_left||!nse_right||!parts){
-        free(content);free(ires);free(lhs);free(rhs);free(str_operand);free(nse_left);free(nse_right);free(parts);free(work);return;
+    char *parts_buf = (char*)malloc((size_t)parts_cap * part_w);
+    if(!content||!ires||!lhs||!rhs||!str_operand||!nse_left||!nse_right||!parts_buf){
+        free(content);free(ires);free(lhs);free(rhs);free(str_operand);free(nse_left);free(nse_right);free(parts_buf);free(work);return;
     }
     memcpy(work, buf, strlen(buf) + 1);
     int just_wrapped = 0;
@@ -1235,32 +1235,32 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                 else if (*pp == '+' && idp == 0 && idb == 0 && idbr == 0) {
                     *pp = 0; char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++;
                     char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; }
-                    strncpy(parts[nip++], s2, (int)small_cap - 1); parts[nip - 1][(int)small_cap - 1] = 0; ist = pp + 1;
+                    if(nip>=parts_cap){int nc=parts_cap*2; char *nb=(char*)realloc(parts_buf,(size_t)nc*part_w); if(nb){parts_buf=nb;parts_cap=nc;}} if(nip<parts_cap){strncpy(parts_buf+nip*(int)part_w,s2,part_w-1); parts_buf[nip*(int)part_w+part_w-1]=0; nip++;} ist = pp + 1;
                 }
             }
-            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } strncpy(parts[nip++], s2, (int)small_cap - 1); parts[nip - 1][(int)small_cap - 1] = 0; }
+            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } if(nip>=parts_cap){int nc=parts_cap*2; char *nb=(char*)realloc(parts_buf,(size_t)nc*part_w); if(nb){parts_buf=nb;parts_cap=nc;}} if(nip<parts_cap){strncpy(parts_buf+nip*(int)part_w,s2,part_w-1); parts_buf[nip*(int)part_w+part_w-1]=0; nip++;} }
             if (nip < 2) break;
             /* Helper logic inline: normalize a part and make it stringy for concat */
             ires[0]=0;
-            strncpy(ires, parts[0], (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
-            normalize_string_expr(ires, 4096, array_access_used, table);
+            strncpy(ires, parts_buf, (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
+            normalize_string_expr(ires, (int)mid_cap, array_access_used, table);
             for (int k = 1; k < nip; k++) {
-                char *nse_p = (char*)malloc(2048); if(!nse_p) continue;
-                strncpy(nse_p, parts[k], 2047); nse_p[2047] = 0;
-                normalize_string_expr(nse_p, 2048, array_access_used, table);
+                char *nse_p = (char*)malloc(small_cap); if(!nse_p) continue;
+                strncpy(nse_p, parts_buf + k*(int)part_w, (int)small_cap - 1); nse_p[(int)small_cap - 1] = 0;
+                normalize_string_expr(nse_p, (int)small_cap, array_access_used, table);
                 /* Build concat step. In array-access context use _ltng_add_sn.
                    Otherwise, if either side is not stringy (e.g. atoi(x) from
                    int var in mixed context, or numeric literal), convert to
                    string form or use _ltng_add_sn. */
-                strncpy(lhs, ires, 4095); lhs[4095]=0;
-                strncpy(rhs, nse_p, 2047); rhs[2047]=0;
+                strncpy(lhs, ires, mid_cap-1); lhs[mid_cap-1]=0;
+                strncpy(rhs, nse_p, small_cap-1); rhs[small_cap-1]=0;
                 /* If a part is atoi/atoll/atof(ident), in string concat we
                    want the original buffer (vars are char buffers). Track whether
                    each side was a numeric conversion wrapper (numeric-typed var). */
                 int lhs_was_numwrap = 0, rhs_was_numwrap = 0;
                 {
                     char *sides[2] = {lhs, rhs};
-                    int slens[2] = {(int)4096, (int)2048};
+                    int slens[2] = {(int)mid_cap, (int)small_cap};
                     int *numwrap[2] = {&lhs_was_numwrap, &rhs_was_numwrap};
                     for (int si = 0; si < 2; si++) {
                         char *sp = sides[si];
@@ -1274,10 +1274,10 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                             const char *start = inner;
                             while (*inner && (isalnum((unsigned char)*inner) || *inner == '_')) inner++;
                             if (*inner == ')' && *(inner+1) == '\0' && inner > start) {
-                                char *tmp = (char*)malloc(512); if(!tmp){sides[si][0]=0;} else { int tl = (int)(inner - start);
-                                if (tl >= (int)512) tl = (int)small_cap-1;
-                                memcpy(tmp, start, tl); tmp[tl]=0;
-                                strncpy(sides[si], tmp, slens[si]-1); sides[si][slens[si]-1]=0; free(tmp); }
+                                char *tmpb = (char*)malloc(small_cap); if(!tmpb){sides[si][0]=0;} else { int tl = (int)(inner - start);
+                                if (tl >= (int)small_cap) tl = (int)small_cap-1;
+                                memcpy(tmpb, start, tl); tmpb[tl]=0;
+                                strncpy(sides[si], tmpb, slens[si]-1); sides[si][slens[si]-1]=0; free(tmpb); }
                                 *numwrap[si] = 1;
                             }
                         }
@@ -1287,7 +1287,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                 int rhs_s = part_is_stringy(rhs);
 
                 /* Build char* args for concat helpers (_ltng_add_sn/_ltng_concat_dyn take const char*). */
-                char *lhs_arg = (char*)malloc(4200); char *rhs_arg = (char*)malloc(4200);
+                char *lhs_arg = (char*)malloc(mid_cap+64); char *rhs_arg = (char*)malloc(mid_cap+64);
                 if(!lhs_arg||!rhs_arg){free(lhs_arg);free(rhs_arg); free(nse_p); strncpy(ires,work,(int)mid_cap-1); ires[(int)mid_cap-1]=0; continue;}
                 #define _LTNG_SN_ARG(src, dst, dstsz, is_str) do { \
                     const char *_ps = (src); while (*_ps==' '||*_ps=='\t') _ps++; \
@@ -1310,8 +1310,8 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                         } \
                     } \
                 } while(0)
-                _LTNG_SN_ARG(lhs, lhs_arg, 4200, lhs_s);
-                _LTNG_SN_ARG(rhs, rhs_arg, 4200, rhs_s);
+                _LTNG_SN_ARG(lhs, lhs_arg, (int)mid_cap+64, lhs_s);
+                _LTNG_SN_ARG(rhs, rhs_arg, (int)mid_cap+64, rhs_s);
                 #undef _LTNG_SN_ARG
 
                 /* Helper: determine if a stringy bare-identifier part is a string-typed variable. */
@@ -1330,15 +1330,15 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                             const char *end = qe;
                             while (*end==' '||*end=='\t') end++;
                             if (*end == '\0') {
-                                char *nm = (char*)malloc(512); if(nm){ int nl = (int)(qe - sp);
-                                if (nl >= (int)512) nl = (int)(int)small_cap-1;
+                                char *nm = (char*)malloc(small_cap); if(nm){ int nl = (int)(qe - sp);
+                                if (nl >= (int)small_cap) nl = (int)small_cap-1;
                                 memcpy(nm, sp, nl); nm[nl] = 0;
                                 if (symbol_table_has(table, nm)) {
                                     VarType vt = symbol_table_get(table, nm);
                                     if (vt == TYPE_STRING || vt == TYPE_CHAR) *flags[si] = 1;
                                 } else {
-                                    char *mn = (char*)malloc(512);
-                                    if(mn){ mangle_name(nm, mn, 512);
+                                    char *mn = (char*)malloc(small_cap);
+                                    if(mn){ mangle_name(nm, mn, (int)small_cap);
                                     if (symbol_table_has(table, mn)) {
                                         VarType vt = symbol_table_get(table, mn);
                                         if (vt == TYPE_STRING || vt == TYPE_CHAR) *flags[si] = 1;
@@ -1350,9 +1350,9 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                     }
                 }
 
-                char *st = (char*)malloc(5000); if(!st) st=(char*)calloc(1,1);
+                char *st = (char*)malloc(mid_cap+64); if(!st) st=(char*)calloc(1,1);
                 if (array_access_used) {
-                    snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                    snprintf(st, mid_cap+64, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 } else {
                     int lhs_def_str = lhs_is_str_var || (lhs_s && !lhs_was_numwrap && lhs[0] == '"') || (!lhs_was_numwrap && lhs_s && strstr(lhs, "_ltng_concat") != NULL);
                     int rhs_def_str = rhs_is_str_var || (rhs_s && !rhs_was_numwrap && rhs[0] == '"') || (!rhs_was_numwrap && rhs_s && strstr(rhs, "_ltng_concat") != NULL);
@@ -1369,37 +1369,38 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
                         }
                     }
                     if (lhs_s && rhs_s && lhs_def_str && rhs_def_str)
-                        snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else if (lhs_s && rhs_s && lhs_bare_ident && rhs_bare_ident && !lhs_was_numwrap && !rhs_was_numwrap && !lhs_is_str_var && !rhs_is_str_var) {
                         int lhs_num = 0, rhs_num = 0;
                         if (table) {
                             const char *ss[2] = {lhs, rhs}; int *nf[2] = {&lhs_num, &rhs_num};
                             for (int si=0; si<2; si++) {
                                 const char *sp = ss[si]; while (*sp==' '||*sp=='\t') sp++;
-                                char *nm = (char*)malloc(512); if(nm){ int nl=0; while(sp[nl]&&(isalnum((unsigned char)sp[nl])||sp[nl]=='_')){nm[nl]=sp[nl];nl++; if(nl>=511)break;} nm[nl]=0;
+                                char *nm = (char*)malloc(small_cap); if(nm){ int nl=0; while(sp[nl]&&(isalnum((unsigned char)sp[nl])||sp[nl]=='_')){nm[nl]=sp[nl];nl++; if(nl>=(int)small_cap-1)break;} nm[nl]=0;
                                 if (symbol_table_has(table, nm)) { VarType vt=symbol_table_get(table,nm); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL) *nf[si]=1; }
-                                else { char *mn = (char*)malloc(512); if(mn){ mangle_name(nm,mn,512); if(symbol_table_has(table,mn)){VarType vt=symbol_table_get(table,mn); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL)*nf[si]=1;} free(mn); } }
+                                else { char *mn = (char*)malloc(small_cap); if(mn){ mangle_name(nm,mn,(int)small_cap); if(symbol_table_has(table,mn)){VarType vt=symbol_table_get(table,mn); if(vt==TYPE_INT||vt==TYPE_FLOAT||vt==TYPE_BOOL)*nf[si]=1;} free(mn); } }
                                 free(nm); }
                             }
                         }
                         if (lhs_num || rhs_num)
-                            snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                            snprintf(st, (int)mid_cap+64, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                         else
-                            snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                            snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     } else if (lhs_s && rhs_s && lhs_def_str && !rhs_def_str)
-                        snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else if (lhs_s && rhs_s && !lhs_def_str && rhs_def_str)
-                        snprintf(st, 5000, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
                     else
-                        snprintf(st, 5000, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                        snprintf(st, (int)mid_cap+64, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
                 }
                 free(lhs_arg); free(rhs_arg);
                 strncpy(ires, st, (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
                 free(st);
                 free(nse_p);
             }
-            char *nb = (char*)malloc(8192); if(!nb) nb=(char*)calloc(1,1);
-            snprintf(nb, 8192, "%.*s%s%s", bs, work, ires, work + be + 1);
+            size_t nb_cap = strlen(work) + strlen(ires) + 64;
+            char *nb = (char*)malloc(nb_cap); if(!nb) nb=(char*)calloc(1,1);
+            snprintf(nb, nb_cap, "%.*s%s%s", bs, work, ires, work + be + 1);
             strncpy(work, nb, (int)work_cap - 1); work[(int)work_cap - 1] = 0;
             free(nb);
         } else if (do_mul) {
@@ -1450,16 +1451,16 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
             if (left_is_num && !right_is_num) {
                 /* number * "string" (or number * string-expr) */
                 strncpy(str_operand, nse_right, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
-                normalize_string_expr(str_operand, 4096, array_access_used, table);
+                normalize_string_expr(str_operand, (int)mid_cap, array_access_used, table);
                 countbuf = _ltng_cfmt("%s", nse_left);
             } else if (right_is_num) {
                 strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
-                normalize_string_expr(str_operand, 4096, array_access_used, table);
+                normalize_string_expr(str_operand, (int)mid_cap, array_access_used, table);
                 countbuf = _ltng_cfmt("%s", nse_right);
             } else {
                 /* variable * variable: assume nse_left is string, nse_right is count */
                 strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
-                normalize_string_expr(str_operand, 4096, array_access_used, table);
+                normalize_string_expr(str_operand, (int)mid_cap, array_access_used, table);
                 countbuf = _ltng_cfmt("atoll(%s)", nse_right);
             }
             char *rep = _ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf ? countbuf : "0");
@@ -1471,7 +1472,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
 
     strncpy(buf, work, buf_size - 1);
     buf[buf_size - 1] = 0;
-    free(content); free(ires); free(lhs); free(rhs); free(str_operand); free(nse_left); free(nse_right); free(parts);
+    free(content); free(ires); free(lhs); free(rhs); free(str_operand); free(nse_left); free(nse_right); free(parts_buf);
     free(work);
 }
 
@@ -1516,18 +1517,20 @@ int is_add_operand(const char *p, char *content, int content_size) {
 
 int optimize_add_concat(char *out, int out_size, int pos) {
     (void)pos;
-    char *result = (char*)calloc(1,4096);
-    char *left = (char*)malloc(4096);
-    char *right = (char*)malloc(4096);
+    int cap = out_size > 0 ? out_size : (int)strlen(out) + 64;
+    if (cap < 4096) cap = 4096;
+    char *result = (char*)calloc(1, (size_t)cap);
+    char *left = (char*)malloc((size_t)cap);
+    char *right = (char*)malloc((size_t)cap);
     if(!result||!left||!right){free(result);free(left);free(right);return 0;}
     const char *src = out;
     char *dst = result;
     int replaced = 0;
 
-    while (*src && (int)(dst - result) < 4095) {
+    while (*src && (int)(dst - result) < cap - 1) {
         left[0]=0; right[0]=0;
 
-        if (is_add_operand(src, left, 4096)) {
+        if (is_add_operand(src, left, cap)) {
             const char *after_left = src;
             while (*after_left && (isalnum((unsigned char)*after_left) || *after_left == '_' ||
                                    *after_left == '(' || *after_left == ')' || *after_left == ',' ||
@@ -1536,7 +1539,7 @@ int optimize_add_concat(char *out, int out_size, int pos) {
             if (*after_left == '+') {
                 const char *after_plus = after_left + 1;
                 while (*after_plus == ' ' || *after_plus == '\t') after_plus++;
-                if (is_add_operand(after_plus, right, 4096)) {
+                if (is_add_operand(after_plus, right, cap)) {
                     const char *after_right = after_plus;
                     while (*after_right && (isalnum((unsigned char)*after_right) || *after_right == '_' ||
                                             *after_right == '(' || *after_right == ')' ||
@@ -1550,8 +1553,9 @@ int optimize_add_concat(char *out, int out_size, int pos) {
                                    *after_right == '&' || *after_right == '|' || *after_right == '<' ||
                                    *after_right == '>' || *after_right == '!' || *after_right == '=');
                     if (!next_op) {
-                        int n = snprintf(dst, 4096 - (int)(dst - result),
+                        int n = snprintf(dst, cap - (int)(dst - result),
                                          "_ltng_add_sn(%s, %s)", left, right);
+                        if (n < 0) n = 0;
                         dst += n;
                         src = after_right;
                         replaced = 1;
@@ -1606,9 +1610,8 @@ int part_is_stringy(const char *part) {
             while (*after == ' ' || *after == '\t') after++;
             if (*after == '\0') {
                 /* whole part is wrapped in (...) - analyze inside */
-                char *inner = (char*)malloc(4096); if(!inner) return 0;
                 size_t ilen = (size_t)(end - (q + 1));
-                if (ilen >= 4096) ilen = 4096 - 1;
+                char *inner = (char*)malloc(ilen + 1); if(!inner) return 0;
                 memcpy(inner, q + 1, ilen);
                 inner[ilen] = '\0';
                 /* Trim */
