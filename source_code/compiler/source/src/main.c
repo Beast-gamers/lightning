@@ -7,10 +7,10 @@
 #include <time.h>
 
 static int mkdir_p(const char *path) {
-    char *tmp = (char*)malloc(4096);
-    if(!tmp) return 1;
+    if (!path || !path[0]) return -1;
     size_t len = strlen(path);
-    if (len == 0 || len >= 4096) { free(tmp); return -1; }
+    char *tmp = (char*)malloc(len + 1);
+    if (!tmp) return -1;
     memcpy(tmp, path, len + 1);
     if (tmp[len - 1] == '/') tmp[len - 1] = '\0';
     for (char *p = tmp + 1; *p; p++) {
@@ -149,24 +149,24 @@ int main(int argc, char *argv[]) {
     char *src_copy = strdup(argv[file_arg]);
     char *src_dir = dirname(src_copy);
 
-    char *debug_dir = (char*)calloc(1,4096);
-    char *debug_ir = (char*)calloc(1,4096);
-    char *debug_c = (char*)calloc(1,4096);
-    char *debug_src = (char*)calloc(1,4096);
-    char *debug_log = (char*)calloc(1,4096);
-    char *debug_compiler_log = (char*)calloc(1,4096);
+    char *debug_dir = NULL;
+    char *debug_ir = NULL;
+    char *debug_c = NULL;
+    char *debug_src = NULL;
+    char *debug_log = NULL;
+    char *debug_compiler_log = NULL;
     FILE *compiler_log_fp = NULL;
     CodegenLog cglog = {0};
     if (debug) {
-        snprintf(debug_dir, 4096, "%s/debug/%s", src_dir, base);
+        debug_dir = _ltng_cfmt("%s/debug/%s", src_dir, base);
         mkdir_p(debug_dir);
-        snprintf(debug_src, 4096, "%s/source.ltng", debug_dir);
-        snprintf(debug_ir, 4096, "%s/intermediete.ltng_ir", debug_dir);
-        snprintf(debug_c, 4096, "%s/emitted.c", debug_dir);
-        snprintf(debug_log, 4096, "%s/logs.txt", debug_dir);
-        snprintf(debug_compiler_log, 4096, "%s/compiler_log.txt", debug_dir);
-        copy_file(argv[file_arg], debug_src);
-        compiler_log_fp = fopen(debug_compiler_log, "w");
+        debug_src = _ltng_cfmt("%s/source.ltng", debug_dir);
+        debug_ir = _ltng_cfmt("%s/intermediete.ltng_ir", debug_dir);
+        debug_c = _ltng_cfmt("%s/emitted.c", debug_dir);
+        debug_log = _ltng_cfmt("%s/logs.txt", debug_dir);
+        debug_compiler_log = _ltng_cfmt("%s/compiler_log.txt", debug_dir);
+        if (debug_src) copy_file(argv[file_arg], debug_src);
+        if (debug_compiler_log) compiler_log_fp = fopen(debug_compiler_log, "w");
         if (compiler_log_fp) {
             cglog.file = compiler_log_fp;
             cglog.src_file = argv[file_arg];
@@ -214,8 +214,7 @@ int main(int argc, char *argv[]) {
     return 1;
     }
 
-    char *ir_path = (char*)malloc(4096);
-    snprintf(ir_path, 4096, "%s/%s.ltng_ir", src_dir, base);
+    char *ir_path = _ltng_cfmt("%s/%s.ltng_ir", src_dir, base);
 
     FILE *ir_out = fopen(ir_path, "w");
     if (!ir_out) {
@@ -247,8 +246,7 @@ int main(int argc, char *argv[]) {
     return 0;
     }
 
-    char *tmp_c = (char*)malloc(512);
-    snprintf(tmp_c, 512, "/tmp/ltng_%d.c", getpid());
+    char *tmp_c = _ltng_cfmt("/tmp/ltng_%d.c", (int)getpid());
     FILE *out = fopen(tmp_c, "w");
     if (!out) {
         fprintf(stderr, "Error: Cannot create temporary C file\n");
@@ -288,14 +286,12 @@ int main(int argc, char *argv[]) {
         output_name = strdup(argv[out_arg]);
     } else {
         /* Create compiled folder in the directory containing the source file */
-        char *compiled_dir = (char*)malloc(4096);
-        snprintf(compiled_dir, 4096, "%s/compiled", src_dir);
+        char *compiled_dir = _ltng_cfmt("%s/compiled", src_dir);
         mkdir(compiled_dir, 0755);
-        output_name = malloc(4096);
         if (emit_c) {
-            snprintf(output_name, 4096, "%s/%s.c", compiled_dir, base);
+            output_name = _ltng_cfmt("%s/%s.c", compiled_dir, base);
         } else {
-            snprintf(output_name, 4096, "%s/%s", compiled_dir, base);
+            output_name = _ltng_cfmt("%s/%s", compiled_dir, base);
         }
     }
 
@@ -341,12 +337,9 @@ int main(int argc, char *argv[]) {
     return 0;
     }
 
-    char *cmd = (char*)malloc(4096);
-    if (debug) {
-        snprintf(cmd, 4096, "%s -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
-    } else {
-        snprintf(cmd, 4096, "%s -w -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
-    }
+    char *cmd = debug
+        ? _ltng_cfmt("%s -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c)
+        : _ltng_cfmt("%s -w -static -o \"%s\" \"%s\" -lm 2>&1", cc_cmd, output_name, tmp_c);
 
     if (debug) log_stage("cc", "invoking C compiler");
     /* Run compiler and capture output */
@@ -367,7 +360,8 @@ int main(int argc, char *argv[]) {
     }
 
     /* Read compiler output */
-    char *compiler_err = (char*)calloc(1,4096);
+    size_t compiler_err_cap = 4096, compiler_err_len = 0;
+    char *compiler_err = (char*)calloc(1, compiler_err_cap);
     char *buf = (char*)malloc(4096);
     size_t n;
     while ((n = fread(buf, 1, 4096 - 1, cfp)) > 0) {
@@ -375,9 +369,19 @@ int main(int argc, char *argv[]) {
         for (size_t i = 0; i < n; i++) {
             if (buf[i] == '\r') buf[i] = ' ';
         }
-        strncat(compiler_err, buf, 4096 - strlen(compiler_err) - 1);
+        size_t need = compiler_err_len + n + 1;
+        if (need > compiler_err_cap) {
+            while (compiler_err_cap < need) compiler_err_cap *= 2;
+            char *nc2 = (char*)realloc(compiler_err, compiler_err_cap);
+            if (!nc2) break;
+            compiler_err = nc2;
+        }
+        memcpy(compiler_err + compiler_err_len, buf, n);
+        compiler_err_len += n;
+        compiler_err[compiler_err_len] = '\0';
     }
     int compiler_exit = pclose(cfp);
+    free(buf);
 
     if (debug) {
         fprintf(stderr, "C compiler command: %s\n", cmd);
@@ -387,20 +391,19 @@ int main(int argc, char *argv[]) {
         if (compiler_exit == 0) {
             printf("Compiled '%s' -> '%s'\n", argv[file_arg], output_name);
             /* generate debug artifacts: binary, object, assembly */
-            char *dbg_bin=(char*)malloc(4096), *dbg_obj=(char*)malloc(4096), *dbg_asm=(char*)malloc(4096), *cmd2=(char*)malloc(8192);
-            if(!dbg_bin||!dbg_obj||!dbg_asm||!cmd2){free(dbg_bin);free(dbg_obj);free(dbg_asm);free(cmd2);} else {
-            snprintf(dbg_bin, 4096, "%s/%s", debug_dir, base);
-            snprintf(dbg_obj, 4096, "%s/%s.o", debug_dir, base);
-            snprintf(dbg_asm, 4096, "%s/%s.s", debug_dir, base);
+            char *dbg_bin=_ltng_cfmt("%s/%s", debug_dir, base);
+            char *dbg_obj=_ltng_cfmt("%s/%s.o", debug_dir, base);
+            char *dbg_asm=_ltng_cfmt("%s/%s.s", debug_dir, base);
+            if(!dbg_bin||!dbg_obj||!dbg_asm){free(dbg_bin);free(dbg_obj);free(dbg_asm);} else {
             copy_file(output_name, dbg_bin);
             chmod(dbg_bin, 0755);
-            snprintf(cmd2, 8192, "%s -c -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_obj, tmp_c);
-            run_cmd_capture(cmd2, "C compiler (object)");
-            snprintf(cmd2, 8192, "%s -S -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_asm, tmp_c);
-            run_cmd_capture(cmd2, "C compiler (assembly)");
-            snprintf(cmd2, 8192, "%s -g -O0 -o \"%s.dbg\" \"%s\" 2>&1", cc_cmd, dbg_bin, tmp_c);
-            run_cmd_capture(cmd2, "C compiler (debug-symbol binary)");
-            free(dbg_bin); free(dbg_obj); free(dbg_asm); free(cmd2);
+            char *cmd2 = _ltng_cfmt("%s -c -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_obj, tmp_c);
+            if (cmd2) { run_cmd_capture(cmd2, "C compiler (object)"); free(cmd2); }
+            cmd2 = _ltng_cfmt("%s -S -o \"%s\" \"%s\" 2>&1", cc_cmd, dbg_asm, tmp_c);
+            if (cmd2) { run_cmd_capture(cmd2, "C compiler (assembly)"); free(cmd2); }
+            cmd2 = _ltng_cfmt("%s -g -O0 -o \"%s.dbg\" \"%s\" 2>&1", cc_cmd, dbg_bin, tmp_c);
+            if (cmd2) { run_cmd_capture(cmd2, "C compiler (debug-symbol binary)"); free(cmd2); }
+            free(dbg_bin); free(dbg_obj); free(dbg_asm);
             }
         }
     } else {
