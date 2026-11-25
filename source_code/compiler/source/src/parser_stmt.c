@@ -667,14 +667,21 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
             int saved_a = lexer->current;
             Token arrtok = lexer_next(lexer); /* consume arr ident */
             (void)arrtok;
-            #define MAX_IDX_W 32
-            char (*idx_exprs_w)[1024] = calloc(MAX_IDX_W, 1024);
-            int idx_n_w = 0;
+            int idx_cap_w = 4, idx_n_w = 0;
+            char **idx_exprs_w = (char**)malloc(idx_cap_w * sizeof(char*));
             int ok_w = idx_exprs_w != NULL;
             while (ok_w && lexer_peek(lexer).type == TOKEN_LBRACKET) {
                 lexer_next(lexer); /* [ */
-                if (idx_n_w >= MAX_IDX_W) { ok_w = 0; break; }
-                collect_expression(lexer, table, idx_exprs_w[idx_n_w], 1024, 1, 0, NULL, NULL, NULL, NULL);
+                if (idx_n_w >= idx_cap_w) {
+                    int nc = idx_cap_w * 2;
+                    char **nb = (char**)realloc(idx_exprs_w, nc * sizeof(char*));
+                    if (!nb) { ok_w = 0; break; }
+                    idx_exprs_w = nb; idx_cap_w = nc;
+                }
+                idx_exprs_w[idx_n_w] = (char*)malloc(65536);
+                if (!idx_exprs_w[idx_n_w]) { ok_w = 0; break; }
+                idx_exprs_w[idx_n_w][0] = 0;
+                collect_expression(lexer, table, idx_exprs_w[idx_n_w], 65536, 1, 0, NULL, NULL, NULL, NULL);
                 Token rb = lexer_peek(lexer);
                 if (rb.type != TOKEN_RBRACKET) { ok_w = 0; break; }
                 lexer_next(lexer); /* ] */
@@ -691,7 +698,7 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                 int edim = (have_dims_w && dimc_w > 0) ? dimc_w : 1;
                 if (idx_n_w == edim) {
                     char *expr = malloc(65536);
-                    if (!expr) { free(idx_exprs_w); lexer->current = saved_a; goto _write_array_fallback; }
+                    if (!expr) { for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w); lexer->current = saved_a; goto _write_array_fallback; }
                     int p = 0;
                     int esz = 65536;
                     #define WAPP(...) do { if (p < esz - 1) { int _n = snprintf(expr + p, esz - p, __VA_ARGS__); if (_n > 0) { p += _n; if (p >= esz) p = esz - 1; } } } while(0)
@@ -721,18 +728,15 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                     node->var_type = TYPE_STRING; /* preserve raw/OOB string behavior */
                     emit(node);
                     free(expr);
-                    free(idx_exprs_w);
-                    #undef MAX_IDX_W
+                    for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w);
                     return;
                 }
                 /* fall back to general expression handling for mismatched dims */
-                free(idx_exprs_w);
-                #undef MAX_IDX_W
+                for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w);
                 lexer->current = saved_a;
                 goto _write_array_fallback;
             }
-            if (idx_exprs_w) free(idx_exprs_w);
-            #undef MAX_IDX_W
+            if (idx_exprs_w) for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w);
             _write_array_fallback:
             lexer->current = saved_a;
         }
