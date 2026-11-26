@@ -2891,12 +2891,13 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 for(int _i=0;_i<_pcap;_i++){free(parts[_i]);free(new_parts[_i]);free(cparts[_i]);} free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
             } else {
             for(int _i=0;_i<_pcap;_i++){parts[_i]=ltng_strdup("");new_parts[_i]=ltng_strdup("");cparts[_i]=ltng_strdup("");}
+#define ENSURE_PCAP(n) do { while ((n) >= _pcap) { int _nc=_pcap*2; char **_np=(char**)realloc(parts,_nc*sizeof(char*)); char **_nn=(char**)realloc(new_parts,_nc*sizeof(char*)); char **_nc2=(char**)realloc(cparts,_nc*sizeof(char*)); if(!_np||!_nn||!_nc2) break; parts=_np; new_parts=_nn; cparts=_nc2; for(int _j=_pcap;_j<_nc;_j++){parts[_j]=ltng_strdup("");new_parts[_j]=ltng_strdup("");cparts[_j]=ltng_strdup("");} _pcap=_nc; } } while(0)
             int nparts = 0;
             char *start = tmp;
             int depth_paren = 0, depth_bracket = 0, depth_brace = 0;
             int in_str = 0;
             char q = 0;
-            for (char *p = tmp; *p && nparts < 32; p++) {
+            for (char *p = tmp; *p; p++) {
                 if (in_str) {
                     if (*p == q && (p == tmp || *(p-1) != '\\')) in_str = 0;
                     continue;
@@ -2916,7 +2917,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     while (*s == ' ' || *s == '\t') s++;
                     char *e = s + strlen(s) - 1;
                     while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                    free(parts[nparts]); parts[nparts] = ltng_strdup(s); nparts++;
+                    ENSURE_PCAP(nparts); free(parts[nparts]); parts[nparts] = ltng_strdup(s); nparts++;
                     start = p + 1;
                 }
             }
@@ -2943,7 +2944,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     {
                         { char *_t=ltng_strdup(norm_buf); if(_t){free(split_tmp); split_tmp=_t;} }
                         char *ist2 = split_tmp; int d2p=0,d2b=0,d2br=0,in2=0; char q2c=0; int new_n=0;
-                        for (char *pp = split_tmp; *pp && new_n < 32; pp++) {
+                        for (char *pp = split_tmp; *pp; pp++) {
                             if (in2) { if (*pp == q2c && (pp == split_tmp || *(pp-1) != '\\')) in2 = 0; continue; }
                             if (*pp == '"' || *pp == '\'') { in2 = 1; q2c = *pp; continue; }
                             if (*pp == '(') d2p++; else if (*pp == ')') { if (d2p>0) d2p--; }
@@ -2952,12 +2953,12 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             else if (*pp == '+' && d2p==0 && d2b==0 && d2br==0) {
                                 *pp = 0; char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
                                 char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
-                                free(new_parts[new_n]); new_parts[new_n]=ltng_strdup(s2); new_n++; ist2 = pp+1;
+                                ENSURE_PCAP(new_n); free(new_parts[new_n]); new_parts[new_n]=ltng_strdup(s2); new_n++; ist2 = pp+1;
                             }
                         }
                         { char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
                           char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
-                          free(new_parts[new_n]); new_parts[new_n]=ltng_strdup(s2); new_n++; }
+                          ENSURE_PCAP(new_n); free(new_parts[new_n]); new_parts[new_n]=ltng_strdup(s2); new_n++; }
                         if (new_n > 1) {
                             for (int pi = 0; pi < new_n && pi < _pcap; pi++) { char *_t=ltng_strdup(new_parts[pi]); if(_t){free(parts[pi]); parts[pi]=_t;} }
                             nparts = new_n;
