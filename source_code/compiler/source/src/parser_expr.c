@@ -2876,21 +2876,21 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
         /* Handle multiplication with higher precedence - split by + at top level first */
         if (strstr(out, "+") != NULL) {
             /* split by + */
-            char *tmp = (char*)malloc(2048);
-            char (*parts)[2048] = (char(*)[2048])malloc(32 * 2048);
-            char *norm_buf = (char*)malloc(2048);
-            char *split_tmp = (char*)malloc(2048);
-            char (*new_parts)[2048] = (char(*)[2048])malloc(32 * 2048);
-            char *inner_tmp = (char*)malloc(2048);
-            char (*cparts)[600] = (char(*)[600])malloc(32 * 600);
-            char *add_result = (char*)malloc(2048);
-            char *step = (char*)malloc(2048);
-            char *cpart = (char*)malloc(2048);
+            int _pcap = 32;
+            char *tmp = ltng_strdup(out ? out : "");
+            char **parts = (char**)malloc(_pcap * sizeof(char*));
+            char *norm_buf = ltng_strdup("");
+            char *split_tmp = ltng_strdup("");
+            char **new_parts = (char**)malloc(_pcap * sizeof(char*));
+            char *inner_tmp = ltng_strdup("");
+            char **cparts = (char**)malloc(_pcap * sizeof(char*));
+            char *add_result = ltng_strdup("");
+            char *step = ltng_strdup("");
+            char *cpart = ltng_strdup("");
             if(!tmp||!parts||!norm_buf||!split_tmp||!new_parts||!inner_tmp||!cparts||!add_result||!step||!cpart){
-                free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
+                for(int _i=0;_i<_pcap;_i++){free(parts[_i]);free(new_parts[_i]);free(cparts[_i]);} free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
             } else {
-            strncpy(tmp, out, 2047);
-            tmp[2047] = 0;
+            for(int _i=0;_i<_pcap;_i++){parts[_i]=ltng_strdup("");new_parts[_i]=ltng_strdup("");cparts[_i]=ltng_strdup("");}
             int nparts = 0;
             char *start = tmp;
             int depth_paren = 0, depth_bracket = 0, depth_brace = 0;
@@ -2916,8 +2916,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     while (*s == ' ' || *s == '\t') s++;
                     char *e = s + strlen(s) - 1;
                     while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                    strncpy(parts[nparts++], s, 2048 - 1);
-                    parts[nparts-1][2048 - 1] = 0;
+                    free(parts[nparts]); parts[nparts] = ltng_strdup(s); nparts++;
                     start = p + 1;
                 }
             }
@@ -2926,16 +2925,13 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 while (*s == ' ' || *s == '\t') s++;
                 char *e = s + strlen(s) - 1;
                 while (e >= s && (*e == ' ' || *e == '\t')) { *e = 0; e--; }
-                strncpy(parts[nparts++], s, 2048 - 1);
-                parts[nparts-1][2048 - 1] = 0;
+                free(parts[nparts]); parts[nparts] = ltng_strdup(s); nparts++;
             }
             /* transform each part */
             /* If no actual concatenation at top level (e.g. all '+' inside parens),
                try to normalize by unwrapping outer parens to expose top-level '+'. */
             if (nparts <= 1 && has_string_concat) {
-                norm_buf[0]=0;
-                strncpy(norm_buf, parts[0], 2048 - 1);
-                norm_buf[2048 - 1] = 0;
+                { char *_t=ltng_strdup(parts[0]); if(_t){free(norm_buf); norm_buf=_t;} }
                 /* Unwrap whole-expression paren layers dynamically. Each pass either
                    exposes a top-level '+' (then we split) or strips one wrapping layer,
                    so the number of passes is bounded by the string length - no fixed
@@ -2945,7 +2941,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 for (int unwrap_try = 0; unwrap_try < unwrap_limit && nparts <= 1; unwrap_try++) {
                     /* try splitting current norm_buf by top-level '+' first */
                     {
-                        strncpy(split_tmp, norm_buf, 2047); split_tmp[2047]=0;
+                        { char *_t=ltng_strdup(norm_buf); if(_t){free(split_tmp); split_tmp=_t;} }
                         char *ist2 = split_tmp; int d2p=0,d2b=0,d2br=0,in2=0; char q2c=0; int new_n=0;
                         for (char *pp = split_tmp; *pp && new_n < 32; pp++) {
                             if (in2) { if (*pp == q2c && (pp == split_tmp || *(pp-1) != '\\')) in2 = 0; continue; }
@@ -2956,14 +2952,14 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             else if (*pp == '+' && d2p==0 && d2b==0 && d2br==0) {
                                 *pp = 0; char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
                                 char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
-                                strncpy(new_parts[new_n++], s2, 2048-1); new_parts[new_n-1][2048-1]=0; ist2 = pp+1;
+                                free(new_parts[new_n]); new_parts[new_n]=ltng_strdup(s2); new_n++; ist2 = pp+1;
                             }
                         }
                         { char *s2 = ist2; while (*s2==' '||*s2=='\t') s2++;
                           char *e2 = s2 + strlen(s2) - 1; while (e2>=s2 && (*e2==' '||*e2=='\t')) { *e2=0; e2--; }
-                          strncpy(new_parts[new_n++], s2, 2048-1); new_parts[new_n-1][2048-1]=0; }
+                          free(new_parts[new_n]); new_parts[new_n]=ltng_strdup(s2); new_n++; }
                         if (new_n > 1) {
-                            for (int pi = 0; pi < new_n && pi < 32; pi++) { strncpy(parts[pi], new_parts[pi], 2048-1); parts[pi][2048-1]=0; }
+                            for (int pi = 0; pi < new_n && pi < _pcap; pi++) { char *_t=ltng_strdup(new_parts[pi]); if(_t){free(parts[pi]); parts[pi]=_t;} }
                             nparts = new_n;
                             break;
                         }
@@ -2983,8 +2979,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     size_t nil = (size_t)(nend - (nq + 1));
                     if (nil >= 2048) nil = 2047;
                     memcpy(inner_tmp, nq + 1, nil); inner_tmp[nil] = 0;
-                    strncpy(norm_buf, inner_tmp, 2048-1); norm_buf[2048-1]=0;
-                    strncpy(parts[0], inner_tmp, 2048-1); parts[0][2048-1]=0;
+                    { char *_t=ltng_strdup(inner_tmp); if(_t){free(norm_buf); norm_buf=_t;} }
+                    { char *_t=ltng_strdup(inner_tmp); if(_t){free(parts[0]); parts[0]=_t;} }
                 }
             }
             /* If no actual concatenation (single part), skip wrapping */
@@ -3025,8 +3021,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                     }
                     if (is_num_wrap) {
-                        strncpy(cparts[i], unwrapped, 600 - 1);
-                        cparts[i][600 - 1] = 0;
+                        { char *_t=ltng_strdup(unwrapped); if(_t){free(cparts[i]); cparts[i]=_t;} }
                     } else if (!part_is_stringy(part)) {
                         int is_float_expr = (strchr(part, '.') != NULL ||
                             strstr(part, "atof(") != NULL ||
@@ -3034,37 +3029,31 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             strstr(part, "_LTNG_NZDIV_D") != NULL ||
                             strstr(part, "_LTNG_NZMOD_D") != NULL ||
                             strstr(part, "_LTNG_FMOD_D") != NULL);
-                        snprintf(cparts[i], 600,
-                                 "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
+                        { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
                                  is_float_expr ? "%g" : "%lld",
                                  is_float_expr ? "double" : "long long",
                                  part);
+                          if(_t){free(cparts[i]); cparts[i]=_t;} }
                     } else {
-                        strncpy(cparts[i], part, 600 - 1);
-                        cparts[i][600 - 1] = 0;
-                        { char *_ct=ltng_strdup(cparts[i]); int _ctc=(int)strlen(_ct)+1; if(_ctc<600)_ctc=600; normalize_string_expr(&_ct,&_ctc,array_access_used,table); strncpy(cparts[i],_ct,599); cparts[i][599]=0; free(_ct); }
-
+                        { char *_t=ltng_strdup(part); if(_t){free(cparts[i]); cparts[i]=_t;} }
+                        { int _ctc=(int)strlen(cparts[i])+1; normalize_string_expr(&cparts[i],&_ctc,array_access_used,table); }
                     }
                     free(unwrapped);
                 }
-                add_result[0]=0;
-                strncpy(add_result, cparts[0], 2047);
-                add_result[2047] = 0;
+                { char *_t=ltng_strdup(cparts[0]); if(_t){free(add_result); add_result=_t;} }
                 for (int i = 1; i < nparts; i++) {
-                    snprintf(step, 2048, "_ltng_add_sn(%s, %s)",
-                             add_result, cparts[i]);
-                    strncpy(add_result, step, 2047);
-                    add_result[2047] = 0;
+                    { char *_t=_ltng_cfmt("_ltng_add_sn(%s, %s)", add_result, cparts[i]); if(_t){free(step); step=_t;} }
+                    { char *_t=ltng_strdup(step); if(_t){free(add_result); add_result=_t;} }
                 }
                 { size_t _al=strlen(add_result); CE_GROW((int)_al); memcpy(out, add_result, _al+1); pos=(int)_al; }
                 result_type = TYPE_STRING;
             } else {
             /* concatenate: build expression from parts */
-            add_result[0]=0;
+{ char *_t=ltng_strdup(""); if(_t){free(add_result); add_result=_t;} }
             int all_stringy = 1;
             for (int i = 0; i < nparts; i++) {
                 const char *part = parts[i];
-                cpart[0]=0;
+                { char *_t=ltng_strdup(""); if(_t){free(cpart); cpart=_t;} }
                 /* In string concatenation, atof/atoi/atoll(ident) wrappers came from
                    numeric-context emission of variables/params; use the original char
                    buffer so string values are preserved (e.g. untyped params). */
@@ -3089,8 +3078,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 }
                 if (is_num_wrap) {
                     /* Treat as string buffer for concatenation (runtime _ltng_add_sn handles numeric-vs-string). */
-                    strncpy(cpart, unwrapped, 2048 - 1);
-                    cpart[2048 - 1] = 0;
+                    { char *_t=ltng_strdup(unwrapped); if(_t){free(cpart); cpart=_t;} }
                     all_stringy = 0; /* force _ltng_add_sn for runtime-correct behavior */
                 } else if (!part_is_stringy(part)) {
                     all_stringy = 0;
@@ -3100,34 +3088,32 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         strstr(part, "_LTNG_NZDIV_D") != NULL ||
                         strstr(part, "_LTNG_NZMOD_D") != NULL ||
                         strstr(part, "_LTNG_FMOD_D") != NULL);
-                    snprintf(cpart, 2048, "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
+                    { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })",
                              is_float_expr ? "%g" : "%lld",
                              is_float_expr ? "double" : "long long",
                              part);
+                      if(_t){free(cpart); cpart=_t;} }
                 } else {
-                    strncpy(cpart, part, 2048 - 1);
-                    cpart[2048 - 1] = 0;
-                    { char *_ct=ltng_strdup(cpart); int _ctc=(int)strlen(_ct)+1; if(_ctc<2048)_ctc=2048; normalize_string_expr(&_ct,&_ctc,array_access_used,table); strncpy(cpart,_ct,2047); cpart[2047]=0; free(_ct); }
-
+                    { char *_t=ltng_strdup(part); if(_t){free(cpart); cpart=_t;} }
+                    { int _ctc=(int)strlen(cpart)+1; normalize_string_expr(&cpart,&_ctc,array_access_used,table); }
                 }
                 free(unwrapped);
                 if (i == 0) {
-                    strncpy(add_result, cpart, 2048 - 1);
-                    add_result[2048 - 1] = 0;
+                    { char *_t=ltng_strdup(cpart); if(_t){free(add_result); add_result=_t;} }
                 } else {
                     if (all_stringy) {
-                        snprintf(step, 2048, "_ltng_concat_dyn(2, %s, %s)", add_result, cpart);
+                        { char *_t=_ltng_cfmt("_ltng_concat_dyn(2, %s, %s)", add_result, cpart); if(_t){free(step); step=_t;} }
                     } else {
-                        snprintf(step, 2048, "_ltng_add_sn(%s, %s)", add_result, cpart);
+                        { char *_t=_ltng_cfmt("_ltng_add_sn(%s, %s)", add_result, cpart); if(_t){free(step); step=_t;} }
                     }
-                    strncpy(add_result, step, 2047);
+                    { char *_t=ltng_strdup(step); if(_t){free(add_result); add_result=_t;} }
                     add_result[2047] = 0;
                 }
             }
             { size_t _al=strlen(add_result); CE_GROW((int)_al); memcpy(out, add_result, _al+1); pos=(int)_al; }
             result_type = TYPE_STRING;
             }
-            free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
+            for(int _i=0;_i<_pcap;_i++){free(parts[_i]);free(new_parts[_i]);free(cparts[_i]);} free(tmp);free(parts);free(norm_buf);free(split_tmp);free(new_parts);free(inner_tmp);free(cparts);free(add_result);free(step);free(cpart);
             }
         } else if (strstr(out, "*") != NULL) {
             /* Use normalize_string_expr for general multiply expressions
