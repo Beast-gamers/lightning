@@ -1231,7 +1231,8 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 size_t need = strlen(work) + 3;
                 if (need > work_cap) { while (work_cap < need) work_cap *= 2; char *nw = (char*)realloc(work, work_cap); if(!nw){return;} work = nw; }
                 memmove(work + 1, work, strlen(work) + 1);
-                work[0] = '('; strcat(work, ")");
+                work[0] = '(';
+                { size_t _wl=strlen(work); work[_wl]=')'; work[_wl+1]=0; }
                 just_wrapped = 1;
                 continue;
             }
