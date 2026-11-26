@@ -1078,8 +1078,8 @@ void transform_string_multiply(char *expr, int size) {
 
 
 ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok_val, int line, int col, ASTNode *first_arg);
-void build_call_cexpr(ASTNode *call, char *cexpr, int cexpr_size);
-int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size);
+void build_call_cexpr(ASTNode *call, char **cexpr, int *cexpr_cap);
+int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char **cexpr, int *cexpr_cap);
 ASTNode *make_receiver_arg(SymbolTable *table, Token rtok);
 
 
@@ -1741,7 +1741,7 @@ int part_is_stringy(const char *part) {
     return 0;
 }
 
-void token_append_source(char *out, int *pos, int out_size, Token tok);
+void token_append_source(char **outp, int *pos, int *cap, Token tok);
 
 /* Find a function AST node by its short source name or mangled C name. */
 ASTNode *find_function_ast_by_name(const char *name);

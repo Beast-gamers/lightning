@@ -1232,7 +1232,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     int _ck_bool = (strcmp(tok.value,"tobool")==0||strcmp(tok.value,"bool")==0);
                     int _ck_char = (strcmp(tok.value,"tochar")==0||strcmp(tok.value,"char")==0);
                     lexer_next(lexer); /* consume ( */
-                    char *inner = (char*)malloc(65536);
+                    int inner_cap = 65536;
+                    char *inner = (char*)malloc(inner_cap);
                     if (!inner) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; }
                     int ipos = 0;
                     int depth = 1;
@@ -1242,7 +1243,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
                         else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
                         itok = lexer_next(lexer);
-                        token_append_source(inner, &ipos, 65536, itok);
+                        token_append_source(&inner, &ipos, &inner_cap, itok);
                     }
                     /* Trim trailing whitespace from inner */
                     while (ipos > 0 && (inner[ipos-1] == ' ' || inner[ipos-1] == '\t')) ipos--;
@@ -1492,8 +1493,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     char *cexpr = (char*)malloc(65536);
                     if (!cexpr) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; }
                     cexpr[0] = 0;
-                    build_call_cexpr(call, cexpr, 65536);
-                    int chained_call = append_immediate_call_chains(lexer, table, cexpr, 65536);
+                    build_call_cexpr(call, &cexpr, &(int){65536});
+                    int chained_call = append_immediate_call_chains(lexer, table, &cexpr, &(int){65536});
                     {
                         VarType crt = chained_call ? TYPE_STRING : infer_call_result_type(call);
                         if (chained_call) {
@@ -1550,8 +1551,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         char *cexpr = (char*)malloc(65536);
                         if (!cexpr) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); free(mangled); break; }
                         cexpr[0] = 0;
-                        build_call_cexpr(call, cexpr, 65536);
-                        int chained_call = append_immediate_call_chains(lexer, table, cexpr, 65536);
+                        build_call_cexpr(call, &cexpr, &(int){65536});
+                        int chained_call = append_immediate_call_chains(lexer, table, &cexpr, &(int){65536});
                         {
                             if (chained_call) {
                                 CE_SNPRINTF_ADD( "%s", cexpr);
@@ -1652,8 +1653,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         char *cexpr = (char*)malloc(65536);
                         if (!cexpr) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); break; }
                         cexpr[0] = 0;
-                        build_call_cexpr(call, cexpr, 65536);
-                        int chained_call = append_immediate_call_chains(lexer, table, cexpr, 65536);
+                        build_call_cexpr(call, &cexpr, &(int){65536});
+                        int chained_call = append_immediate_call_chains(lexer, table, &cexpr, &(int){65536});
                         {
                             VarType crt = chained_call ? TYPE_STRING : infer_call_result_type(call);
                             if (chained_call) {
