@@ -627,10 +627,9 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                     else STMT_APPEND(next_expr, next_expr_cap, p, ",_ltng_ad((double)(%s))", a->value);
                     /* p grown dynamically */
                 }
-                if (p < (int)65535)
-                    STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
-                next_expr[65535]=0;
-                if (p >= (int)65535) {
+                STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
+                if (p < next_expr_cap) next_expr[p] = 0;
+                if (p >= next_expr_cap) {
                     error_state_add(parser_errors, cline, ccol, "Chained call expression too deep/complex");
                     lexer->current = saved_call; goto _write_call_fallback;
                 }
@@ -788,7 +787,7 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
         node->is_variable = 0;
         if (arg.type == TOKEN_CHAR) node->var_type = TYPE_STRING;
         if (arg.type == TOKEN_STRING) {
-            char *resolved = (char*)malloc(65536); if(resolved) resolved[0]=0;
+            int resolved_cap = 65536; char *resolved = (char*)malloc(resolved_cap); if(resolved) resolved[0]=0;
             int rlen = 0;
             for (const char *sp = arg.value; *sp; sp++) {
                 if (*sp == '$' && sp[1] == '[') {
@@ -833,15 +832,18 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                             }
                             int voff = (int)(vstart - 2 - arg.value);
                             int vtotal = (int)(sp - (vstart - 2) + 1);
-                            for (int ci = voff; ci < voff + vtotal && rlen < 65535; ci++) {
-                                resolved[rlen++] = arg.value[ci];
+                            for (int ci = voff; ci < voff + vtotal ; ci++) {
+                                if (rlen+1 >= resolved_cap) { int nc=resolved_cap*2; char *nr=(char*)realloc(resolved,nc); if(nr){resolved=nr;resolved_cap=nc;} }
+                                if (rlen < resolved_cap-1) resolved[rlen++] = arg.value[ci];
                             }
                         }
                     } else {
-                        if (rlen + 2 < 65536) { resolved[rlen++] = '$'; resolved[rlen++] = '['; }
+                        if (rlen + 3 >= resolved_cap) { int nc=resolved_cap*2; char *nr=(char*)realloc(resolved,nc); if(nr){resolved=nr;resolved_cap=nc;} }
+                        if (rlen + 2 < resolved_cap) { resolved[rlen++] = '$'; resolved[rlen++] = '['; }
                     }
                 } else {
-                    if (rlen < 65535) resolved[rlen++] = *sp;
+                    if (rlen+1 >= resolved_cap) { int nc=resolved_cap*2; char *nr=(char*)realloc(resolved,nc); if(nr){resolved=nr;resolved_cap=nc;} }
+                    if (rlen < resolved_cap-1) resolved[rlen++] = *sp;
                 }
             }
             resolved[rlen] = '\0';
@@ -1176,13 +1178,8 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, 
                     STMT_APPEND(next_expr, next_expr_cap, p, ",_ltng_ad((double)(%s))", a->value);
                 /* p grown dynamically */
             }
-            if (p < (int)65535)
-                STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
-            next_expr[65535] = '\0';
-            if (p >= (int)65535) {
-                error_state_add(parser_errors, cline, ccol, "Chained call expression too deep/complex");
-                return chained;
-            }
+            STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
+            if (p < next_expr_cap) next_expr[p] = 0;
             strncpy(cexpr, next_expr, cexpr_size - 1);
             cexpr[cexpr_size - 1] = '\0';
             continue;
@@ -1456,13 +1453,8 @@ int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int 
                 STMT_APPEND(next_expr, next_expr_cap, p, ",_ltng_ad((double)(%s))", a->value);
             /* p grown dynamically */
         }
-        if (p < (int)65535)
-            STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
-        next_expr[65535]=0;
-        if (p >= (int)65535) {
-            error_state_add(parser_errors, cline, ccol, "Chained call expression too deep/complex");
-            lexer->current = saved; return 0;
-        }
+        STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
+        if (p < next_expr_cap) next_expr[p] = 0;
         SNPRINTF_FULL(cur_expr, "%s", next_expr);
     }
 
@@ -1538,7 +1530,7 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
             } else if ((val.type == TOKEN_IDENT || token_is_name(val)) && is_bool_value(val.value)) {
                 lexer_next(lexer);
                 f->type = TYPE_BOOL;
-                strncpy(f->value, (strcmp(val.value,"true")==0||strcmp(val.value,"t")==0) ? "true" : "false", 65535);
+                { const char *_bv = (strcmp(val.value,"true")==0||strcmp(val.value,"t")==0) ? "true" : "false"; strncpy(f->value, _bv, sizeof(f->value)-1); f->value[sizeof(f->value)-1]=0; }
             } else if (val.type == TOKEN_MINUS && (lexer->current+1 < lexer->count) &&
                        (lexer->tokens[lexer->current+1].type == TOKEN_INT_LIT || lexer->tokens[lexer->current+1].type == TOKEN_FLOAT_LIT)) {
                 lexer_next(lexer); /* - */
@@ -3169,7 +3161,7 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
         while (lexer->current < lexer->count) {
             Token rt = lexer->tokens[lexer->current];
             if (rt.type == TOKEN_NEWLINE || rt.type == TOKEN_EOF) break;
-            if (rpos > 0 && rpos < 65535) expr_rhs_src[rpos++] = ' ';
+            if (rpos > 0) { if (rpos+1 < 65536) expr_rhs_src[rpos++] = ' '; }
             token_append_source(expr_rhs_src, &rpos, 65536, rt);
             lexer->current++;
             if (rpos >= 65536 - 2) break;
@@ -5998,7 +5990,7 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                 char *m = mangle_name_alloc(id.value);
                 const char *cname = symbol_table_get_cname(table, m);
                 SNPRINTF_FULL(expr, "%s", cname);
-                expr[65535] = '\0';
+                if (expr[0]) {} /* growable */
                 VarType vtype2 = TYPE_STRING;
                 if (symbol_table_has(table, m)) vtype2 = symbol_table_get(table, m);
                 /* Preserve legacy pass-through for dynamic/string/object values, but keep
@@ -6744,13 +6736,8 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
                         else STMT_APPEND(next_expr, next_expr_cap, p, ",_ltng_ad((double)(%s))", a->value);
                         /* p grown dynamically */
                     }
-                    if (p < (int)65535)
-                        STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
-                    next_expr[65535]=0;
-                    if (p >= (int)65535) {
-                        error_state_add(parser_errors, cline, ccol, "Chained call expression too deep/complex");
-                        skip_to_newline(lexer); return;
-                    }
+                    STMT_APPEND(next_expr, next_expr_cap, p, "); free(__ct%d); __ctr%d; })", cid, cid);
+                    if (p < next_expr_cap) next_expr[p] = 0;
                     SNPRINTF_FULL(cexpr, "%s", next_expr);
                 }
                 ASTNode *stmt = create_node(NODE_CALL, "", cexpr);
