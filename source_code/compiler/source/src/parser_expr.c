@@ -438,10 +438,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
         if (split_top_level(*bufp, ops[i], &left, &left_cap, &right, &right_cap)) {
             int is_str_cmp = 0;
             if (strcmp(ops[i], "==") == 0 || strcmp(ops[i], "!=") == 0) {
-                char *ltmp = (char*)malloc(4096); char *rtmp = (char*)malloc(4096);
+                char *ltmp = ltng_strdup(left ? left : ""); char *rtmp = ltng_strdup(right ? right : "");
                 if(!ltmp||!rtmp){free(ltmp);free(rtmp);} else {
-                strncpy(ltmp, left, 4095); ltmp[4095]=0;
-                strncpy(rtmp, right, 4095); rtmp[4095]=0;
                 trim_c_expr(ltmp); trim_c_expr(rtmp);
                 int lv = expr_is_string_value(ltmp);
                 int rv = expr_is_string_value(rtmp);
@@ -476,8 +474,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
             if (is_str_cmp) {
                 /* But if it's actually a numeric-conversion helper vs numeric literal/value, compare numerically */
                 {
-                    char *lt = (char*)malloc(4096); char *rt = (char*)malloc(4096);
-                    if(lt&&rt){ strncpy(lt,left,4095); lt[4095]=0; strncpy(rt,right,4095); rt[4095]=0; trim_c_expr(lt); trim_c_expr(rt);
+                    char *lt = ltng_strdup(left ? left : ""); char *rt = ltng_strdup(right ? right : "");
+                    if(lt&&rt){ trim_c_expr(lt); trim_c_expr(rt);
                     int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("))!=NULL;
                     int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("))!=NULL;
                     const char *lq2=lt; while(*lq2==' '||*lq2=='\t') lq2++; const char *rq2=rt; while(*rq2==' '||*rq2=='\t') rq2++;
@@ -508,7 +506,7 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                 normalize_value_expr(&right, &right_cap, array_access_used, table);
                 /* Ensure numeric literals are quoted for strcmp */
                 {
-                    char *lq = (char*)malloc(4096); char *rq = (char*)malloc(4096);
+                    char *lq = ltng_strdup(left ? left : ""); char *rq = ltng_strdup(right ? right : "");
                     if(!lq||!rq){free(lq);free(rq);} else {
                     const char *lp = left; while (*lp==' '||*lp=='\t') lp++;
                     const char *rp = right; while (*rp==' '||*rp=='\t') rp++;
@@ -525,8 +523,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                         if (*q=='-'||*q=='+') q++;
                         if (isdigit((unsigned char)*q)) { rn = 1; while (*q) { if (*q==')'||*q==' '||*q=='\t') { q++; continue; } if (!isdigit((unsigned char)*q) && *q!='.') { rn = 0; break; } q++; } }
                     }
-                    if (ln) snprintf(lq, 4096, "\"%s\"", lp); else { strncpy(lq, left, 4096-1); lq[4096-1]=0; }
-                    if (rn) snprintf(rq, 4096, "\"%s\"", rp); else { strncpy(rq, right, 4096-1); rq[4096-1]=0; }
+                    if (ln) { char *_t=_ltng_cfmt("\"%s\"", lp); if(_t){free(lq); lq=_t;} } else { char *_t=ltng_strdup(left?left:""); if(_t){free(lq); lq=_t;} }
+                    if (rn) { char *_t=_ltng_cfmt("\"%s\"", rp); if(_t){free(rq); rq=_t;} } else { char *_t=ltng_strdup(right?right:""); if(_t){free(rq); rq=_t;} }
                     {
                         int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("))!=NULL;
                         int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("))!=NULL;
@@ -542,10 +540,10 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                             /* if side is quoted numeric literal string, unquote for numeric compare */
                             char *lcmp = (char*)malloc(4096); char *rcmp = (char*)malloc(4096);
                             if(lcmp&&rcmp){
-                            strncpy(lcmp, left, 4095); lcmp[4095]=0;
-                            strncpy(rcmp, right, 4095); rcmp[4095]=0;
-                            if (lq_qnumlit) { const char *p=lq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ snprintf(lcmp,4096,"%.*s",(int)(n-2),p+1); } } }
-                            if (rq_qnumlit) { const char *p=rq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ snprintf(rcmp,4096,"%.*s",(int)(n-2),p+1); } } }
+                            { char *_t=ltng_strdup(left?left:""); if(_t){free(lcmp);lcmp=_t;} }
+                            { char *_t=ltng_strdup(right?right:""); if(_t){free(rcmp);rcmp=_t;} }
+                            if (lq_qnumlit) { const char *p=lq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ char *_nc=_ltng_cfmt("%.*s",(int)(n-2),p+1); if(_nc){free(lcmp);lcmp=_nc;} } } }
+                            if (rq_qnumlit) { const char *p=rq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ char *_nc=_ltng_cfmt("%.*s",(int)(n-2),p+1); if(_nc){free(rcmp);rcmp=_nc;} } } }
                             BUF_SET(bufp, cap, "(%s) %s (%s)", lcmp, ops[i], rcmp);
                             }
                             free(lcmp); free(rcmp);
@@ -556,21 +554,21 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                                 free(lsc); free(rsc);
                                 BUF_SET(bufp, cap, "strcmp(%s, %s) %s 0", lq, rq, ops[i]);
                             } else {
-                                strncpy(lsc, lq, 4200-1); lsc[4200-1]=0;
-                                strncpy(rsc, rq, 4200-1); rsc[4200-1]=0;
+                                { char *_t=ltng_strdup(lq?lq:""); if(_t){free(lsc);lsc=_t;} }
+                                { char *_t=ltng_strdup(rq?rq:""); if(_t){free(rsc);rsc=_t;} }
                                 if (lnumh) {
                                     int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("))!=NULL;
                                     if (is_f)
-                                        snprintf(lsc, 4200, "({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", left);
+                                        { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", left); if(_t){free(lsc); lsc=_t;} }
                                     else
-                                        snprintf(lsc, 4200, "({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", left);
+                                        { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", left); if(_t){free(lsc); lsc=_t;} }
                                 }
                                 if (rnumh) {
                                     int is_f = (strstr(right,"atof(")||strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D("))!=NULL;
                                     if (is_f)
-                                        snprintf(rsc, 4200, "({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", right);
+                                        { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", right); if(_t){free(rsc); rsc=_t;} }
                                     else
-                                        snprintf(rsc, 4200, "({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", right);
+                                        { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", right); if(_t){free(rsc); rsc=_t;} }
                                 }
                                 if (strcmp(ops[i], "==") == 0)
                                     BUF_SET(bufp, cap, "(strcmp(%s, %s) == 0)", lsc, rsc);
@@ -583,11 +581,11 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                         {
                                                         if ((strstr(lq,"_ltng_from_double(")||strstr(lq,"_ltng_from_int(")||strstr(lq,"_ltng_ad(")) && rq[0]=='"') {
                                 /* rq is "num" */
-                                char *num = (char*)malloc(128); if(num){ strncpy(num, rq+1, 127); num[127]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
+                                char *qe2=strchr(rq+1,'"'); size_t _nl = qe2 ? (size_t)(qe2-(rq+1)) : strlen(rq+1); char *num = (char*)malloc(_nl+1); if(num){ memcpy(num,rq+1,_nl); num[_nl]=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
                                 if(ok) BUF_SET(bufp, cap, "(%s) %s (%s)", left, ops[i], num); free(num); }
                             } else if ((strstr(rq,"_ltng_from_double(")||strstr(rq,"_ltng_from_int(")||strstr(rq,"_ltng_ad(")) && lq[0]=='"') {
-                                char *num = (char*)malloc(128); if(num){ strncpy(num, lq+1, 127); num[127]=0; char *qe=strchr(num,'"'); if(qe) *qe=0;
+                                char *qe3=strchr(lq+1,'"'); size_t _nl2 = qe3 ? (size_t)(qe3-(lq+1)) : strlen(lq+1); char *num = (char*)malloc(_nl2+1); if(num){ memcpy(num,lq+1,_nl2); num[_nl2]=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
                                 if(ok) BUF_SET(bufp, cap, "(%s) %s (%s)", num, ops[i], right); free(num); }
                             } else {
@@ -694,8 +692,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                     if ((ln && rc) || (rn && lc)) {
                         char *lq = (char*)malloc(4096); char *rq = (char*)malloc(4096);
                         if(lq&&rq){
-                        if (ln) snprintf(lq, 4096, "\"%s\"", left); else { strncpy(lq,left,4095); lq[4095]=0; }
-                        if (rn) snprintf(rq, 4096, "\"%s\"", right); else { strncpy(rq,right,4095); rq[4095]=0; }
+                        if (ln) { char *_t=_ltng_cfmt("\"%s\"", left); if(_t){free(lq); lq=_t;} } else { char *_t=ltng_strdup(left?left:""); if(_t){free(lq); lq=_t;} }
+                        if (rn) { char *_t=_ltng_cfmt("\"%s\"", right); if(_t){free(rq); rq=_t;} } else { char *_t=ltng_strdup(right?right:""); if(_t){free(rq); rq=_t;} }
                         if (strcmp(ops[i], "==") == 0)
                             BUF_SET(bufp, cap, "(strcmp(%s, %s) == 0)", lq, rq);
                         else
@@ -933,7 +931,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                     vname[n] = '\0';
                                 }
                                 if (vname[0]) {
-                                    snprintf(cond_buf, 65536, "_ltng_str_truthy(%s)", vname);
+                                    BUF_SET(&cond_buf, &cond_buf_cap, "_ltng_str_truthy(%s)", vname);
                                 }
                                 free(vname);
                             }
@@ -1936,16 +1934,18 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             /* Array method call(s) with chaining support.
                                                Value-consumed context: operate on a temp copy to keep
                                                the original receiver intact, return method result. */
-                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");free(arrname); free(lenname); free(capname); goto _arr_method_result_done;} _chain_prefix[0]=0;
+                                            int _chain_prefix_cap = 16384;
+                                            char *_chain_prefix = (char*)malloc(_chain_prefix_cap); if(!_chain_prefix){CE_SNPRINTF_ADD("0");free(arrname); free(lenname); free(capname); goto _arr_method_result_done;} _chain_prefix[0]=0;
                                             int _cp = 0;
                                             int _chain_step = 0;
-                                            char *_final_expr = (char*)calloc(1,4096);
-                                            if(!_final_expr){ pos+=snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
+                                            int _final_expr_cap = 4096;
+                                            char *_final_expr = (char*)calloc(1,_final_expr_cap);
+                                            if(!_final_expr){ CE_SNPRINTF_ADD("0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             int _is_chained = 0;
                                             int _chain_err = 0;
                                             Token _cm = mname;
                                             /* Copy original array into temp working array */
-                                            _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                            EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                 "char **__td=NULL; int __tl=0; int __tc=0; _ltng_arr_copy(%s, &__td, &__tl, &__tc, %s); ",
                                                 arrname, lenname);
                                             const char *_wa = "__td"; /* working array data */
@@ -1974,19 +1974,19 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                        EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                             "char *__apv%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _wa, _wl, _wc, _chain_step, _chain_step, _chain_step, _chain_step);
                                                     }
-                                                    snprintf(_final_expr, 4096, "__apr%d", _chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap, "__apr%d", _chain_step);
                                                     free(arg_expr);
                                                     result_type = TYPE_STRING;
                                                 } else if (strcmp(_cm.value, "pop") == 0) {
                                                     if (lexer_peek(lexer).type == TOKEN_RPAREN) {
                                                         lexer_next(lexer);
-                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                        EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                             "char *__pv%d = _ltng_arr_pop(%s, &%s); ", _chain_step, _wa, _wl);
-                                                        snprintf(_final_expr, 4096, "__pv%d", _chain_step);
+                                                        BUF_SET(&_final_expr, &_final_expr_cap, "__pv%d", _chain_step);
                                                     } else {
                                                         char *idx_expr = (char*)malloc(65536);
                                                         if (!idx_expr) { _chain_err = 1; break; }
@@ -1998,10 +1998,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                             skip_to_newline(lexer); CE_SNPRINTF_ADD( "0"); free(idx_expr); _chain_err = 1; break;
                                                         }
                                                         lexer_next(lexer);
-                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                        EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                             "char *__pv%d = _ltng_arr_pop_index(%s, &%s, (int)(%s)); ",
                                                             _chain_step, _wa, _wl, idx_expr);
-                                                        snprintf(_final_expr, 4096, "__pv%d", _chain_step);
+                                                        BUF_SET(&_final_expr, &_final_expr_cap, "__pv%d", _chain_step);
                                                         free(idx_expr);
                                                     }
                                                     result_type = TYPE_STRING;
@@ -2029,11 +2029,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                        EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                             "char *__aiv%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _wa, _wl, _wc, idx_expr, _chain_step, _chain_step, _chain_step, _chain_step);
                                                     }
-                                                    snprintf(_final_expr, 4096, "__air%d", _chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap, "__air%d", _chain_step);
                                                     free(arg_expr); free(idx_expr);
                                                     result_type = TYPE_STRING;
                                                 } else if (strcmp(_cm.value, "remove") == 0) {
@@ -2047,10 +2047,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         skip_to_newline(lexer); CE_SNPRINTF_ADD( "0"); free(idx_expr); _chain_err = 1; break;
                                                     }
                                                     lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                         "char *__rv%d = _ltng_arr_pop_index(%s, &%s, (int)(%s)); ",
                                                         _chain_step, _wa, _wl, idx_expr);
-                                                    snprintf(_final_expr, 4096, "__rv%d", _chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap, "__rv%d", _chain_step);
                                                     free(idx_expr);
                                                     result_type = TYPE_STRING;
                                                 } else if (strcmp(_cm.value, "contains") == 0) {
@@ -2067,11 +2067,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                        EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                             "char *__cv%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _chain_step, _wa, _wl, _chain_step, _chain_step);
                                                     }
-                                                    snprintf(_final_expr, 4096,
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,
                                                         "({ _ltng_retbuf_fmt(\"%%s\",__cr%d?\"true\":\"false\"); })", _chain_step);
                                                     free(arg_expr);
                                                     result_type = TYPE_STRING;
@@ -2089,11 +2089,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     {
                                                         const char *_fmt = (arg_type==TYPE_INT)?"%lld":(arg_type==TYPE_FLOAT)?"%g":"%s";
                                                         const char *_cast = (arg_type==TYPE_INT)?"(long long)":(arg_type==TYPE_FLOAT)?"(double)":"";
-                                                        _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                        EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                             "char *__iv%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",
                                                             _chain_step, _fmt, _cast, arg_expr, _chain_step, _wa, _wl, _chain_step, _chain_step);
                                                     }
-                                                    snprintf(_final_expr, 4096,
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,
                                                         "({ _ltng_retbuf_fmt(\"%%d\",__ir%d); })", _chain_step);
                                                     free(arg_expr);
                                                     result_type = TYPE_STRING;
@@ -2104,9 +2104,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         skip_to_newline(lexer); CE_SNPRINTF_ADD( "0"); _chain_err = 1; break;
                                                     }
                                                     lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                         "_ltng_arr_sort(%s, %s); ", _wa, _wl);
-                                                    snprintf(_final_expr, 4096,
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,
                                                         "({ _ltng_retbuf_fmt(\"true\"); })");
                                                     result_type = TYPE_STRING;
                                                 } else if (strcmp(_cm.value, "reverse") == 0) {
@@ -2116,9 +2116,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         skip_to_newline(lexer); CE_SNPRINTF_ADD( "0"); _chain_err = 1; break;
                                                     }
                                                     lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                         "_ltng_arr_reverse(%s, %s); ", _wa, _wl);
-                                                    snprintf(_final_expr, 4096,
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,
                                                         "({ _ltng_retbuf_fmt(\"true\"); })");
                                                     result_type = TYPE_STRING;
                                                 } else {
@@ -2173,8 +2173,9 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                             }
                                             lexer_next(lexer); /* consume ( */
-                                            char *_chain_prefix = (char*)malloc(16384); if(!_chain_prefix){pos+=snprintf(out+pos,out_size-pos,"0");free(arrname); free(lenname); free(capname); goto _arr_method_result_done;} _chain_prefix[0]=0; int _cp = 0;
-                                            _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                            int _chain_prefix_cap = 16384;
+                                            char *_chain_prefix = (char*)malloc(_chain_prefix_cap); if(!_chain_prefix){CE_SNPRINTF_ADD("0");free(arrname); free(lenname); free(capname); goto _arr_method_result_done;} _chain_prefix[0]=0; int _cp = 0;
+                                            EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                 "char **__td=NULL; int __tl=0; int __tc=0; ");
                                             if (strcmp(mname.value, "copy") == 0) {
                                                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
@@ -2183,7 +2184,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     skip_to_newline(lexer); CE_SNPRINTF_ADD( "0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* consume ) */
-                                                _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                     "_ltng_arr_copy(%s, &__td, &__tl, &__tc, %s); ",
                                                     arrname, lenname);
                                             } else { /* slice */
@@ -2205,14 +2206,15 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     skip_to_newline(lexer); free(s0); free(s1); CE_SNPRINTF_ADD( "0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
                                                 }
                                                 lexer_next(lexer); /* ) */
-                                                _cp += snprintf(_chain_prefix + _cp, 16384 - _cp,
+                                                EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,
                                                     "_ltng_arr_slice(%s, %s, (int)(%s), (int)(%s), &__td, &__tl, &__tc); ",
                                                     arrname, lenname, s0, s1);
                                                 free(s0); free(s1);
                                             }
                                             const char *_wa = "__td", *_wl = "__tl", *_wc = "__tc";
-                                            char *_final_expr = (char*)calloc(1,4096);
-                                            if(!_final_expr){ pos+=snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
+                                            int _final_expr_cap = 4096;
+                                            char *_final_expr = (char*)calloc(1,_final_expr_cap);
+                                            if(!_final_expr){ CE_SNPRINTF_ADD("0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             int _chain_err = 0;
                                             int _has_scalar_result = 0;
                                             int _chain_step = 0;
@@ -2243,12 +2245,12 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if (lexer_peek(lexer).type != TOKEN_RPAREN) { free(arg_expr); _chain_err=1; break; } lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp, "char *__apv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ", _chain_step,fmt,cast,arg_expr,_wa,_wl,_wc,_chain_step,_chain_step,_chain_step,_chain_step);
-                                                    snprintf(_final_expr,4096,"__apr%d",_chain_step);
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp, "char *__apv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&%s,&%s,&%s,__apv%d); char *__apr%d=_ltng_retbuf_fmt(\"%%s\",__apv%d); free(__apv%d); ", _chain_step,fmt,cast,arg_expr,_wa,_wl,_wc,_chain_step,_chain_step,_chain_step,_chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"__apr%d",_chain_step);
                                                     free(arg_expr);
                                                 } else if (strcmp(_cm.value, "pop") == 0) {
-                                                    if (lexer_peek(lexer).type == TOKEN_RPAREN) { lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop(%s,&%s); ",_chain_step,_wa,_wl); snprintf(_final_expr,4096,"__pv%d",_chain_step); }
-                                                    else { char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ie);_chain_err=1;break;} lexer_next(lexer); _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__pv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie); snprintf(_final_expr,4096,"__pv%d",_chain_step); free(ie); }
+                                                    if (lexer_peek(lexer).type == TOKEN_RPAREN) { lexer_next(lexer); EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"char *__pv%d=_ltng_arr_pop(%s,&%s); ",_chain_step,_wa,_wl); BUF_SET(&_final_expr, &_final_expr_cap,"__pv%d",_chain_step); }
+                                                    else { char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ie);_chain_err=1;break;} lexer_next(lexer); EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"char *__pv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie); BUF_SET(&_final_expr, &_final_expr_cap,"__pv%d",_chain_step); free(ie); }
                                                 } else if (strcmp(_cm.value, "insert") == 0) {
                                                     char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,1,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_COMMA){free(ie);_chain_err=1;break;} lexer_next(lexer);
@@ -2256,38 +2258,38 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ae);free(ie);_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__aiv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",_chain_step,fmt,cast,ae,_wa,_wl,_wc,ie,_chain_step,_chain_step,_chain_step,_chain_step);
-                                                    snprintf(_final_expr,4096,"__air%d",_chain_step);
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"char *__aiv%d=_ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&%s,&%s,&%s,(int)(%s),__aiv%d); char *__air%d=_ltng_retbuf_fmt(\"%%s\",__aiv%d); free(__aiv%d); ",_chain_step,fmt,cast,ae,_wa,_wl,_wc,ie,_chain_step,_chain_step,_chain_step,_chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"__air%d",_chain_step);
                                                     free(ae); free(ie);
                                                 } else if (strcmp(_cm.value, "remove") == 0) {
                                                     char *ie = (char*)malloc(65536); if(!ie){_chain_err=1;break;} ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ie);_chain_err=1;break;} lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__rv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie);
-                                                    snprintf(_final_expr,4096,"__rv%d",_chain_step);
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"char *__rv%d=_ltng_arr_pop_index(%s,&%s,(int)(%s)); ",_chain_step,_wa,_wl,ie);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"__rv%d",_chain_step);
                                                     free(ie);
                                                 } else if (strcmp(_cm.value, "sort") == 0) {
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"_ltng_arr_sort(%s,%s); ",_wa,_wl);
-                                                    snprintf(_final_expr,4096,"({ _ltng_retbuf_fmt(\"true\"); })");
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"_ltng_arr_sort(%s,%s); ",_wa,_wl);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"({ _ltng_retbuf_fmt(\"true\"); })");
                                                 } else if (strcmp(_cm.value, "reverse") == 0) {
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){_chain_err=1;break;} lexer_next(lexer);
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"_ltng_arr_reverse(%s,%s); ",_wa,_wl);
-                                                    snprintf(_final_expr,4096,"({ _ltng_retbuf_fmt(\"true\"); })");
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"_ltng_arr_reverse(%s,%s); ",_wa,_wl);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"({ _ltng_retbuf_fmt(\"true\"); })");
                                                 } else if (strcmp(_cm.value, "contains") == 0) {
                                                     char *ae = (char*)malloc(65536); if(!ae){_chain_err=1;break;} ae[0]=0; VarType at=collect_expression(lexer,table,&ae, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ae);_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__cv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
-                                                    snprintf(_final_expr,4096,"({ _ltng_retbuf_fmt(\"%%s\",__cr%d?\"true\":\"false\"); })",_chain_step);
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"char *__cv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d=_ltng_arr_contains(%s,%s,__cv%d); free(__cv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"({ _ltng_retbuf_fmt(\"%%s\",__cr%d?\"true\":\"false\"); })",_chain_step);
                                                     free(ae);
                                                 } else if (strcmp(_cm.value, "index_of") == 0) {
                                                     char *ae = (char*)malloc(65536); if(!ae){_chain_err=1;break;} ae[0]=0; VarType at=collect_expression(lexer,table,&ae, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                                                     if(lexer_peek(lexer).type!=TOKEN_RPAREN){free(ae);_chain_err=1;break;} lexer_next(lexer);
                                                     const char *fmt = (at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                                                     const char *cast = (at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                                                    _cp += snprintf(_chain_prefix+_cp,16384-_cp,"char *__iv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
-                                                    snprintf(_final_expr,4096,"({ _ltng_retbuf_fmt(\"%%d\",__ir%d); })",_chain_step);
+                                                    EXPR_APPEND(_chain_prefix, _chain_prefix_cap, _cp,"char *__iv%d=_ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d=_ltng_arr_index_of(%s,%s,__iv%d); free(__iv%d); ",_chain_step,fmt,cast,ae,_chain_step,_wa,_wl,_chain_step,_chain_step);
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"({ _ltng_retbuf_fmt(\"%%d\",__ir%d); })",_chain_step);
                                                 } else { _chain_err=1; break; }
                                                 /* next chain? */
                                                 _has_chain = 0;
@@ -2301,7 +2303,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             if (_chain_err) { pos += snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             if (!_has_scalar_result) {
                                                 /* No chain - return array formatted as string */
-                                                snprintf(_final_expr,4096,
+                                                BUF_SET(&_final_expr, &_final_expr_cap,
                                                     "({ char *__r=_ltng_ds_new(\"\"); for(int _fi=0;_fi<__tl;_fi++){ if(_fi) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td[_fi]?__td[_fi]:\"\"); } __r; })");
                                             }
                                             pos += snprintf(out+pos,out_size-pos,
