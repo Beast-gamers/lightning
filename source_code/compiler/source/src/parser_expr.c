@@ -1152,7 +1152,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         for (int _i = pos - 1; _i >= 0; _i--) { if (out[_i] == '%') { _mop = _i; break; } }
                     }
                     if (_is_fmod && _mop >= 0 && _mop < pos && out[_mop] == '%') {
-                        char *_left = (char*)malloc(4096); if(_left){ int _llen = _mop; if (_llen >= 4096) _llen = 4095;
+                        int _llen = _mop; char *_left = (char*)malloc(_llen + 1); if(_left){
                         memcpy(_left, out, _llen); _left[_llen] = 0;
                         pos = 0;
                         CE_SNPRINTF_ADD( "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col); free(_left); }
@@ -1176,7 +1176,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 if (pending_divmod) {
                     int _is_fmod = pending_divmod_is_mod;
                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
+                        int _llen = pending_mod_op_pos; char *_left = (char*)malloc(_llen + 1); if(_left){
                         memcpy(_left, out, _llen); _left[_llen] = 0;
                         pos = 0;
                         CE_SNPRINTF_ADD( "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, tok.value, pending_divmod_line, pending_divmod_col); free(_left); }
@@ -1823,7 +1823,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 if (pending_divmod) {
                                     int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
                                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
+                                        int _llen = pending_mod_op_pos; char *_left = (char*)malloc(_llen + 1); if(_left){
                                         memcpy(_left, out, _llen); _left[_llen] = 0;
                                         pos = 0;
                                         CE_SNPRINTF_ADD( "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col); free(_left); }
@@ -1842,7 +1842,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 if (pending_divmod) {
                                     int _is_fmod = pending_divmod_is_mod;
                                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
+                                        int _llen = pending_mod_op_pos; char *_left = (char*)malloc(_llen + 1); if(_left){
                                         memcpy(_left, out, _llen); _left[_llen] = 0;
                                         pos = 0;
                                         CE_SNPRINTF_ADD( "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col); free(_left); }
@@ -1869,7 +1869,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 if (pending_divmod) {
                                     int _is_fmod = (result_type == TYPE_FLOAT && pending_divmod_is_mod);
                                     if (_is_fmod && pending_mod_op_pos >= 0 && pending_mod_op_pos < pos && out[pending_mod_op_pos] == '%') {
-                                        char *_left = (char*)malloc(4096); if(_left){ int _llen = pending_mod_op_pos; if (_llen >= 4096) _llen = 4095;
+                                        int _llen = pending_mod_op_pos; char *_left = (char*)malloc(_llen + 1); if(_left){
                                         memcpy(_left, out, _llen); _left[_llen] = 0;
                                         pos = 0;
                                         CE_SNPRINTF_ADD( "_LTNG_FMOD_D(%s, %s, %d, %d)", _left, _opnd, pending_divmod_line, pending_divmod_col); free(_left); }
