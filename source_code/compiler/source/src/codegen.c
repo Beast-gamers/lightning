@@ -228,6 +228,7 @@ static const char *default_for(VarType t) {
         case TYPE_OBJECT: return "";
         case TYPE_NULL: return "";
         case TYPE_VOID: return "";
+        case TYPE_ARRAY: return "";
     }
     return "";
 }
@@ -627,7 +628,7 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
 }
 
 /* Try float-mode rewrite first (safer for mixed/unknown numeric exprs in conditions/returns), then int-mode. */
-static int cg_rewrite_divmod_auto(char *out, size_t outsz, const char *expr, int prefer_float, int line, int col) {
+static int __attribute__((unused)) cg_rewrite_divmod_auto(char *out, size_t outsz, const char *expr, int prefer_float, int line, int col) {
     if (!expr || !cg_expr_has_divmod(expr)) return 0;
     if (prefer_float) return cg_rewrite_divmod(out, outsz, expr, 1, line, col);
     /* heuristic: if expr contains atof or '.' outside strings, treat as float */
@@ -763,11 +764,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
         if (node->var_type == TYPE_STRING || node->var_type == TYPE_CHAR || node->var_type == TYPE_OBJECT ||
                    is_add_sn) {
             pad(out, indent);
-            {
-                size_t _nlen = strlen(node->name);
-                int _nbuf = (_nlen >= 5 && strcmp(node->name + _nlen - 5, "__obj") == 0) ? 512 : 256;
-                fprintf(out, "_ltng_ds_set(&%s, %s);\n", node->name, node->value);
-            }
+            fprintf(out, "_ltng_ds_set(&%s, %s);\n", node->name, node->value);
         } else {
             pad(out, indent);
             int _is_call_res = node->is_default || (strncmp(node->value, "({ char __ct", 12) == 0);
@@ -849,7 +846,7 @@ static void codegen_assign(FILE *out, ASTNode *node, int indent) {
     }
 }
 
-static void resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
+static void __attribute__((unused)) resolve_typeof_str(char *out, const char *in, SymbolTable *table) {
     char *w = out;
     const char *p = in;
     while (*p) {
@@ -1591,7 +1588,7 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
     free(tf);free(tr);free(cf);free(cr);free(es);free(ec);free(ef);free(er);free(ee);
 }
 
-static int _expr_is_call_buf(const char *v) {
+static int __attribute__((unused)) _expr_is_call_buf(const char *v) {
     return v && (strstr(v, "_ltng_retbuf") || strstr(v, "__ltng_call_indirect"));
 }
 
@@ -2159,7 +2156,9 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
         "    _ltng_fn_col[_ltng_stack_depth] = col;\n"
         "    _ltng_stack_depth++;\n"
         "}\n"
-        "static void _ltng_fn_pop(void) { if (_ltng_stack_depth > 0) _ltng_stack_depth--; }\n"
+        "static void _ltng_fn_pop(void) { if (_ltng_stack_depth > 0) _ltng_stack_depth--; }\n",
+        out);
+    fputs(
         "static void _ltng_capture_trace(int line, int col) {\n"
         "    _ltng_exc_ensure();\n"
         "    _ltng_exc_line = line;\n"
@@ -2251,8 +2250,8 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static char *_ltng_retbuf_fmt(const char *fmt, ...){ static char *b[32]={0}; static int i; i=(i+1)%%32; va_list ap; va_start(ap,fmt); char *p=_ltng_ds_vfmt(fmt,ap); va_end(ap); if(b[i]) free(b[i]); b[i]=p; return b[i]; }\n");
     fprintf(out, "static char *_ltng_ad(double v){ static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
     fprintf(out, "static char *_ltng_as(const char *s){ static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_set(&b[i],s); return b[i]; }\n");
-    fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%lld\",v); return b[i]; }\n");
-    fprintf(out, "static char *_ltng_from_double(char *buf, double v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_from_int(char *buf, long long v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_setfmt(&b[i],\"%%lld\",v); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_from_double(char *buf, double v){ (void)buf; static char *b[32]={0}; static int i; i=(i+1)%%32; _ltng_ds_setfmt(&b[i],\"%%g\",v); return b[i]; }\n");
     fprintf(out, "static int _ltng_is_num_str(const char *s){ if(!s||!*s) return 0; const char *p=s; if(*p=='-'||*p=='+') p++; int h=0; for(;*p;p++){ if(isdigit((unsigned char)*p)) h=1; else if(*p=='.'){} else return 0; } return h; }\n");
     fprintf(out, "static int _ltng_str_truthy(const char *s){ if(!s||!s[0]) return 0; if(strcmp(s,\"0\")==0||strcmp(s,\"false\")==0||strcmp(s,\"f\")==0) return 0; return 1; }\n");
     fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char *buf[32]={0}; static int i=0; i=(i+1)%%32; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a?a:\"0\"),nb=atof(b?b:\"0\"); _ltng_ds_setfmt(&buf[i],\"%%g\",na+nb); } else { _ltng_ds_setfmt(&buf[i],\"%%s%%s\",a?a:\"\",b?b:\"\"); } return buf[i]; }\n");

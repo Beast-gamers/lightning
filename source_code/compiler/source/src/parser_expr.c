@@ -476,8 +476,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                 {
                     char *lt = ltng_strdup(left ? left : ""); char *rt = ltng_strdup(right ? right : "");
                     if(lt&&rt){ trim_c_expr(lt); trim_c_expr(rt);
-                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("))!=NULL;
-                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("))!=NULL;
+                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("));
+                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("));
                     const char *lq2=lt; while(*lq2==' '||*lq2=='\t') lq2++; const char *rq2=rt; while(*rq2==' '||*rq2=='\t') rq2++;
                     int lnl = (*lq2=='-'||*lq2=='+'||isdigit((unsigned char)*lq2));
                     int rnl = (*rq2=='-'||*rq2=='+'||isdigit((unsigned char)*rq2));
@@ -491,7 +491,7 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                     } free(lt); free(rt);
                 }
                 /* Normalize both sides as string expressions (handle + / * concat/repeat) */
-                /* In string comparison context, +/* on bare-buffer operands are string ops */
+                /* In string comparison context, + / * on bare-buffer operands are string ops */
                 {
                     int hp=0,hs=0,in=0; char qc=0;
                     for(const char *p=left;*p;p++){ if(in){if(*p=='\\'&&p[1]){p++;continue;} if(*p==qc)in=0; continue;} if(*p=='"'||*p=='\''){in=1;qc=*p;continue;} if(*p=='+')hp=1; if(*p=='*')hs=1; }
@@ -526,15 +526,15 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                     if (ln) { char *_t=_ltng_cfmt("\"%s\"", lp); if(_t){free(lq); lq=_t;} } else { char *_t=ltng_strdup(left?left:""); if(_t){free(lq); lq=_t;} }
                     if (rn) { char *_t=_ltng_cfmt("\"%s\"", rp); if(_t){free(rq); rq=_t;} } else { char *_t=ltng_strdup(right?right:""); if(_t){free(rq); rq=_t;} }
                     {
-                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("))!=NULL;
-                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("))!=NULL;
+                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("));
+                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("));
                         /* Numeric expression compared with quoted numeric string literal: compare numerically */
-                        int lq_qnumlit = 0, rq_qnumlit = 0, lq_quoted = 0, rq_quoted = 0;
+                        int lq_qnumlit = 0, rq_qnumlit = 0;
                         {
                             const char *lpq = lq; while (*lpq==' '||*lpq=='\t') lpq++;
-                            if (*lpq=='"') { lq_quoted = 1; const char *p=lpq+1; if(*p=='+'||*p=='-') p++; int hd=0,ok=1,dot=0; while(*p && *p!='"'){ if(isdigit((unsigned char)*p)) hd=1; else if(*p=='.'&&!dot) dot=1; else {ok=0;break;} p++; } if(*p=='"' && hd && ok && p[1]=='\0') lq_qnumlit=1; }
+                            if (*lpq=='"') { const char *p=lpq+1; if(*p=='+'||*p=='-') p++; int hd=0,ok=1,dot=0; while(*p && *p!='"'){ if(isdigit((unsigned char)*p)) hd=1; else if(*p=='.'&&!dot) dot=1; else {ok=0;break;} p++; } if(*p=='"' && hd && ok && p[1]=='\0') lq_qnumlit=1; }
                             const char *rpq = rq; while (*rpq==' '||*rpq=='\t') rpq++;
-                            if (*rpq=='"') { rq_quoted = 1; const char *p=rpq+1; if(*p=='+'||*p=='-') p++; int hd=0,ok=1,dot=0; while(*p && *p!='"'){ if(isdigit((unsigned char)*p)) hd=1; else if(*p=='.'&&!dot) dot=1; else {ok=0;break;} p++; } if(*p=='"' && hd && ok && p[1]=='\0') rq_qnumlit=1; }
+                            if (*rpq=='"') { const char *p=rpq+1; if(*p=='+'||*p=='-') p++; int hd=0,ok=1,dot=0; while(*p && *p!='"'){ if(isdigit((unsigned char)*p)) hd=1; else if(*p=='.'&&!dot) dot=1; else {ok=0;break;} p++; } if(*p=='"' && hd && ok && p[1]=='\0') rq_qnumlit=1; }
                         }
                         if ((lnumh && (rnumh || rn || rq_qnumlit)) || (rnumh && (lnumh || ln || lq_qnumlit))) {
                             /* if side is quoted numeric literal string, unquote for numeric compare */
@@ -553,14 +553,14 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                                 BUF_SET(bufp, cap, "strcmp(%s, %s) %s 0", lq, rq, ops[i]);
                             } else {
                                 if (lnumh) {
-                                    int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("))!=NULL;
+                                    int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("));
                                     if (is_f)
                                         { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", left); if(_t){free(lsc); lsc=_t;} }
                                     else
                                         { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%lld\",(long long)(%s)); })", left); if(_t){free(lsc); lsc=_t;} }
                                 }
                                 if (rnumh) {
-                                    int is_f = (strstr(right,"atof(")||strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D("))!=NULL;
+                                    int is_f = (strstr(right,"atof(")||strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D("));
                                     if (is_f)
                                         { char *_t=_ltng_cfmt("({ _ltng_retbuf_fmt(\"%%g\",(double)(%s)); })", right); if(_t){free(rsc); rsc=_t;} }
                                     else
@@ -579,11 +579,13 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                                 /* rq is "num" */
                                 char *qe2=strchr(rq+1,'"'); size_t _nl = qe2 ? (size_t)(qe2-(rq+1)) : strlen(rq+1); char *num = (char*)malloc(_nl+1); if(num){ memcpy(num,rq+1,_nl); num[_nl]=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
-                                if(ok) BUF_SET(bufp, cap, "(%s) %s (%s)", left, ops[i], num); free(num); }
+                                if(ok) BUF_SET(bufp, cap, "(%s) %s (%s)", left, ops[i], num);
+                                free(num); }
                             } else if ((strstr(rq,"_ltng_from_double(")||strstr(rq,"_ltng_from_int(")||strstr(rq,"_ltng_ad(")) && lq[0]=='"') {
                                 char *qe3=strchr(lq+1,'"'); size_t _nl2 = qe3 ? (size_t)(qe3-(lq+1)) : strlen(lq+1); char *num = (char*)malloc(_nl2+1); if(num){ memcpy(num,lq+1,_nl2); num[_nl2]=0;
                                 int ok=1; char *nn=num; if(*nn=='-'||*nn=='+') nn++; if(!*nn) ok=0; for(char*t=nn;*t;t++){ if(!isdigit((unsigned char)*t)&&*t!='.') {ok=0;break;} }
-                                if(ok) BUF_SET(bufp, cap, "(%s) %s (%s)", num, ops[i], right); free(num); }
+                                if(ok) BUF_SET(bufp, cap, "(%s) %s (%s)", num, ops[i], right);
+                                free(num); }
                             } else {
                                 /* bool/int ternary expr compared with quoted "0"/"1" numeric literal: compare numerically */
                                 int lq_qnum = (lq[0]=='"' && (strcmp(lq,"\"0\"")==0 || strcmp(lq,"\"1\"")==0));
@@ -734,9 +736,9 @@ void normalize_mixed_expr(char **bufp, int *cap, int array_access_used, SymbolTa
         char *endparen = q;
         char *after = endparen + 1;
         while (*after == ' ' || *after == '\t') after++;
-        int is_eq = 0, is_ne = 0;
+        int is_eq = 0;
         if (strncmp(after, "== 0", 4) == 0) is_eq = 1;
-        else if (strncmp(after, "!= 0", 4) == 0) is_ne = 1;
+        else if (strncmp(after, "!= 0", 4) == 0) { /* is_ne */ }
         else break;
         char *endcmp = after + 4;
         int l1 = (int)(comma - a1);
@@ -747,8 +749,8 @@ void normalize_mixed_expr(char **bufp, int *cap, int array_access_used, SymbolTa
         char *rightarg = (char*)malloc(l2 + 1); if (!rightarg) { free(leftarg); break; }
         memcpy(rightarg, a2, l2); rightarg[l2] = 0;
         trim_c_expr(leftarg); trim_c_expr(rightarg);
-        int lnumh = (strstr(leftarg,"_ltng_from_double(")||strstr(leftarg,"_ltng_from_int(")||strstr(leftarg,"_ltng_ad("))!=NULL;
-        int rnumh = (strstr(rightarg,"_ltng_from_double(")||strstr(rightarg,"_ltng_from_int(")||strstr(rightarg,"_ltng_ad("))!=NULL;
+        int lnumh = (strstr(leftarg,"_ltng_from_double(")||strstr(leftarg,"_ltng_from_int(")||strstr(leftarg,"_ltng_ad("));
+        int rnumh = (strstr(rightarg,"_ltng_from_double(")||strstr(rightarg,"_ltng_from_int(")||strstr(rightarg,"_ltng_ad("));
         char *numside = NULL; int have = 0; char *helperside = NULL; int helper_left = 0;
         if (lnumh && rightarg[0]=='"') {
             char *qe = strchr(rightarg+1,'"'); size_t nl = qe ? (size_t)(qe - (rightarg+1)) : strlen(rightarg+1);
@@ -1048,7 +1050,6 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     int _saved_has_string_mult = has_string_mult;
                     int _saved_array_access_used = array_access_used;
                     int _saved_arithmetic_used = arithmetic_used;
-                    VarType _saved_result_type = result_type;
                     pos = cstart;
                     CE_SNPRINTF_ADD( "(%s?(%s):(%s))", cond_buf, true_buf, false_buf);
                     if (pos >= out_size) { CE_GROW(1); if (pos >= out_size) pos = out_size - 1; }
@@ -1070,8 +1071,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     }
                     /* At paren_depth 0 the ternary consumed the rest of this expression level */
                     if (paren_depth == 0) {
-                        if (out_sl) *out_sl = sl; if (out_sc) *out_sc = sc;
-                        if (out_el) *out_el = el; if (out_ec) *out_ec = ec;
+                        if (out_sl) *out_sl = sl;
+                        if (out_sc) *out_sc = sc;
+                        if (out_el) *out_el = el;
+                        if (out_ec) *out_ec = ec;
                         return result_type;
                     }
                     /* Inside parens: continue so outer paren/ops are processed */
@@ -1313,7 +1316,6 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     const char *inner_expr = inner;
                     VarType inner_ctype = TYPE_STRING;
                     int inner_compiled = 0;
-                    int is_simple_ident_arg = 0;
                     if (is_num_lit) {
                         inner_ctype = num_has_dot ? TYPE_FLOAT : TYPE_INT;
                     } else if (is_simple_str_lit) {
@@ -1331,7 +1333,6 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             }
                         }
                         if (simple_ident) {
-                            is_simple_ident_arg = 1;
                             char *mname = mangle_name_alloc(inner);
                             if (symbol_table_has(table, mname)) {
                                 inner_ctype = symbol_table_get(table, mname);
@@ -1937,7 +1938,6 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             int _final_expr_cap = 4096;
                                             char *_final_expr = (char*)calloc(1,_final_expr_cap);
                                             if(!_final_expr){ CE_SNPRINTF_ADD("0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
-                                            int _is_chained = 0;
                                             int _chain_err = 0;
                                             Token _cm = mname;
                                             /* Copy original array into temp working array */
@@ -2135,7 +2135,6 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                          strcmp(nm.value, "sort") == 0 || strcmp(nm.value, "reverse") == 0)) {
                                                         lexer_next(lexer); /* consume method name */
                                                         _cm = nm;
-                                                        _is_chained = 1;
                                                         continue;
                                                     }
                                                     lexer->current = saved_cdot; /* not a chainable array method */
@@ -2513,12 +2512,15 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                     free(arrname); free(lenname);
                                 }
                                 if (!have_dims) free(dims);
-                                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+                                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+                                free(index_exprs);
                             } else if (!index_error) {
                                 CE_SNPRINTF_ADD( "0");
-                                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+                                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+                                free(index_exprs);
                             } else {
-                                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+                                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+                                free(index_exprs);
                             }
                         } else {
                             char *errmsg = _ltng_cfmt("Variable '%s' is not an array", tok.value);
@@ -2600,7 +2602,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                     { char *_tail = (char*)calloc(1,32);
                                     int _tl = pos < 30 ? pos : 30;
                                     if(_tail){ memcpy(_tail, out + pos - _tl, _tl);
-                                    if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1; free(_tail); } }
+                                    if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1;
+                                    free(_tail); } }
                                 }
                                 _numeric_add = _left_num;
                             }
@@ -2665,7 +2668,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         char *_tail = (char*)calloc(1,32);
                                         int _tl = pos < 30 ? pos : 30;
                                         if(_tail){ memcpy(_tail, out + pos - _tl, _tl);
-                                        if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1; free(_tail); }
+                                        if (strstr(_tail, "atoll(") || strstr(_tail, "atof(")) _left_num = 1;
+                                        free(_tail); }
                                     }
                                     _numeric_mul = _left_num;
                                 }
@@ -2780,17 +2784,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 comparison_or_logical = 1;
                 break;
             }
-            CE_GROW(4096);
             case TOKEN_EQ_EQ:   CE_SNPRINTF_ADD( "=="); result_type = TYPE_INT; comparison_or_logical = 1; break;
-            CE_GROW(4096);
             case TOKEN_BANG_EQ: CE_SNPRINTF_ADD( "!="); result_type = TYPE_INT; comparison_or_logical = 1; break;
-            CE_GROW(4096);
             case TOKEN_LT:      CE_SNPRINTF_ADD( "<");  result_type = TYPE_INT; comparison_or_logical = 1; break;
-            CE_GROW(4096);
             case TOKEN_GT:      CE_SNPRINTF_ADD( ">");  result_type = TYPE_INT; comparison_or_logical = 1; break;
-            CE_GROW(4096);
             case TOKEN_LT_EQ:   CE_SNPRINTF_ADD( "<="); result_type = TYPE_INT; comparison_or_logical = 1; break;
-            CE_GROW(4096);
             case TOKEN_GT_EQ:   CE_SNPRINTF_ADD( ">="); result_type = TYPE_INT; comparison_or_logical = 1; break;
             case TOKEN_RETURN: case TOKEN_BREAK: case TOKEN_CONTINUE: case TOKEN_FUNCTION:
             case TOKEN_SWITCH: case TOKEN_CASE: case TOKEN_DEFAULT:
@@ -3120,7 +3118,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
         }
     }
     g_expr_sl=sl; g_expr_sc=sc; g_expr_el=el; g_expr_ec=ec;
-    if (out_sl) *out_sl = sl; if (out_sc) *out_sc = sc; if (out_el) *out_el = el; if (out_ec) *out_ec = ec;
+    if (out_sl) *out_sl = sl;
+    if (out_sc) *out_sc = sc;
+    if (out_el) *out_el = el;
+    if (out_ec) *out_ec = ec;
     return result_type;
 }
 
@@ -3454,7 +3455,8 @@ void resolve_string_interpolation(Token *tok, SymbolTable *table, int line, int 
                             char *inner = (char*)malloc((size_t)ilen + 1);
                             if (inner) {
                                 memcpy(inner, vname + prefix, (size_t)ilen); inner[ilen] = '\0';
-                                while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--; inner[ilen] = '\0';
+                                while (ilen > 0 && (inner[ilen-1] == ' ' || inner[ilen-1] == '\t')) ilen--;
+                                inner[ilen] = '\0';
                                 int is_str_lit = (ilen >= 2 && inner[0] == '"' && inner[ilen-1] == '"');
                                 int is_num_lit = 0, has_dot = 0;
                                 if (!is_str_lit && ilen > 0) {

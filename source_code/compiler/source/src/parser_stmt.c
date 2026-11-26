@@ -55,14 +55,13 @@ int try_parse_typeof(Lexer *lexer, SymbolTable *table, Token *result) {
         Token first_inner = lexer_peek(lexer);
         int inner_tokens = 0;
         int inner_depth = 0;
-        Token inner_tok = {0};
         int depth = 1;
         while (lexer->current < lexer->count && depth > 0) {
             Token itok = lexer_peek(lexer);
             if (itok.type == TOKEN_LPAREN) depth++;
             else if (itok.type == TOKEN_RPAREN) { depth--; if (depth == 0) break; }
             else if (itok.type == TOKEN_NEWLINE || itok.type == TOKEN_EOF) break;
-            if (depth == 1 && inner_depth == 0) { inner_tok = itok; inner_tokens++; }
+            if (depth == 1 && inner_depth == 0) { inner_tokens++; }
             if (itok.type == TOKEN_LPAREN || itok.type == TOKEN_LBRACKET) inner_depth++;
             else if (itok.type == TOKEN_RPAREN || itok.type == TOKEN_RBRACKET) { if (inner_depth > 0) inner_depth--; }
             lexer_next(lexer);
@@ -319,7 +318,6 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
             if (strcmp(third_tok.value, "push") == 0) {
                 char *arg_expr = (char*)malloc(65536); if(arg_expr) arg_expr[0]=0;
                 VarType arg_type = collect_expression(lexer, table, &arg_expr, &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
-                int esl=g_expr_sl,esc=g_expr_sc,eel=g_expr_el,eec=g_expr_ec;
                 if (lexer_peek(lexer).type != TOKEN_RPAREN) {
                     error_state_add(parser_errors, lexer_peek(lexer).line,
                         lexer_peek(lexer).col, "Expected ')' after push argument");
@@ -727,15 +725,17 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                     node->var_type = TYPE_STRING; /* preserve raw/OOB string behavior */
                     emit(node);
                     free(expr);
-                    for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w);
+                    for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]);
+                    free(idx_exprs_w);
                     return;
                 }
                 /* fall back to general expression handling for mismatched dims */
-                for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w);
+                for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]);
+                free(idx_exprs_w);
                 lexer->current = saved_a;
                 goto _write_array_fallback;
             }
-            if (idx_exprs_w) for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w);
+            if (idx_exprs_w) { for(int _ix=0;_ix<idx_n_w;_ix++) free(idx_exprs_w[_ix]); free(idx_exprs_w); }
             _write_array_fallback:
             lexer->current = saved_a;
         }
@@ -1183,12 +1183,12 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char **cexpr,
                     step++;
                     if (lexer_peek(lexer).type != TOKEN_LPAREN) { chain_err=1; break; }
                     lexer_next(lexer);
-                    has_scalar = 1;
+                    has_scalar = 1; (void)has_scalar;
                     if (strcmp(cm.value,"copy")==0) {
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         /* copy is no-op on temp (already a copy), but keep as temp */
                         SNPRINTF_FULL(final_expr,"({ char *__r=_ltng_ds_new(\"\"); for(int _i=0;_i<__tl%d;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td%d[_i]?__td%d[_i]:\"\"); } __r; })",aid,aid,aid);
-                        has_scalar = 1;
+                        has_scalar = 1; (void)has_scalar;
                     } else if (strcmp(cm.value,"slice")==0) {
                         char *s0=(char*)malloc(65536); char *s1=(char*)malloc(65536); if(s0)s0[0]=0; if(s1)s1[0]=0;
                         collect_expression(lexer,table,&s0, &(int){sizeof(s0)},1,1,NULL,NULL,NULL,NULL);
@@ -1197,7 +1197,7 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char **cexpr,
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         STMT_APPEND(prefix,prefix_cap,pp,"{ char **__ns=NULL; int __nl=0,__nc=0; _ltng_arr_slice(__td%d,__tl%d,(int)(%s),(int)(%s),&__ns,&__nl,&__nc); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); __td%d=__ns; __tl%d=__nl; __tc%d=__nc; } ",aid,aid,s0,s1,aid,aid,aid,aid,aid,aid,aid);
                         SNPRINTF_FULL(final_expr,"({ char *__r=_ltng_ds_new(\"\"); for(int _i=0;_i<__tl%d;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td%d[_i]?__td%d[_i]:\"\"); } __r; })",aid,aid,aid);
-                        has_scalar = 1;
+                        has_scalar = 1; (void)has_scalar;
                     } else if (strcmp(cm.value,"push")==0) {
                         char *ae = (char*)malloc(65536); if(ae) ae[0]=0; VarType at=collect_expression(lexer,table,&ae, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
@@ -1339,6 +1339,7 @@ VarType infer_call_result_type(ASTNode *call) {
 }
 
 int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char **cexpr, int *cexpr_cap, int allow_base_assign, VarType *out_type, char **out_call_cname) {
+    (void)cexpr_cap; (void)allow_base_assign;
     Token first = lexer_peek(lexer);
     int saved = lexer->current;
     if (out_type) *out_type = TYPE_STRING;
@@ -1361,7 +1362,8 @@ int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char **cexpr, int
                 is_method_form = 1;
             }
         }
-        if (!call) { lexer->current = saved; return 0; }
+        (void)is_method_form;
+    if (!call) { lexer->current = saved; return 0; }
     } else if (first.type == TOKEN_IDENT && is_callable_ident(table, first.value)) {
         Token fname = lexer_next(lexer);
         if (lexer_peek(lexer).type != TOKEN_LPAREN) { lexer->current = saved; return 0; }
@@ -2932,8 +2934,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                 error_state_add(parser_errors, rb.line, rb.col,
                     "Expected ']' after array index");
                 skip_to_newline(lexer);
-                for(int _i=0;_i<index_count;_i++) free(index_exprs[_i]); free(index_exprs);
-                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+                for(int _i=0;_i<index_count;_i++) free(index_exprs[_i]);
+                free(index_exprs);
                 return;
             }
             Token nxt = lexer_peek(lexer);
@@ -2958,7 +2960,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             error_state_add(parser_errors, eq.line, eq.col,
                 "Expected '=' or compound operator after array index in set statement");
             skip_to_newline(lexer);
-            for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+            for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+            free(index_exprs);
             return;
         }
         /* Parse RHS expression */
@@ -2977,7 +2980,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                 error_state_add(parser_errors, name.line, name.col, errmsg ? errmsg : "");
                 free(errmsg);
                 if (!chave) free(cdims);
-                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+                for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+                free(index_exprs);
                 return;
             }
             char *clenname = _ltng_cfmt("%s_len", mangled);
@@ -3090,7 +3094,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             error_state_add(parser_errors, name.line, name.col, errmsg ? errmsg : "");
             free(errmsg);
             if (!have_dims) free(dims);
-            for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+            for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+            free(index_exprs);
             return;
         }
 
@@ -3122,7 +3127,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
         node->var_type = assign_type;
         node->is_expr = 1;
         emit(node);
-        for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]); free(index_exprs);
+        for(int _ie=0;_ie<index_count;_ie++) free(index_exprs[_ie]);
+        free(index_exprs);
         return;
     }
     if (op_tok.type == TOKEN_PLUS_EQUALS || op_tok.type == TOKEN_MINUS_EQUALS ||
@@ -5397,7 +5403,7 @@ void eval_default_tokens(Lexer *lexer, SymbolTable *table, int start, int end,
     }
     int n = end - start;
     Lexer tmp;
-    memset(&tmp, 0, 65536);
+    memset(&tmp, 0, sizeof(tmp));
     tmp.token_capacity = n + 8;
     tmp.tokens = (Token *)calloc((size_t)tmp.token_capacity, sizeof(Token));
     if (!tmp.tokens) { if(*out_cap<3){char*_n=realloc(*out,3);if(_n){*out=_n;*out_cap=3;}} (*out)[0]='"';(*out)[1]='"';(*out)[2]=0; return; }
@@ -5744,7 +5750,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                 if (!args) args = alast = an; else { alast->next = an; alast = an; }
             } else if (!named_arg && at.type == TOKEN_IDENT && is_callable_ident(table, at.value)) {
                 /* function call argument - pass result as string buffer */
-                char *cexpr = (char*)malloc(65536); if(cexpr) cexpr[0]=0; int cexpr_cap = 65536;
+                char *cexpr = (char*)malloc(65536); if(cexpr) cexpr[0]=0;
                 VarType carg_type = TYPE_STRING;
                 if (try_parse_call_arg(lexer, table, &cexpr, &(int){65536}, &carg_type)) {
                     ASTNode *an = create_node(NODE_PARAM, "", cexpr);
@@ -5767,7 +5773,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                     }
                     if (named_arg) {
                         { free(an->for_var); an->for_var = ltng_strdup(named_key); }
-                        has_named_arg = 1;
+                        has_named_arg = 1; (void)has_named_arg;
                     }
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 }
@@ -5814,6 +5820,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                 free(msg);
             }
             no_match = 1;
+            (void)no_match;
             /* Pick the first candidate so codegen can continue after an error. */
             for (int i = 0; i < g_func_count; i++) {
                 if (g_funcs[i].top_level && strcmp(g_funcs[i].src, fname_tok_val) == 0) {
@@ -6652,11 +6659,9 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
         if (t2.type == TOKEN_LPAREN && is_callable_ident(table, t.value)) {
             /* function call statement: name(args) */
             char *fm = ltng_strdup("");
-            int indirect_stmt = 0;
             int fr_pc = -1;
             if (!is_function_name_scoped(table, t.value) &&
                 symbol_table_get_func_ref(table, t.value, &fm, &fr_pc)) {
-                indirect_stmt = 1;
             } else {
                 { char *_rn = resolve_func_name(table, t.value);
                   if (_rn) { free(fm); fm = _rn; }

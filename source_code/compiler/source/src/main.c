@@ -77,7 +77,7 @@ static void run_cmd_capture(const char *cmd, const char *label) {
         return;
     }
     char *buf = (char*)malloc(4096);
-    if(!buf){fclose(fp);return;}
+    if(!buf){pclose(fp);return;}
     size_t n;
     int any = 0;
     while ((n = fread(buf, 1, 4095, fp)) > 0) {

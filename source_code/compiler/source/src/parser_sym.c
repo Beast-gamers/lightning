@@ -1101,9 +1101,8 @@ int part_is_stringy(const char *part);
    parentheses. */
 void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolTable *table) {
     if (!bufp || !*bufp || !cap) return;
-    char *buf = *bufp; int buf_size = *cap;
+    char *buf = *bufp;
     size_t work_cap = strlen(buf) + 256; if (work_cap < 8192) work_cap = 8192;
-    size_t big_cap = work_cap;
     size_t mid_cap = work_cap / 2; if (mid_cap < 4096) mid_cap = 4096;
     size_t small_cap = work_cap / 4; if (small_cap < 2048) small_cap = 2048;
     int parts_cap = 16; size_t part_w = small_cap;
@@ -1150,7 +1149,6 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
     } \
 } while(0)
     memcpy(work, buf, strlen(buf) + 1);
-    int just_wrapped = 0;
 
     for (int pass = 0; pass < (int)strlen(work); pass++) {
         int wlen = (int)strlen(work);
@@ -1168,8 +1166,6 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 jj++;
             }
             if (jj >= wlen) continue;
-            int is_whole_wrap = 0;
-            { char *pre = work; while (*pre == ' ' || *pre == '\t') pre++; const char *aft = work + jj + 1; while (*aft == ' ' || *aft == '\t') aft++; if (pre == work + ii && *aft == '\0') is_whole_wrap = 1; }
             int id = 0, iin = 0; char iqc = 0; int hp = 0, hm = 0;
             for (int kk = ii + 1; kk < jj; kk++) {
                 char cc = work[kk];
@@ -1210,7 +1206,6 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
             /* If the whole buffer is a single wrapped group with no inner
                resolvable groups, allow it to be resolved (e.g. when a
                prior pass produced ((result) * N)). */
-            if (is_whole_wrap) just_wrapped = 0;
             bs = ii; be = jj; do_plus = hp; do_mul = hm; break;
         }
         if (bs == -1) {
@@ -1233,7 +1228,6 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 memmove(work + 1, work, strlen(work) + 1);
                 work[0] = '(';
                 { size_t _wl=strlen(work); work[_wl]=')'; work[_wl+1]=0; }
-                just_wrapped = 1;
                 continue;
             }
             break;
@@ -1279,7 +1273,6 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 int lhs_was_numwrap = 0, rhs_was_numwrap = 0;
                 {
                     char *sides[2] = {lhs, rhs};
-                    int slens[2] = {(int)mid_cap, (int)small_cap};
                     int *numwrap[2] = {&lhs_was_numwrap, &rhs_was_numwrap};
                     for (int si = 0; si < 2; si++) {
                         char *sp = sides[si];
