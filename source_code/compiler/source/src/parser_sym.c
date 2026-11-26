@@ -1,5 +1,7 @@
 #include "parser_internal.h"
 
+#define BUF_SET(bufp,cap,...) do{ char *_sf=_ltng_cfmt(__VA_ARGS__); if(_sf){ free(*(bufp)); *(bufp)=_sf; *(cap)=(int)strlen(_sf)+1; if(*(cap)<65536){char*_sg=(char*)realloc(*(bufp),65536); if(_sg){*(bufp)=_sg; *(cap)=65536;} } } }while(0)
+
 ErrorState *parser_errors = NULL;
 int g_break_depth = 0;
 ASTNode *g_list = NULL;
@@ -1098,8 +1100,9 @@ int part_is_stringy(const char *part);
    pass resolves one group, so the number of passes is bounded by the
    string length - no fixed depth cap that would crash on deeply nested
    parentheses. */
-void normalize_string_expr(char *buf, int buf_size, int array_access_used, SymbolTable *table) {
-    if (!buf || buf_size < 2) return;
+void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolTable *table) {
+    if (!bufp || !*bufp || !cap) return;
+    char *buf = *bufp; int buf_size = *cap;
     size_t work_cap = strlen(buf) + 256; if (work_cap < 8192) work_cap = 8192;
     size_t big_cap = work_cap;
     size_t mid_cap = work_cap / 2; if (mid_cap < 4096) mid_cap = 4096;
@@ -1117,6 +1120,36 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
     if(!content||!ires||!lhs||!rhs||!str_operand||!nse_left||!nse_right||!parts_buf){
         free(content);free(ires);free(lhs);free(rhs);free(str_operand);free(nse_left);free(nse_right);free(parts_buf);free(work);return;
     }
+#define NSE_GROW_MID(newcap) do { \
+    size_t _nc2 = (size_t)(newcap); \
+    if (_nc2 > mid_cap) { \
+        char *_t; \
+        _t=(char*)realloc(content,_nc2); if(_t) content=_t; \
+        _t=(char*)realloc(ires,_nc2); if(_t) ires=_t; \
+        _t=(char*)realloc(lhs,_nc2); if(_t) lhs=_t; \
+        _t=(char*)realloc(str_operand,_nc2); if(_t) str_operand=_t; \
+        _t=(char*)realloc(nse_left,_nc2); if(_t) nse_left=_t; \
+        mid_cap = _nc2; \
+    } \
+} while(0)
+#define NSE_GROW_SMALL(newcap) do { \
+    size_t _nc2 = (size_t)(newcap); \
+    if (_nc2 > small_cap) { \
+        char *_t; \
+        _t=(char*)realloc(rhs,_nc2); if(_t) rhs=_t; \
+        _t=(char*)realloc(nse_right,_nc2); if(_t) nse_right=_t; \
+        size_t _old_pw = part_w; \
+        part_w = _nc2; \
+        char *_npb = (char*)malloc((size_t)parts_cap * part_w); \
+        if (_npb) { \
+            for (int _pi=0; _pi<parts_cap; _pi++) { \
+                memcpy(_npb + _pi*(int)part_w, parts_buf + _pi*(int)_old_pw, _old_pw < part_w ? _old_pw : part_w); \
+            } \
+            free(parts_buf); parts_buf = _npb; \
+        } \
+        small_cap = _nc2; \
+    } \
+} while(0)
     memcpy(work, buf, strlen(buf) + 1);
     int just_wrapped = 0;
 
@@ -1231,11 +1264,9 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
             /* Helper logic inline: normalize a part and make it stringy for concat */
             ires[0]=0;
             strncpy(ires, parts_buf, (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
-            normalize_string_expr(ires, (int)mid_cap, array_access_used, table);
             for (int k = 1; k < nip; k++) {
                 char *nse_p = (char*)malloc(small_cap); if(!nse_p) continue;
                 strncpy(nse_p, parts_buf + k*(int)part_w, (int)small_cap - 1); nse_p[(int)small_cap - 1] = 0;
-                normalize_string_expr(nse_p, (int)small_cap, array_access_used, table);
                 /* Build concat step. In array-access context use _ltng_add_sn.
                    Otherwise, if either side is not stringy (e.g. atoi(x) from
                    int var in mixed context, or numeric literal), convert to
@@ -1389,7 +1420,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
             size_t nb_cap = strlen(work) + strlen(ires) + 64;
             char *nb = (char*)malloc(nb_cap); if(!nb) nb=(char*)calloc(1,1);
             snprintf(nb, nb_cap, "%.*s%s%s", bs, work, ires, work + be + 1);
-            strncpy(work, nb, (int)work_cap - 1); work[(int)work_cap - 1] = 0;
+            { size_t _nl=strlen(nb); if(_nl+1>work_cap){ char*_nw=(char*)realloc(work,_nl+1); if(_nw){work=_nw;work_cap=_nl+1;} } memcpy(work,nb,_nl+1); }
             free(nb);
         } else if (do_mul) {
             int d = 0, inq = 0; char qc = 0; int star = -1;
@@ -1439,16 +1470,15 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
             if (left_is_num && !right_is_num) {
                 /* number * "string" (or number * string-expr) */
                 strncpy(str_operand, nse_right, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
-                normalize_string_expr(str_operand, (int)mid_cap, array_access_used, table);
                 countbuf = _ltng_cfmt("%s", nse_left);
             } else if (right_is_num) {
                 strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
-                normalize_string_expr(str_operand, (int)mid_cap, array_access_used, table);
+                { int _sc=(int)mid_cap; normalize_string_expr(&str_operand, &_sc, array_access_used, table); if(_sc>(int)mid_cap) mid_cap=_sc; }
                 countbuf = _ltng_cfmt("%s", nse_right);
             } else {
                 /* variable * variable: assume nse_left is string, nse_right is count */
                 strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
-                normalize_string_expr(str_operand, (int)mid_cap, array_access_used, table);
+                { int _sc=(int)mid_cap; normalize_string_expr(&str_operand, &_sc, array_access_used, table); if(_sc>(int)mid_cap) mid_cap=_sc; }
                 countbuf = _ltng_cfmt("atoll(%s)", nse_right);
             }
             char *rep = _ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf ? countbuf : "0");
@@ -1458,8 +1488,7 @@ void normalize_string_expr(char *buf, int buf_size, int array_access_used, Symbo
         }
     }
 
-    strncpy(buf, work, buf_size - 1);
-    buf[buf_size - 1] = 0;
+    BUF_SET(bufp, cap, "%s", work);
     free(content); free(ires); free(lhs); free(rhs); free(str_operand); free(nse_left); free(nse_right); free(parts_buf);
     free(work);
 }

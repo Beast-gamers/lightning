@@ -3958,7 +3958,7 @@ ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                     if (*_p == '+') _hp = 1;
                     if (*_p == '*') _hs = 1;
                 }
-                if (_hp || _hs) normalize_string_expr(cexpr, 65536, 0, table);
+                if (_hp || _hs) normalize_string_expr(&cexpr, &cexpr_cap, 0, table);
             }
 ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
             cnode->is_default = 0;
