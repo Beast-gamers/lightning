@@ -5660,7 +5660,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
     ASTNode *call = create_node(NODE_CALL, "", "");
     call->line = line;
     call->col = col;
-    char *fm = (char*)malloc(256); if(fm) fm[0]=0;
+    char *fm = ltng_strdup("");
     int indirect = 0;
     int indirect_dynamic = 0;
     int direct_overload = 0;
@@ -5693,7 +5693,7 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
     } else {
         /* top-level call: overload is selected after the arguments are parsed */
         direct_overload = 1;
-        mangle_name(fname_tok_val, fm, 256);
+        { char *_mn = mangle_name_alloc(fname_tok_val); free(fm); fm = _mn; }
     }
     /* If calling a tracked function-ref that is actually a closure (has captures),
        we must dispatch through the variable's closure value (encoded). */
@@ -6359,7 +6359,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
     ASTNode *plast = NULL;
     int pcount = 0;
     int variadic = 0;
-    char *variadic_name = (char*)malloc(256); if(variadic_name)variadic_name[0]=0;
+    char *variadic_name = NULL;
     /* function body scope: parent is enclosing function scope
        (so sibling nested functions are visible to each other) */
     Scope *func_scope = (Scope *)malloc(sizeof(Scope));
@@ -6382,8 +6382,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
                     return NULL;
                 }
                 variadic = 1;
-                strncpy(variadic_name, rn.value, 255);
-                variadic_name[255] = '\0';
+                { free(variadic_name); variadic_name = ltng_strdup(rn.value); }
                 char *rm = mangle_name_alloc(rn.value);
                 symbol_table_add_param(func_scope, rm, TYPE_ARRAY);
                 int zero_dim = 0;
@@ -6507,7 +6506,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
     fn->return_type = return_type;
     fn->is_variadic = variadic;
     if (variadic) {
-        { free(fn->variadic_name); fn->variadic_name = ltng_strdup(variadic_name); }
+        { free(fn->variadic_name); fn->variadic_name = variadic_name ? ltng_strdup(variadic_name) : ltng_strdup(""); }
     }
     if (sig) {
         sig->has_return_type = has_return_type;
@@ -6572,7 +6571,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
             if (p->for_var[0]) add_capture_name(&locals, &locals_n, &locals_cap, p->for_var);
             if (p->name[0]) add_capture_name(&locals, &locals_n, &locals_cap, p->name);
         }
-        if (fn->is_variadic && fn->variadic_name[0])
+        if (fn->is_variadic && fn->variadic_name && fn->variadic_name[0])
             add_capture_name(&locals, &locals_n, &locals_cap, fn->variadic_name);
         collect_declared_locals(fn->body, &locals, &locals_n, &locals_cap, 0);
         collect_used_idents(fn->body, &used, &used_n, &used_cap, 0);
@@ -6684,7 +6683,7 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
         }
         if (t2.type == TOKEN_LPAREN && is_callable_ident(table, t.value)) {
             /* function call statement: name(args) */
-            char *fm = (char*)malloc(256); if(fm) fm[0]=0;
+            char *fm = ltng_strdup("");
             int indirect_stmt = 0;
             int fr_pc = -1;
             if (!is_function_name_scoped(table, t.value) &&
