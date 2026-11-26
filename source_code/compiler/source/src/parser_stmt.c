@@ -1198,8 +1198,8 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, 
                 lexer->current + 1 < lexer->count && lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN) {
                 lexer_next(lexer); /* consume method name */
                 static int _ahc_id = 0; int aid = _ahc_id++;
-                char *prefix = (char*)malloc(16384); if(!prefix){snprintf(cexpr,cexpr_size,"");chained=1;continue;} prefix[0]=0; int pp = 0;
-                pp += snprintf(prefix+pp,16384-pp,
+                char *prefix = (char*)malloc(16384); int prefix_cap = 16384; if(!prefix){snprintf(cexpr,cexpr_size,"");chained=1;continue;} prefix[0]=0; int pp = 0;
+                STMT_APPEND(prefix,prefix_cap,pp,
                     "char *__ahsrc%d=_ltng_ds_new(%s); _ltng_ah *__ah%d=_ltng_ah_unpack(__ahsrc%d); char **__td%d=NULL; int __tl%d=0,__tc%d=0; if(__ah%d){ _ltng_arr_copy(__ah%d->d,&__td%d,&__tl%d,&__tc%d,__ah%d->len); } ",
                     aid,cexpr,aid,aid,aid,aid,aid,aid,aid,aid,aid,aid,aid);
                 char *final_expr = (char*)malloc(4096); if(!final_expr){snprintf(cexpr,cexpr_size,"\"\"");chained=1;continue;} strcpy(final_expr,"\"\""); int chain_err=0; int has_scalar=0; int step=0;
@@ -1212,7 +1212,7 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, 
                     if (strcmp(cm.value,"copy")==0) {
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         /* copy is no-op on temp (already a copy), but keep as temp */
-                        snprintf(final_expr,4096,"({ char *__r=_ltng_ds_new(\"\"); for(int _i=0;_i<__tl%d;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td%d[_i]?__td%d[_i]:\"\"); } __r; })",aid,aid,aid);
+                        SNPRINTF_FULL(final_expr,"({ char *__r=_ltng_ds_new(\"\"); for(int _i=0;_i<__tl%d;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td%d[_i]?__td%d[_i]:\"\"); } __r; })",aid,aid,aid);
                         has_scalar = 1;
                     } else if (strcmp(cm.value,"slice")==0) {
                         char *s0=(char*)malloc(65536); char *s1=(char*)malloc(65536); if(s0)s0[0]=0; if(s1)s1[0]=0;
@@ -1220,19 +1220,19 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, 
                         if(lexer_peek(lexer).type!=TOKEN_COMMA){chain_err=1;break;} lexer_next(lexer);
                         collect_expression(lexer,table,&s1, &(int){sizeof(s1)},1,0,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
-                        pp += snprintf(prefix+pp,sizeof(prefix)-pp,"{ char **__ns=NULL; int __nl=0,__nc=0; _ltng_arr_slice(__td%d,__tl%d,(int)(%s),(int)(%s),&__ns,&__nl,&__nc); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); __td%d=__ns; __tl%d=__nl; __tc%d=__nc; } ",aid,aid,s0,s1,aid,aid,aid,aid,aid,aid,aid);
-                        snprintf(final_expr,4096,"({ char *__r=_ltng_ds_new(\"\"); for(int _i=0;_i<__tl%d;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td%d[_i]?__td%d[_i]:\"\"); } __r; })",aid,aid,aid);
+                        STMT_APPEND(prefix,prefix_cap,pp,"{ char **__ns=NULL; int __nl=0,__nc=0; _ltng_arr_slice(__td%d,__tl%d,(int)(%s),(int)(%s),&__ns,&__nl,&__nc); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); __td%d=__ns; __tl%d=__nl; __tc%d=__nc; } ",aid,aid,s0,s1,aid,aid,aid,aid,aid,aid,aid);
+                        SNPRINTF_FULL(final_expr,"({ char *__r=_ltng_ds_new(\"\"); for(int _i=0;_i<__tl%d;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td%d[_i]?__td%d[_i]:\"\"); } __r; })",aid,aid,aid);
                         has_scalar = 1;
                     } else if (strcmp(cm.value,"push")==0) {
                         char *ae = (char*)malloc(65536); if(ae) ae[0]=0; VarType at=collect_expression(lexer,table,&ae, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         const char *fmt=(at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                         const char *cast=(at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                        pp += snprintf(prefix+pp,sizeof(prefix)-pp,"char *__v%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&__td%d,&__tl%d,&__tc%d,__v%d_%d); ",aid,step,fmt,cast,ae,aid,aid,aid,aid,step);
-                        snprintf(final_expr,4096,"({ _ltng_retbuf_fmt(\"%%s\",__v%d_%d); })",aid,step);
+                        STMT_APPEND(prefix,prefix_cap,pp,"char *__v%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_push(&__td%d,&__tl%d,&__tc%d,__v%d_%d); ",aid,step,fmt,cast,ae,aid,aid,aid,aid,step);
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"%%s\",__v%d_%d); })",aid,step);
                     } else if (strcmp(cm.value,"pop")==0) {
-                        if(lexer_peek(lexer).type==TOKEN_RPAREN){ lexer_next(lexer); pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"char *__pv%d_%d=_ltng_arr_pop(__td%d,&__tl%d); ",aid,step,aid,aid); snprintf(final_expr,4096,"__pv%d_%d",aid,step); }
-                        else { char *ie = (char*)malloc(65536); if(ie) ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer); pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"char *__pv%d_%d=_ltng_arr_pop_index(__td%d,&__tl%d,(int)(%s)); ",aid,step,aid,aid,ie); snprintf(final_expr,4096,"__pv%d_%d",aid,step); }
+                        if(lexer_peek(lexer).type==TOKEN_RPAREN){ lexer_next(lexer); STMT_APPEND(prefix,prefix_cap,pp,"char *__pv%d_%d=_ltng_arr_pop(__td%d,&__tl%d); ",aid,step,aid,aid); SNPRINTF_FULL(final_expr,"__pv%d_%d",aid,step); }
+                        else { char *ie = (char*)malloc(65536); if(ie) ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,0,NULL,NULL,NULL,NULL); if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer); STMT_APPEND(prefix,prefix_cap,pp,"char *__pv%d_%d=_ltng_arr_pop_index(__td%d,&__tl%d,(int)(%s)); ",aid,step,aid,aid,ie); SNPRINTF_FULL(final_expr,"__pv%d_%d",aid,step); }
                     } else if (strcmp(cm.value,"insert")==0) {
                         char *ie = (char*)malloc(65536); if(ie) ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,1,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_COMMA){chain_err=1;break;} lexer_next(lexer);
@@ -1240,49 +1240,47 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char *cexpr, 
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         const char *fmt=(at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                         const char *cast=(at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                        pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"char *__iv%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&__td%d,&__tl%d,&__tc%d,(int)(%s),__iv%d_%d); ",aid,step,fmt,cast,ae,aid,aid,aid,ie,aid,step);
-                        snprintf(final_expr,4096,"({ _ltng_retbuf_fmt(\"%%s\",__iv%d_%d); })",aid,step);
+                        STMT_APPEND(prefix,prefix_cap,pp,"char *__iv%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); _ltng_arr_insert(&__td%d,&__tl%d,&__tc%d,(int)(%s),__iv%d_%d); ",aid,step,fmt,cast,ae,aid,aid,aid,ie,aid,step);
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"%%s\",__iv%d_%d); })",aid,step);
                     } else if (strcmp(cm.value,"remove")==0) {
                         char *ie = (char*)malloc(65536); if(ie) ie[0]=0; collect_expression(lexer,table,&ie, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
-                        pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"char *__rv%d_%d=_ltng_arr_pop_index(__td%d,&__tl%d,(int)(%s)); ",aid,step,aid,aid,ie);
-                        snprintf(final_expr,4096,"__rv%d_%d",aid,step);
+                        STMT_APPEND(prefix,prefix_cap,pp,"char *__rv%d_%d=_ltng_arr_pop_index(__td%d,&__tl%d,(int)(%s)); ",aid,step,aid,aid,ie);
+                        SNPRINTF_FULL(final_expr,"__rv%d_%d",aid,step);
                     } else if (strcmp(cm.value,"sort")==0) {
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
-                        pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"_ltng_arr_sort(__td%d,__tl%d); ",aid,aid);
-                        snprintf(final_expr,4096,"({ _ltng_retbuf_fmt(\"true\"); })");
+                        STMT_APPEND(prefix,prefix_cap,pp,"_ltng_arr_sort(__td%d,__tl%d); ",aid,aid);
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"true\"); })");
                     } else if (strcmp(cm.value,"reverse")==0) {
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
-                        pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"_ltng_arr_reverse(__td%d,__tl%d); ",aid,aid);
-                        snprintf(final_expr,4096,"({ _ltng_retbuf_fmt(\"true\"); })");
+                        STMT_APPEND(prefix,prefix_cap,pp,"_ltng_arr_reverse(__td%d,__tl%d); ",aid,aid);
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"true\"); })");
                     } else if (strcmp(cm.value,"contains")==0) {
                         char *ae = (char*)malloc(65536); if(ae) ae[0]=0; VarType at=collect_expression(lexer,table,&ae, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         const char *fmt=(at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                         const char *cast=(at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                        pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"char *__cv%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d_%d=_ltng_arr_contains(__td%d,__tl%d,__cv%d_%d); ",aid,step,fmt,cast,ae,aid,step,aid,aid,aid,step);
-                        snprintf(final_expr,4096,"({ _ltng_retbuf_fmt(\"%%s\",__cr%d_%d?\"true\":\"false\"); })",aid,step);
+                        STMT_APPEND(prefix,prefix_cap,pp,"char *__cv%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __cr%d_%d=_ltng_arr_contains(__td%d,__tl%d,__cv%d_%d); ",aid,step,fmt,cast,ae,aid,step,aid,aid,aid,step);
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"%%s\",__cr%d_%d?\"true\":\"false\"); })",aid,step);
                     } else if (strcmp(cm.value,"index_of")==0) {
                         char *ae = (char*)malloc(65536); if(ae) ae[0]=0; VarType at=collect_expression(lexer,table,&ae, &(int){65536},1,0,NULL,NULL,NULL,NULL);
                         if(lexer_peek(lexer).type!=TOKEN_RPAREN){chain_err=1;break;} lexer_next(lexer);
                         const char *fmt=(at==TYPE_INT)?"%lld":(at==TYPE_FLOAT)?"%g":"%s";
                         const char *cast=(at==TYPE_INT)?"(long long)":(at==TYPE_FLOAT)?"(double)":"";
-                        pp+=snprintf(prefix+pp,sizeof(prefix)-pp,"char *__ix%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d_%d=_ltng_arr_index_of(__td%d,__tl%d,__ix%d_%d); ",aid,step,fmt,cast,ae,aid,step,aid,aid,aid,step);
-                        snprintf(final_expr,4096,"({ _ltng_retbuf_fmt(\"%%d\",__ir%d_%d); })",aid,step);
+                        STMT_APPEND(prefix,prefix_cap,pp,"char *__ix%d_%d = _ltng_ds_fmt(\"%s\",%s(%s)); int __ir%d_%d=_ltng_arr_index_of(__td%d,__tl%d,__ix%d_%d); ",aid,step,fmt,cast,ae,aid,step,aid,aid,aid,step);
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"%%d\",__ir%d_%d); })",aid,step);
                     } else { chain_err=1; break; }
                     has_chain=0;
                     if(lexer_peek(lexer).type==TOKEN_DOT){ int sd=lexer->current; lexer_next(lexer); Token nm=lexer_peek(lexer); if((nm.type==TOKEN_IDENT||token_is_name(nm)) && (strcmp(nm.value,"push")==0||strcmp(nm.value,"pop")==0||strcmp(nm.value,"insert")==0||strcmp(nm.value,"remove")==0||strcmp(nm.value,"contains")==0||strcmp(nm.value,"index_of")==0||strcmp(nm.value,"sort")==0||strcmp(nm.value,"reverse")==0||strcmp(nm.value,"copy")==0||strcmp(nm.value,"slice")==0)){ lexer_next(lexer); cm=nm; has_chain=1; } else lexer->current=sd; }
                 }
-                if (chain_err) { snprintf(cexpr,cexpr_size,"\"\""); free(prefix); }
+                if (chain_err) { snprintf(cexpr,cexpr_size,"\"\""); free(prefix); free(final_expr); }
                 else {
-                    char *buf = (char*)malloc(16384);
-                    if(buf){ snprintf(buf,16384,"({ %schar *__fres%d=(char*)(%s); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); _ltng_ah_free(__ah%d); free(__ahsrc%d); __fres%d; })",
+                    char *buf = _ltng_cfmt("({ %schar *__fres%d=(char*)(%s); for(int _i=0;_i<__tl%d;_i++){if(__td%d[_i])free(__td%d[_i]);} free(__td%d); _ltng_ah_free(__ah%d); free(__ahsrc%d); __fres%d; })",
                         prefix,aid,final_expr,aid,aid,aid,aid,aid,aid,aid);
-                        strncpy(cexpr,buf,cexpr_size-1); cexpr[cexpr_size-1]='\0';
-                        free(buf);
-                    } else { snprintf(cexpr,cexpr_size,""); }
+                    if(buf){ strncpy(cexpr,buf,cexpr_size-1); cexpr[cexpr_size-1]='\0'; free(buf); }
+                    else snprintf(cexpr,cexpr_size,"");
+                    free(prefix); free(final_expr);
                 }
-                free(prefix);
                 chained = 1;
                 continue;
             }
