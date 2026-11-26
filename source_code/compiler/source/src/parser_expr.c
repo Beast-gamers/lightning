@@ -538,10 +538,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                         }
                         if ((lnumh && (rnumh || rn || rq_qnumlit)) || (rnumh && (lnumh || ln || lq_qnumlit))) {
                             /* if side is quoted numeric literal string, unquote for numeric compare */
-                            char *lcmp = (char*)malloc(4096); char *rcmp = (char*)malloc(4096);
+                            char *lcmp = ltng_strdup(left?left:""); char *rcmp = ltng_strdup(right?right:"");
                             if(lcmp&&rcmp){
-                            { char *_t=ltng_strdup(left?left:""); if(_t){free(lcmp);lcmp=_t;} }
-                            { char *_t=ltng_strdup(right?right:""); if(_t){free(rcmp);rcmp=_t;} }
                             if (lq_qnumlit) { const char *p=lq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ char *_nc=_ltng_cfmt("%.*s",(int)(n-2),p+1); if(_nc){free(lcmp);lcmp=_nc;} } } }
                             if (rq_qnumlit) { const char *p=rq; while(*p==' '||*p=='\t') p++; if(*p=='"'){ size_t n=strlen(p); if(n>=2 && p[n-1]=='"'){ char *_nc=_ltng_cfmt("%.*s",(int)(n-2),p+1); if(_nc){free(rcmp);rcmp=_nc;} } } }
                             BUF_SET(bufp, cap, "(%s) %s (%s)", lcmp, ops[i], rcmp);
@@ -549,13 +547,11 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                             free(lcmp); free(rcmp);
                         } else {
                             /* Ensure numeric helper expressions become string expressions for strcmp */
-                            char *lsc = (char*)malloc(4200); char *rsc = (char*)malloc(4200);
+                            char *lsc = ltng_strdup(lq?lq:""); char *rsc = ltng_strdup(rq?rq:"");
                             if(!lsc||!rsc){
                                 free(lsc); free(rsc);
                                 BUF_SET(bufp, cap, "strcmp(%s, %s) %s 0", lq, rq, ops[i]);
                             } else {
-                                { char *_t=ltng_strdup(lq?lq:""); if(_t){free(lsc);lsc=_t;} }
-                                { char *_t=ltng_strdup(rq?rq:""); if(_t){free(rsc);rsc=_t;} }
                                 if (lnumh) {
                                     int is_f = (strstr(left,"atof(")||strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D("))!=NULL;
                                     if (is_f)
@@ -2300,14 +2296,14 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     else lexer->current = sd;
                                                 }
                                             }
-                                            if (_chain_err) { pos += snprintf(out+pos,out_size-pos,"0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
+                                            if (_chain_err) { CE_SNPRINTF_ADD("0"); free(arrname); free(lenname); free(capname); goto _arr_method_result_done; }
                                             if (!_has_scalar_result) {
                                                 /* No chain - return array formatted as string */
                                                 BUF_SET(&_final_expr, &_final_expr_cap,
                                                     "({ char *__r=_ltng_ds_new(\"\"); for(int _fi=0;_fi<__tl;_fi++){ if(_fi) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td[_fi]?__td[_fi]:\"\"); } __r; })");
                                             }
-                                            pos += snprintf(out+pos,out_size-pos,
-                                                "({ %schar *__fres=(char*)(%s); for(int _fi=0;_fi<__tl;_fi++){if(__td[_fi])free(__td[_fi]);} free(__td); __fres; })",
+                                            CE_SNPRINTF_ADD(
+                                                "({ %schar *__fres=(char*)(%s); for(int _fi=0;_i<__tl;_i++){if(__td[_fi])free(__td[_fi]);} free(__td); __fres; })",
                                                 _chain_prefix, _final_expr);
                                             result_type = TYPE_STRING;
                                             free(arrname); free(lenname); free(capname); goto _arr_method_result_done;
