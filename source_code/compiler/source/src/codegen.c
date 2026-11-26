@@ -601,7 +601,7 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
     if(!lhs_raw||!rhs_raw){ free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
     int lp = pos; if (lp < 0) lp = 0;
     memcpy(lhs_raw, t, (size_t)lp); lhs_raw[lp]=0;
-    strncpy(rhs_raw, t+pos+1, tl); rhs_raw[tl]=0;
+    memcpy(rhs_raw, t+pos+1, tl - (size_t)(pos+1)); rhs_raw[tl - (size_t)(pos+1)] = 0;
 
     /* trim lhs/rhs */
     char *a=lhs_raw; while(*a==' '||*a=='\t') a++; size_t la=strlen(a); while(la>0&&(a[la-1]==' '||a[la-1]=='\t')) a[--la]=0;
@@ -615,12 +615,12 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
     int lhs_changed = cg_rewrite_divmod(lhs_rw, lhs_cap, a, is_float, line, col);
     const char *lhs_final = lhs_changed ? lhs_rw : a;
 
-    if (is_float) {
-        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_D(%s,%s,%d,%d)", lhs_final,b,line,col);
-        else snprintf(out,outsz,"_LTNG_FMOD_D(%s,%s,%d,%d)", lhs_final,b,line,col);
-    } else {
-        if (op == '/') snprintf(out,outsz,"_LTNG_DIV_LL(%s,%s,%d,%d)", lhs_final,b,line,col);
-        else snprintf(out,outsz,"_LTNG_MOD_LL(%s,%s,%d,%d)", lhs_final,b,line,col);
+    {
+        const char *_fmt = is_float ? (op=='/'?"_LTNG_DIV_D(%s,%s,%d,%d)":"_LTNG_FMOD_D(%s,%s,%d,%d)")
+                                     : (op=='/'?"_LTNG_DIV_LL(%s,%s,%d,%d)":"_LTNG_MOD_LL(%s,%s,%d,%d)");
+        int _n = snprintf(NULL,0,_fmt, lhs_final,b,line,col);
+        if (_n < 0 || (size_t)_n >= outsz) { free(lhs_rw); free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
+        snprintf(out,outsz,_fmt, lhs_final,b,line,col);
     }
     free(lhs_rw); free(lhs_raw); free(rhs_raw); free(tmp);
     return 1;

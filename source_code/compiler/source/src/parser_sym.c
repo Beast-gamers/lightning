@@ -496,8 +496,10 @@ void mangle_name(const char *in, char *out, int out_size) {
     if (is_c_reserved(in)) {
         snprintf(out, out_size, "%s_res", in);
     } else {
-        strncpy(out, in, out_size - 1);
-        out[out_size - 1] = '\0';
+        size_t n = strlen(in);
+        if (n >= (size_t)out_size) n = (size_t)out_size - 1;
+        memcpy(out, in, n);
+        out[n] = '\0';
     }
 }
 
@@ -957,8 +959,7 @@ void transform_string_multiply(char *expr, int size) {
                 *e = 0;
                 e--;
             }
-            strncpy(left, s, bufcap - 1);
-            left[bufcap - 1] = 0;
+            { size_t _sl=strlen(s); if(_sl+1>bufcap){ char*_nl=(char*)realloc(left,_sl+1); if(_nl){left=_nl;} } memcpy(left,s,_sl+1); }
             s = p + 1;
             while (*s == ' ' || *s == '\t') s++;
             e = s + strlen(s) - 1;
@@ -966,8 +967,7 @@ void transform_string_multiply(char *expr, int size) {
                 *e = 0;
                 e--;
             }
-            strncpy(right, s, bufcap - 1);
-            right[bufcap - 1] = 0;
+            { size_t _sl=strlen(s); if(_sl+1>bufcap){ char*_nr=(char*)realloc(right,_sl+1); if(_nr){right=_nr;} } memcpy(right,s,_sl+1); }
             /* trim trailing tokens that belong to outer context (e.g. closing parens of wrapper) */
             /* keep only the first simple operand: number, identifier, or parenthesized expr */
             {
@@ -1047,7 +1047,7 @@ void transform_string_multiply(char *expr, int size) {
     } else {
         size_t ccap = strlen(right) + 16;
         cntbuf = (char*)malloc(ccap); if(!cntbuf){free(tmp);free(left);free(right);free(result);return;}
-        snprintf(cntbuf, ccap, "atoll(%s)", right);
+        { char *_t=_ltng_cfmt("atoll(%s)", right); if(_t){ free(cntbuf); cntbuf=_t; count_expr=cntbuf; } }
         count_expr = cntbuf;
     }
     int left_is_num = 1;
@@ -1065,16 +1065,15 @@ void transform_string_multiply(char *expr, int size) {
     }
     if (left_is_num && (right[0] == '"' || (right[0] == '\'' && strlen(right) >= 3))) {
         /* number * "string" */
-        snprintf(result, result_cap, "_ltng_repeat_dyn(%s,(long long)(%s))", right, left);
+        { char *_t=_ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", right, left); if(_t){ free(result); result=_t; } }
     } else if (right_is_num && (left[0] == '"' || (left[0] == '\'' && strlen(left) >= 3))) {
         /* "string" * number */
-        snprintf(result, result_cap, "_ltng_repeat_dyn(%s,(long long)(%s))", left, right);
+        { char *_t=_ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", left, right); if(_t){ free(result); result=_t; } }
     } else {
         /* variable cases: assume left is string, right is count */
-        snprintf(result, result_cap, "_ltng_repeat_dyn(%s,(long long)(%s))", left, count_expr);
+        { char *_t=_ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", left, count_expr); if(_t){ free(result); result=_t; } }
     }
-    strncpy(expr, result, size - 1);
-    expr[size - 1] = 0;
+    { size_t _rl=strlen(result); if(_rl >= (size_t)size) _rl = (size_t)size - 1; memcpy(expr, result, _rl); expr[_rl] = 0; }
     free(cntbuf); free(tmp); free(left); free(right); free(result);
 }
 
@@ -1256,23 +1255,23 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 else if (*pp == '+' && idp == 0 && idb == 0 && idbr == 0) {
                     *pp = 0; char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++;
                     char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; }
-                    if(nip>=parts_cap){int nc=parts_cap*2; char *nb=(char*)realloc(parts_buf,(size_t)nc*part_w); if(nb){parts_buf=nb;parts_cap=nc;}} if(nip<parts_cap){strncpy(parts_buf+nip*(int)part_w,s2,part_w-1); parts_buf[nip*(int)part_w+part_w-1]=0; nip++;} ist = pp + 1;
+                    if(nip>=parts_cap){int nc=parts_cap*2; char *nb=(char*)realloc(parts_buf,(size_t)nc*part_w); if(nb){parts_buf=nb;parts_cap=nc;}} { size_t _sl=strlen(s2); if(_sl+1>part_w){NSE_GROW_SMALL(_sl+1);} if(nip<parts_cap){memcpy(parts_buf+nip*(int)part_w,s2,_sl+1); nip++;} } ist = pp + 1;
                 }
             }
-            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } if(nip>=parts_cap){int nc=parts_cap*2; char *nb=(char*)realloc(parts_buf,(size_t)nc*part_w); if(nb){parts_buf=nb;parts_cap=nc;}} if(nip<parts_cap){strncpy(parts_buf+nip*(int)part_w,s2,part_w-1); parts_buf[nip*(int)part_w+part_w-1]=0; nip++;} }
+            { char *s2 = ist; while (*s2 == ' ' || *s2 == '\t') s2++; char *e2 = s2 + strlen(s2) - 1; while (e2 >= s2 && (*e2 == ' ' || *e2 == '\t')) { *e2 = 0; e2--; } if(nip>=parts_cap){int nc=parts_cap*2; char *nb=(char*)realloc(parts_buf,(size_t)nc*part_w); if(nb){parts_buf=nb;parts_cap=nc;}} if(nip<parts_cap){{ size_t _sl=strlen(s2); if(_sl+1>part_w){NSE_GROW_SMALL(_sl+1);} if(nip<parts_cap){memcpy(parts_buf+nip*(int)part_w,s2,_sl+1); nip++;} }} }
             if (nip < 2) break;
             /* Helper logic inline: normalize a part and make it stringy for concat */
             ires[0]=0;
-            strncpy(ires, parts_buf, (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
+            { size_t _sl=strlen(parts_buf); NSE_GROW_MID(_sl+1); memcpy(ires,parts_buf,_sl+1); }
             for (int k = 1; k < nip; k++) {
                 char *nse_p = (char*)malloc(small_cap); if(!nse_p) continue;
-                strncpy(nse_p, parts_buf + k*(int)part_w, (int)small_cap - 1); nse_p[(int)small_cap - 1] = 0;
+                { const char *_ss=parts_buf + k*(int)part_w; size_t _sl=strlen(_ss); if(_sl+1>(size_t)small_cap){char *_nr=(char*)realloc(nse_p,_sl+1); if(_nr){nse_p=_nr;}} memcpy(nse_p,_ss,_sl+1); }
                 /* Build concat step. In array-access context use _ltng_add_sn.
                    Otherwise, if either side is not stringy (e.g. atoi(x) from
                    int var in mixed context, or numeric literal), convert to
                    string form or use _ltng_add_sn. */
-                strncpy(lhs, ires, mid_cap-1); lhs[mid_cap-1]=0;
-                strncpy(rhs, nse_p, small_cap-1); rhs[small_cap-1]=0;
+                { size_t _sl=strlen(ires); NSE_GROW_MID(_sl+1); memcpy(lhs,ires,_sl+1); }
+                { size_t _sl=strlen(nse_p); NSE_GROW_SMALL(_sl+1); memcpy(rhs,nse_p,_sl+1); }
                 /* If a part is atoi/atoll/atof(ident), in string concat we
                    want the original buffer (vars are char buffers). Track whether
                    each side was a numeric conversion wrapper (numeric-typed var). */
@@ -1296,7 +1295,7 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                                 char *tmpb = (char*)malloc(small_cap); if(!tmpb){sides[si][0]=0;} else { int tl = (int)(inner - start);
                                 if (tl >= (int)small_cap) tl = (int)small_cap-1;
                                 memcpy(tmpb, start, tl); tmpb[tl]=0;
-                                strncpy(sides[si], tmpb, slens[si]-1); sides[si][slens[si]-1]=0; free(tmpb); }
+                                { size_t _sl=strlen(tmpb); if(si==0){NSE_GROW_MID(_sl+1);} else {NSE_GROW_SMALL(_sl+1);} memcpy(sides[si],tmpb,_sl+1); free(tmpb); } }
                                 *numwrap[si] = 1;
                             }
                         }
@@ -1306,31 +1305,30 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 int rhs_s = part_is_stringy(rhs);
 
                 /* Build char* args for concat helpers (_ltng_add_sn/_ltng_concat_dyn take const char*). */
-                char *lhs_arg = (char*)malloc(mid_cap+64); char *rhs_arg = (char*)malloc(mid_cap+64);
-                if(!lhs_arg||!rhs_arg){free(lhs_arg);free(rhs_arg); free(nse_p); strncpy(ires,work,(int)mid_cap-1); ires[(int)mid_cap-1]=0; continue;}
-                #define _LTNG_SN_ARG(src, dst, dstsz, is_str) do { \
+                char *lhs_arg = ltng_strdup(""); char *rhs_arg = ltng_strdup("");
+                if(!lhs_arg||!rhs_arg){free(lhs_arg);free(rhs_arg); free(nse_p); NSE_GROW_MID(strlen(work)+1); memcpy(ires,work,strlen(work)+1); continue;}
+                #define _LTNG_SN_ARG(src, dst, is_str) do { \
                     const char *_ps = (src); while (*_ps==' '||*_ps=='\t') _ps++; \
-                    if (is_str) { \
-                        strncpy((dst), (src), (dstsz)-1); (dst)[(dstsz)-1]=0; \
-                    } else { \
+                    char *_r = NULL; \
+                    if (is_str) { _r = ltng_strdup(src); } \
+                    else { \
                         const char *_q = _ps; if (*_q=='-'||*_q=='+') _q++; \
                         int _isnum = 0, _hasd = 0, _dot = 0; \
                         if (*_q) { _isnum = 1; while (*_q) { \
                             if (isdigit((unsigned char)*_q)) _hasd=1; \
                             else if (*_q=='.' && !_dot) _dot=1; \
                             else { _isnum=0; break; } _q++; } } \
-                        if (_isnum && _hasd) { \
-                            snprintf((dst), (dstsz), "\"%s\"", _ps); \
-                        } else { \
+                        if (_isnum && _hasd) { _r = _ltng_cfmt("\"%s\"", _ps); } \
+                        else { \
                             int _hd = (strchr(_ps,'.')!=NULL); \
-                            snprintf((dst), (dstsz), \
-                                "({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })", \
+                            _r = _ltng_cfmt("({ _ltng_retbuf_fmt(\"%s\",(%s)(%s)); })", \
                                 _hd ? "%g" : "%lld", _hd ? "double" : "long long", _ps); \
                         } \
                     } \
+                    if (_r) { free(dst); dst = _r; } \
                 } while(0)
-                _LTNG_SN_ARG(lhs, lhs_arg, (int)mid_cap+64, lhs_s);
-                _LTNG_SN_ARG(rhs, rhs_arg, (int)mid_cap+64, rhs_s);
+                _LTNG_SN_ARG(lhs, lhs_arg, lhs_s);
+                _LTNG_SN_ARG(rhs, rhs_arg, rhs_s);
                 #undef _LTNG_SN_ARG
 
                 /* Helper: determine if a stringy bare-identifier part is a string-typed variable. */
@@ -1371,7 +1369,7 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
 
                 char *st = (char*)malloc(mid_cap+64); if(!st) st=(char*)calloc(1,1);
                 if (array_access_used) {
-                    snprintf(st, mid_cap+64, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                    { char *_t=_ltng_cfmt("_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                 } else {
                     int lhs_def_str = lhs_is_str_var || (lhs_s && !lhs_was_numwrap && lhs[0] == '"') || (!lhs_was_numwrap && lhs_s && strstr(lhs, "_ltng_concat") != NULL);
                     int rhs_def_str = rhs_is_str_var || (rhs_s && !rhs_was_numwrap && rhs[0] == '"') || (!rhs_was_numwrap && rhs_s && strstr(rhs, "_ltng_concat") != NULL);
@@ -1388,7 +1386,7 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                         }
                     }
                     if (lhs_s && rhs_s && lhs_def_str && rhs_def_str)
-                        snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        { char *_t=_ltng_cfmt("_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                     else if (lhs_s && rhs_s && lhs_bare_ident && rhs_bare_ident && !lhs_was_numwrap && !rhs_was_numwrap && !lhs_is_str_var && !rhs_is_str_var) {
                         int lhs_num = 0, rhs_num = 0;
                         if (table) {
@@ -1402,24 +1400,24 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                             }
                         }
                         if (lhs_num || rhs_num)
-                            snprintf(st, (int)mid_cap+64, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                            { char *_t=_ltng_cfmt("_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                         else
-                            snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                            { char *_t=_ltng_cfmt("_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                     } else if (lhs_s && rhs_s && lhs_def_str && !rhs_def_str)
-                        snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        { char *_t=_ltng_cfmt("_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                     else if (lhs_s && rhs_s && !lhs_def_str && rhs_def_str)
-                        snprintf(st, (int)mid_cap+64, "_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg);
+                        { char *_t=_ltng_cfmt("_ltng_concat_dyn(2, %s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                     else
-                        snprintf(st, (int)mid_cap+64, "_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg);
+                        { char *_t=_ltng_cfmt("_ltng_add_sn(%s, %s)", lhs_arg, rhs_arg); if(_t){ size_t _tl=strlen(_t); NSE_GROW_MID(_tl+1); memcpy(st,_t,_tl+1); free(_t);} }
                 }
                 free(lhs_arg); free(rhs_arg);
-                strncpy(ires, st, (int)mid_cap - 1); ires[(int)mid_cap - 1] = 0;
+                { size_t _sl=strlen(st); NSE_GROW_MID(_sl+1); memcpy(ires,st,_sl+1); }
                 free(st);
                 free(nse_p);
             }
             size_t nb_cap = strlen(work) + strlen(ires) + 64;
             char *nb = (char*)malloc(nb_cap); if(!nb) nb=(char*)calloc(1,1);
-            snprintf(nb, nb_cap, "%.*s%s%s", bs, work, ires, work + be + 1);
+            { int _n = snprintf(NULL,0,"%.*s%s%s", bs, work, ires, work + be + 1); if(_n>=0){ if((size_t)_n+1>nb_cap){ char*_nn=(char*)realloc(nb,(size_t)_n+1); if(_nn){nb=_nn;nb_cap=(size_t)_n+1;} } snprintf(nb,nb_cap,"%.*s%s%s", bs, work, ires, work + be + 1); } }
             { size_t _nl=strlen(nb); if(_nl+1>work_cap){ char*_nw=(char*)realloc(work,_nl+1); if(_nw){work=_nw;work_cap=_nl+1;} } memcpy(work,nb,_nl+1); }
             free(nb);
         } else if (do_mul) {
@@ -1469,21 +1467,21 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
             char *countbuf = NULL;
             if (left_is_num && !right_is_num) {
                 /* number * "string" (or number * string-expr) */
-                strncpy(str_operand, nse_right, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
+                { size_t _sl=strlen(nse_right); NSE_GROW_MID(_sl+1); memcpy(str_operand,nse_right,_sl+1); }
                 countbuf = _ltng_cfmt("%s", nse_left);
             } else if (right_is_num) {
-                strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
+                { size_t _sl=strlen(nse_left); NSE_GROW_MID(_sl+1); memcpy(str_operand,nse_left,_sl+1); }
                 { int _sc=(int)mid_cap; normalize_string_expr(&str_operand, &_sc, array_access_used, table); if(_sc>(int)mid_cap) mid_cap=_sc; }
                 countbuf = _ltng_cfmt("%s", nse_right);
             } else {
                 /* variable * variable: assume nse_left is string, nse_right is count */
-                strncpy(str_operand, nse_left, (int)mid_cap-1); str_operand[(int)mid_cap-1]=0;
+                { size_t _sl=strlen(nse_left); NSE_GROW_MID(_sl+1); memcpy(str_operand,nse_left,_sl+1); }
                 { int _sc=(int)mid_cap; normalize_string_expr(&str_operand, &_sc, array_access_used, table); if(_sc>(int)mid_cap) mid_cap=_sc; }
                 countbuf = _ltng_cfmt("atoll(%s)", nse_right);
             }
             char *rep = _ltng_cfmt("_ltng_repeat_dyn(%s,(long long)(%s))", str_operand, countbuf ? countbuf : "0");
             char *nb = _ltng_cfmt("%.*s%s%s", bs, work, rep, work + be + 1);
-            strncpy(work, nb, (int)work_cap - 1); work[(int)work_cap - 1] = 0;
+            { size_t _nl=strlen(nb); if(_nl+1>work_cap){ char*_nw=(char*)realloc(work,_nl+1); if(_nw){work=_nw;work_cap=_nl+1;} } memcpy(work,nb,_nl+1); }
             free(countbuf); free(rep); free(nb);
         }
     }
@@ -1544,7 +1542,14 @@ int optimize_add_concat(char *out, int out_size, int pos) {
     char *dst = result;
     int replaced = 0;
 
-    while (*src && (int)(dst - result) < cap - 1) {
+    while (*src) {
+        int _off0 = (int)(dst - result);
+        if (_off0 + 2 >= cap) {
+            int _nc = cap * 2;
+            char *_nr = (char*)realloc(result, _nc);
+            if (!_nr) break;
+            result = _nr; dst = result + _off0; cap = _nc;
+        }
         left[0]=0; right[0]=0;
 
         if (is_add_operand(src, left, cap)) {
@@ -1570,8 +1575,17 @@ int optimize_add_concat(char *out, int out_size, int pos) {
                                    *after_right == '&' || *after_right == '|' || *after_right == '<' ||
                                    *after_right == '>' || *after_right == '!' || *after_right == '=');
                     if (!next_op) {
-                        int n = snprintf(dst, cap - (int)(dst - result),
-                                         "_ltng_add_sn(%s, %s)", left, right);
+                        int _need = snprintf(NULL, 0, "_ltng_add_sn(%s, %s)", left, right);
+                        if (_need < 0) _need = 0;
+                        int _off = (int)(dst - result);
+                        if (_off + _need + 1 >= cap) {
+                            int _nc = cap * 2;
+                            if (_nc < _off + _need + 1) _nc = _off + _need + 1;
+                            char *_nr = (char*)realloc(result, _nc);
+                            if (!_nr) { *dst++ = *src++; continue; }
+                            result = _nr; dst = result + _off; cap = _nc;
+                        }
+                        int n = snprintf(dst, cap - _off, "_ltng_add_sn(%s, %s)", left, right);
                         if (n < 0) n = 0;
                         dst += n;
                         src = after_right;
