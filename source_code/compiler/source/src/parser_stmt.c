@@ -905,11 +905,11 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                     node->is_expr = 1;
                     node->var_type = TYPE_INT;
                 } else {
-                    char fv[520];
-                    obj_resolve_field(cwname, mname.value, fv, sizeof(fv));
-                    node = create_node(NODE_WRITE, fv, "");
+                    char *fv = obj_resolve_field_alloc(cwname, mname.value);
+                    node = create_node(NODE_WRITE, fv ? fv : "", "");
                     node->is_variable = 1;
                     node->var_type = TYPE_STRING; /* fields stored as strings */
+                    free(fv);
                 }
             } else {
                 lexer->current = saved_m;
@@ -2314,16 +2314,15 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
                         emit(node);
                         /* copy returned object fields from function staging area */
                         for (int i = 0; i < ret_sc->count; i++) {
-                            char df[520], sf[520];
-                            obj_resolve_field(cname, ret_sc->fields[i].name, df, sizeof(df));
-                            char *stage_base = (char*)malloc(528); if(stage_base)stage_base[0]=0;
-                            snprintf(stage_base, 528, "__ltng_oret_%s", call_cname);
-                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
-                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            char *df = obj_resolve_field_alloc(cname, ret_sc->fields[i].name);
+                            char *stage_base = _ltng_cfmt("__ltng_oret_%s", call_cname);
+                            char *sf = obj_resolve_field_alloc(stage_base, ret_sc->fields[i].name);
+                            ASTNode *sn = create_node(NODE_SET, df ? df : "", sf ? sf : "");
                             sn->var_type = TYPE_STRING;
                             sn->is_expr = 1;
                             sn->is_variable = 1;
                             emit(sn);
+                            free(df); free(stage_base); free(sf);
                         }
                         return;
                     }
@@ -2726,16 +2725,15 @@ void parse_const(Lexer *lexer, SymbolTable *table) {
                         node->is_default = 1;
                         emit(node);
                         for (int i = 0; i < ret_sc->count; i++) {
-                            char df[520], sf[520];
-                            obj_resolve_field(dcname, ret_sc->fields[i].name, df, sizeof(df));
-                            char *stage_base = (char*)malloc(528); if(stage_base)stage_base[0]=0;
-                            snprintf(stage_base, 528, "__ltng_oret_%s", call_cname);
-                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
-                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            char *df = obj_resolve_field_alloc(dcname, ret_sc->fields[i].name);
+                            char *stage_base = _ltng_cfmt("__ltng_oret_%s", call_cname);
+                            char *sf = obj_resolve_field_alloc(stage_base, ret_sc->fields[i].name);
+                            ASTNode *sn = create_node(NODE_SET, df ? df : "", sf ? sf : "");
                             sn->var_type = TYPE_STRING;
                             sn->is_expr = 1;
                             sn->is_variable = 1;
                             emit(sn);
+                            free(df); free(stage_base); free(sf);
                         }
                         return;
                     }
@@ -3463,16 +3461,15 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                         node->is_default = 1;
                         emit(node);
                         for (int i = 0; i < ret_sc->count; i++) {
-                            char df[520], sf[520];
-                            obj_resolve_field(dcname, ret_sc->fields[i].name, df, sizeof(df));
-                            char *stage_base = (char*)malloc(528); if(stage_base)stage_base[0]=0;
-                            snprintf(stage_base, 528, "__ltng_oret_%s", call_cname);
-                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
-                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            char *df = obj_resolve_field_alloc(dcname, ret_sc->fields[i].name);
+                            char *stage_base = _ltng_cfmt("__ltng_oret_%s", call_cname);
+                            char *sf = obj_resolve_field_alloc(stage_base, ret_sc->fields[i].name);
+                            ASTNode *sn = create_node(NODE_SET, df ? df : "", sf ? sf : "");
                             sn->var_type = TYPE_STRING;
                             sn->is_expr = 1;
                             sn->is_variable = 1;
                             emit(sn);
+                            free(df); free(stage_base); free(sf);
                         }
                         return;
                     }
@@ -3777,16 +3774,15 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                         node->is_default = 1;
                         emit(node);
                         for (int i = 0; i < ret_sc->count; i++) {
-                            char df[520], sf[520];
-                            obj_resolve_field(dcname, ret_sc->fields[i].name, df, sizeof(df));
-                            char *stage_base = (char*)malloc(528); if(stage_base)stage_base[0]=0;
-                            snprintf(stage_base, 528, "__ltng_oret_%s", call_cname);
-                            obj_resolve_field(stage_base, ret_sc->fields[i].name, sf, sizeof(sf));
-                            ASTNode *sn = create_node(NODE_SET, df, sf);
+                            char *df = obj_resolve_field_alloc(dcname, ret_sc->fields[i].name);
+                            char *stage_base = _ltng_cfmt("__ltng_oret_%s", call_cname);
+                            char *sf = obj_resolve_field_alloc(stage_base, ret_sc->fields[i].name);
+                            ASTNode *sn = create_node(NODE_SET, df ? df : "", sf ? sf : "");
                             sn->var_type = TYPE_STRING;
                             sn->is_expr = 1;
                             sn->is_variable = 1;
                             emit(sn);
+                            free(df); free(stage_base); free(sf);
                         }
                         return;
                     }
@@ -4737,8 +4733,7 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
         lexer_next(lexer); /* catch */
         have_catch = 1;
 
-        char *catch_var_src = (char*)malloc(256); if(catch_var_src) catch_var_src[0]=0; /* small name buf */
-        catch_var_src[0] = '\0';
+        char *catch_var_src = NULL;
         int has_var = 0;
 
         Token t = lexer_peek(lexer);
@@ -4749,8 +4744,7 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
                 error_state_add(parser_errors, var.line, var.col,
                     "Expected catch variable name");
             } else {
-                strncpy(catch_var_src, var.value, 255);
-                catch_var_src[255] = '\0';
+                free(catch_var_src); catch_var_src = ltng_strdup(var.value);
                 has_var = 1;
             }
             Token rp = lexer_next(lexer);
@@ -4765,8 +4759,7 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
                 error_state_add(parser_errors, var.line, var.col,
                     "Expected catch variable name");
             } else {
-                strncpy(catch_var_src, var.value, 255);
-                catch_var_src[255] = '\0';
+                free(catch_var_src); catch_var_src = ltng_strdup(var.value);
                 has_var = 1;
             }
         }
@@ -6309,7 +6302,7 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
     }
 
     char *fname_short = mangle_name_alloc(name.value);
-    char *cname = (char*)malloc(256); if(cname) cname[0]=0;
+    char *cname = NULL;
     int top_level_named = (!is_anon && !(enclosing_cname && enclosing_cname[0]));
     FuncInfo *sig = NULL;
     if (top_level_named) {
@@ -6322,13 +6315,11 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
         }
     }
     if (sig) {
-        strncpy(cname, sig->name, 255);
-        cname[255] = 0;
+        cname = ltng_strdup(sig->name);
     } else if (enclosing_cname && enclosing_cname[0]) {
-        snprintf(cname, 256, "%s__%s", enclosing_cname, fname_short);
+        cname = _ltng_cfmt("%s__%s", enclosing_cname, fname_short);
     } else {
-        strncpy(cname, fname_short, 255);
-        cname[255] = 0;
+        cname = ltng_strdup(fname_short);
     }
     /* reject duplicate function definition in same scope (named functions) */
     if (!is_anon && g_program_ref) {
