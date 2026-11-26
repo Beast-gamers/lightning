@@ -856,17 +856,17 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     int cstart = (paren_depth >= 0 && paren_depth < 64) ? depth_content_start[paren_depth] : 0;
                     if (cstart < 0) cstart = 0;
                     if (cstart > pos) cstart = 0;
-                    char *cond_buf = (char*)malloc(65536);
-                    if (!cond_buf) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); return TYPE_NULL; }
                     int clen = pos - cstart;
                     if (clen < 0) clen = 0;
-                    if (clen >= 65536) clen = 65535;
+                    int cond_buf_cap = clen + 1; if (cond_buf_cap < 65536) cond_buf_cap = 65536;
+                    char *cond_buf = (char*)malloc(cond_buf_cap);
+                    if (!cond_buf) { error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); return TYPE_NULL; }
                     memcpy(cond_buf, out + cstart, clen);
                     cond_buf[clen] = '\0';
                     VarType cond_type = result_type;
 
                     /* Post-process condition (subset of collect_expression end processing) */
-                    sanitize_mod_atof(cond_buf, 65536);
+                    sanitize_mod_atof(cond_buf, cond_buf_cap);
                     {
                         int _has_cmp = 0, _d = 0, _in = 0; char _qc = 0;
                         for (const char *_p = cond_buf; *_p; _p++) {
@@ -943,15 +943,16 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         if (!need_truthy) { /* nothing */ }
                         else if (cond_type == TYPE_STRING || cond_type == TYPE_CHAR || cond_type == TYPE_OBJECT || cond_type == TYPE_NULL) {
                             char *wrapped = _ltng_cfmt("_ltng_str_truthy(%s)", cond_buf);
-                            if (wrapped) { strncpy(cond_buf, wrapped, 65535); cond_buf[65535] = '\0'; free(wrapped); }
+                            if (wrapped) { SNPRINTF_FULL(cond_buf, "%s", wrapped); free(wrapped); }
                         }
                     }
 
                     /* Collect true branch (stops at matching ':') */
-                    char *true_buf = (char*)malloc(65536);
+                    int true_buf_cap = 65536;
+                    char *true_buf = (char*)malloc(true_buf_cap);
                     if (!true_buf) { free(cond_buf); error_state_add(parser_errors, lexer_peek(lexer).line, lexer_peek(lexer).col, "Out of memory"); return TYPE_NULL; }
                     true_buf[0] = '\0';
-                    VarType true_type = collect_expression_ex(lexer, table, &true_buf, &(int){65536},
+                    VarType true_type = collect_expression_ex(lexer, table, &true_buf, &true_buf_cap,
                                                               1, 0,
                                                               NULL, NULL, NULL, NULL, 1);
 
@@ -964,10 +965,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     }
 
                     /* Collect false branch (conditional-expression, inherits stop_on_ternary_colon) */
-                    char *false_buf = (char*)malloc(65536);
+                    int false_buf_cap = 65536;
+                    char *false_buf = (char*)malloc(false_buf_cap);
                     if (!false_buf) { free(cond_buf); free(true_buf); error_state_add(parser_errors, tok.line, tok.col, "Out of memory"); return TYPE_NULL; }
                     false_buf[0] = '\0';
-                    VarType false_type = collect_expression_ex(lexer, table, &false_buf, &(int){65536},
+                    VarType false_type = collect_expression_ex(lexer, table, &false_buf, &false_buf_cap,
                                                                1, stop_on_comma,
                                                                NULL, NULL, NULL, NULL, stop_on_ternary_colon);
 
@@ -1009,8 +1011,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                         if (symbol_table_has(table, mangled_v)) cname_v = symbol_table_get_cname(table, mangled_v);
                                         else if (symbol_table_has(table, vname)) cname_v = symbol_table_get_cname(table, vname);
                                         if (!cname_v) cname_v = mangled_v;
-                                        strncpy(bufs[bi], cname_v, 65535);
-                                        bufs[bi][65535] = '\0';
+                                        if (bi == 0) { SNPRINTF_FULL(true_buf, "%s", cname_v); bufs[0]=true_buf; }
+                                        else { SNPRINTF_FULL(false_buf, "%s", cname_v); bufs[1]=false_buf; }
                                         *types[bi] = TYPE_STRING; /* treat as dynamic/string */
                                     }
                                     free(mangled_v);
