@@ -1,5 +1,8 @@
 #include "parser_internal.h"
 
+#define SNPRINTF_FULL(buf,...) do{ char *_sf=_ltng_cfmt(__VA_ARGS__); if(_sf){ size_t _sn=strlen(_sf)+1; if(_sn<65536){ char *_sg=(char*)realloc(_sf,65536); if(_sg){_sf=_sg; _sn=65536;} } free(buf); buf=_sf; } }while(0)
+#define EXPR_APPEND(buf,cap,pos,...) do{ int _sa_n; for(;;){ _sa_n=snprintf((buf)+(pos),(cap)-(pos),__VA_ARGS__); if(_sa_n<0){(buf)[pos]=0;break;} if(_sa_n>=(cap)-(pos)){int _sa_nc=(cap)*2; if(_sa_nc<(pos)+_sa_n+1)_sa_nc=(pos)+_sa_n+1; char*_sa_nb=(char*)realloc((buf),_sa_nc); if(!_sa_nb)break; (buf)=_sa_nb; (cap)=_sa_nc; continue;} (pos)+=_sa_n; break;} }while(0)
+
 int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
     /* The caller has already consumed the opening '['. Parse the remaining
        elements/nested arrays until the matching ']'. Arrays are stored as a
@@ -76,8 +79,9 @@ int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
         }
 
         /* Element value: scalar expression or simple literal/identifier. */
-        char *val = (char*)calloc(1, 65536);
+        char *val = (char*)malloc(65536);
         if (!val) { error_state_add(parser_errors, t.line, t.col, "Out of memory"); continue; }
+        val[0] = 0;
         VarType this_elem_type = TYPE_NULL;
         Token t1 = lexer_peek(lexer);
         Token t2 = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : t1;
@@ -91,38 +95,36 @@ int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
         if (simple_single) {
             lexer_next(lexer);
             if (t1.type == TOKEN_CHAR) {
-                snprintf(val, 65536, "'%s'", t1.value);
+                SNPRINTF_FULL(val, "'%s'", t1.value);
                 this_elem_type = TYPE_CHAR;
             } else if (t1.type == TOKEN_INT_LIT) {
-                snprintf(val, 65536, "%s", t1.value);
+                SNPRINTF_FULL(val, "%s", t1.value);
                 this_elem_type = TYPE_INT;
             } else if (t1.type == TOKEN_FLOAT_LIT) {
-                snprintf(val, 65536, "%s", t1.value);
+                SNPRINTF_FULL(val, "%s", t1.value);
                 this_elem_type = TYPE_FLOAT;
             } else if (t1.type == TOKEN_STRING) {
-                snprintf(val, 65536, "%s", t1.value);
+                SNPRINTF_FULL(val, "%s", t1.value);
                 this_elem_type = TYPE_STRING;
             } else if (t1.type == TOKEN_IDENT && !is_bool_value(t1.value) && !is_type_keyword(t1.value)) {
                 char *m = mangle_name_alloc(t1.value);
                 if (symbol_table_has(table, m) || symbol_table_has(table, t1.value)) {
                     const char *cname = symbol_table_has(table, m) ? symbol_table_get_cname(table, m) : symbol_table_get_cname(table, t1.value);
-                    val[0] = '\x01';
-                    strncpy(val + 1, cname, 65534);
-                    val[65535] = '\0';
+                    SNPRINTF_FULL(val, "%c%s", '\x01', cname);
                 } else {
-                    snprintf(val, 65536, "%s", t1.value);
+                    SNPRINTF_FULL(val, "%s", t1.value);
                 }
                 free(m);
                 /* variable reference element: runtime type unknown */
                 this_elem_type = TYPE_NULL;
             } else if (t1.type == TOKEN_IDENT && is_bool_value(t1.value)) {
                 if (strcmp(t1.value, "true") == 0 || strcmp(t1.value, "t") == 0)
-                    snprintf(val, 65536, "true");
+                    SNPRINTF_FULL(val, "true");
                 else
-                    snprintf(val, 65536, "false");
+                    SNPRINTF_FULL(val, "false");
                 this_elem_type = TYPE_BOOL;
             } else {
-                snprintf(val, 65536, "%s", t1.value);
+                SNPRINTF_FULL(val, "%s", t1.value);
                 this_elem_type = TYPE_NULL;
             }
         } else {
@@ -136,23 +138,23 @@ int parse_array_literal(Lexer *lexer, SymbolTable *table, ASTNode *node) {
                 size_t elen = strlen(expr);
                 if (elen >= 2 && expr[elen-1] == '"') {
                     expr[elen-1] = '\0';
-                    snprintf(val, 65536, "%s", expr + 1);
+                    SNPRINTF_FULL(val, "%s", expr + 1);
                 } else {
-                    val[0] = '\x01'; strncpy(val + 1, expr, 65534); val[65535] = '\0';
+                    SNPRINTF_FULL(val, "%c%s", '\x01', expr);
                 }
                 this_elem_type = TYPE_STRING;
             } else if (etype == TYPE_STRING || etype == TYPE_OBJECT || etype == TYPE_ARRAY || etype == TYPE_CHAR) {
-                val[0] = '\x01'; strncpy(val + 1, expr, 65534); val[65535] = '\0';
+                SNPRINTF_FULL(val, "%c%s", '\x01', expr);
                 this_elem_type = TYPE_STRING;
             } else if (etype == TYPE_BOOL) {
                 char *wrapped = _ltng_cfmt("((%s)?\"true\":\"false\")", expr);
-                val[0] = '\x01'; if (wrapped) { strncpy(val + 1, wrapped, 65534); val[65535] = '\0'; free(wrapped); }
+                if (wrapped) { SNPRINTF_FULL(val, "%c%s", '\x01', wrapped); free(wrapped); }
                 this_elem_type = TYPE_BOOL;
             } else {
                 char *wrapped = (etype == TYPE_FLOAT)
                     ? _ltng_cfmt("_ltng_ad((double)(%s))", expr)
                     : _ltng_cfmt("_ltng_ad((double)(long long)(%s))", expr);
-                val[0] = '\x01'; if (wrapped) { strncpy(val + 1, wrapped, 65534); val[65535] = '\0'; free(wrapped); }
+                if (wrapped) { SNPRINTF_FULL(val, "%c%s", '\x01', wrapped); free(wrapped); }
                 this_elem_type = (etype == TYPE_FLOAT) ? TYPE_FLOAT : TYPE_INT;
             }
             free(expr);
