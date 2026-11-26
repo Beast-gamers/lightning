@@ -1559,7 +1559,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             } else {
                             char *fr_cname2 = (char*)calloc(1, 65536); int fr_pc2 = -1;
                             VarType irt = TYPE_NULL;
-                            if (fr_cname2 && symbol_table_get_func_ref(table, tok.value, fr_cname2, 65536, &fr_pc2) && fr_cname2[0]) {
+                            if (fr_cname2 && symbol_table_get_func_ref(table, tok.value, &fr_cname2, &fr_pc2) && fr_cname2[0]) {
                                 irt = infer_function_return_type(fr_cname2);
                             }
                             if (irt == TYPE_INT) {

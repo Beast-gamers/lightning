@@ -274,13 +274,13 @@ int is_function_name_scoped(SymbolTable *table, const char *src) {
 }
 
 void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char *func_cname, int param_count);
-int symbol_table_get_func_ref(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_param_count);
+int symbol_table_get_func_ref(SymbolTable *table, const char *name, char **out_cname, int *out_param_count);
 ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_cname);
 
 
 int is_callable_ident(SymbolTable *table, const char *src) {
     if (is_function_name_scoped(table, src)) return 1;
-    if (symbol_table_get_func_ref(table, src, NULL, 0, NULL)) return 1;
+    if (symbol_table_get_func_ref(table, src, NULL, NULL)) return 1;
     {
         char *mangled = mangle_name_alloc(src);
         int has = symbol_table_has(table, mangled) || symbol_table_has(table, src);
@@ -666,16 +666,13 @@ void symbol_table_set_func_ref(SymbolTable *table, const char *name, const char 
     }
 }
 
-int symbol_table_get_func_ref(SymbolTable *table, const char *name, char *out_cname, int out_size, int *out_param_count) {
+int symbol_table_get_func_ref(SymbolTable *table, const char *name, char **out_cname, int *out_param_count) {
     char *mangled = mangle_name_alloc(name);
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
             if (strcmp(s->vars[i].name, name) == 0 || strcmp(s->vars[i].name, mangled) == 0) {
                 if (!s->vars[i].is_func_ref) { free(mangled); return 0; }
-                if (out_cname && out_size > 0) {
-                    strncpy(out_cname, s->vars[i].func_ref_cname, out_size - 1);
-                    out_cname[out_size - 1] = '\0';
-                }
+                if (out_cname) *out_cname = ltng_strdup(s->vars[i].func_ref_cname);
                 if (out_param_count) *out_param_count = s->vars[i].func_ref_param_count;
                 free(mangled);
                 return 1;

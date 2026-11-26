@@ -1365,11 +1365,11 @@ VarType infer_call_result_type(ASTNode *call) {
     return infer_function_return_type(call->name);
 }
 
-int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign, VarType *out_type, char *out_call_cname, int out_call_cname_sz) {
+int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int cexpr_size, int allow_base_assign, VarType *out_type, char **out_call_cname) {
     Token first = lexer_peek(lexer);
     int saved = lexer->current;
     if (out_type) *out_type = TYPE_STRING;
-    if (out_call_cname && out_call_cname_sz > 0) out_call_cname[0] = '\0';
+    if (out_call_cname) *out_call_cname = NULL;
     ASTNode *call = NULL;
     int is_method_form = 0;
 
@@ -1478,9 +1478,8 @@ int try_parse_sole_call_expr(Lexer *lexer, SymbolTable *table, char *cexpr, int 
         else if (strcmp(call->name, "__ltng_indirect") == 0) *out_type = TYPE_STRING;
         else *out_type = infer_call_result_type(call);
     }
-    if (out_call_cname && out_call_cname_sz > 0 && !chain) {
-        strncpy(out_call_cname, call->name, out_call_cname_sz - 1);
-        out_call_cname[out_call_cname_sz - 1] = '\0';
+    if (out_call_cname && !chain) {
+        *out_call_cname = ltng_strdup(call->name);
     }
     return 1;
 }
@@ -2282,8 +2281,8 @@ void parse_let(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                char *call_cname = (char*)malloc(256); if(call_cname)call_cname[0]=0;
-                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, call_cname, 256)) {
+                char *call_cname = NULL;
+                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, &call_cname)) {
                     VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
                     ObjSchema *ret_sc = NULL;
                     if (store_type == TYPE_OBJECT && call_cname[0]) {
@@ -2692,8 +2691,8 @@ void parse_const(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                char *call_cname = (char*)malloc(256); if(call_cname)call_cname[0]=0;
-                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, call_cname, 256)) {
+                char *call_cname = NULL;
+                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, &call_cname)) {
                     VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
                     ObjSchema *ret_sc = NULL;
                     if (store_type == TYPE_OBJECT && call_cname[0]) {
@@ -3428,8 +3427,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                char *call_cname = (char*)malloc(256); if(call_cname)call_cname[0]=0;
-                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, call_cname, 256)) {
+                char *call_cname = NULL;
+                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, &call_cname)) {
                     VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
                     ObjSchema *ret_sc = NULL;
                     if (store_type == TYPE_OBJECT && call_cname[0]) {
@@ -3741,8 +3740,8 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
                   (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                    strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
                 VarType call_type = TYPE_STRING;
-                char *call_cname = (char*)malloc(256); if(call_cname)call_cname[0]=0;
-                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, call_cname, 256)) {
+                char *call_cname = NULL;
+                if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &call_type, &call_cname)) {
                     VarType store_type = (call_type == TYPE_VOID) ? TYPE_STRING : call_type;
                     ObjSchema *ret_sc = NULL;
                     if (store_type == TYPE_OBJECT && call_cname[0]) {
@@ -5406,12 +5405,11 @@ int function_returns_string(const char *fname) {
 /* Find a function binding in a non-root (local/nested) scope. Top-level
    functions are resolved through the global signature registry so overloads
    can be selected by arity. */
-int find_local_func_binding(SymbolTable *table, const char *src, char *out, int out_size) {
+int find_local_func_binding(SymbolTable *table, const char *src, char **out) {
     for (Scope *s = table; s && s->parent; s = s->parent) {
         for (int i = 0; i < s->func_count; i++) {
             if (strcmp(s->funcs[i].src, src) == 0) {
-                strncpy(out, s->funcs[i].cname, out_size - 1);
-                out[out_size - 1] = '\0';
+                if (out) *out = ltng_strdup(s->funcs[i].cname);
                 return 1;
             }
         }
@@ -5667,13 +5665,13 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
     int indirect_dynamic = 0;
     int direct_overload = 0;
     int fr_pc = -1;
-    char *fr_cname = (char*)malloc(256); if(fr_cname)fr_cname[0]=0;
-    char *local_cname = (char*)malloc(256); if(local_cname)local_cname[0]=0;
-    int has_local = find_local_func_binding(table, fname_tok_val, local_cname, 256);
+    char *fr_cname = NULL;
+    char *local_cname = NULL;
+    int has_local = find_local_func_binding(table, fname_tok_val, &local_cname);
     int scoped = is_function_name_scoped(table, fname_tok_val);
     /* indirect call through tracked function-reference variable? */
     if (!scoped &&
-        symbol_table_get_func_ref(table, fname_tok_val, fr_cname, 256, &fr_pc)) {
+        symbol_table_get_func_ref(table, fname_tok_val, &fr_cname, &fr_pc)) {
         indirect = 1;
         { free(fm); fm = ltng_strdup(fr_cname); }
     } else if (!scoped) {
@@ -6084,9 +6082,9 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
               lexer->tokens[lexer->current + 2].type == TOKEN_IDENT &&
               (strcmp(lexer->tokens[lexer->current + 2].value, "push") == 0 ||
                strcmp(lexer->tokens[lexer->current + 2].value, "pop") == 0))) {
-            char *sole_call_cname = (char*)malloc(256); if(sole_call_cname)sole_call_cname[0]=0;
+            char *sole_call_cname = NULL;
             VarType sole_call_type = TYPE_STRING;
-            if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &sole_call_type, sole_call_cname, 256)) {
+            if (try_parse_sole_call_expr(lexer, table, expr, 65536, 1, &sole_call_type, &sole_call_cname)) {
                 etype = sole_call_type;
                 if (etype == TYPE_NULL || etype == TYPE_VOID) etype = TYPE_STRING;
                 if (etype == TYPE_ARRAY && (g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
@@ -6690,7 +6688,7 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
             int indirect_stmt = 0;
             int fr_pc = -1;
             if (!is_function_name_scoped(table, t.value) &&
-                symbol_table_get_func_ref(table, t.value, fm, 256, &fr_pc)) {
+                symbol_table_get_func_ref(table, t.value, &fm, &fr_pc)) {
                 indirect_stmt = 1;
             } else {
                 { char *_rn = resolve_func_name(table, t.value);
