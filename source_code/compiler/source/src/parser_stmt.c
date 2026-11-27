@@ -4743,13 +4743,16 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
     int have_catch = 0;
     int have_else = 0;
     int have_finally = 0;
+    ASTNode *catch_tail = NULL;
 
-    /* Optional catch clause. Newlines between '}' and 'catch' are allowed. */
+    /* Optional catch clauses. Newlines between '}'/'catch' are allowed. */
     skip_newlines(lexer);
-    if (lexer_peek(lexer).type == TOKEN_CATCH) {
+    while (lexer_peek(lexer).type == TOKEN_CATCH) {
         lexer_next(lexer); /* catch */
         have_catch = 1;
 
+        ASTNode *cn = create_node(NODE_PARAM, "", "");
+        cn->line = lexer_peek(lexer).line; cn->col = lexer_peek(lexer).col;
         char *catch_var_src = NULL;
         int has_var = 0;
 
@@ -4765,7 +4768,7 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
                 if (token_is_name(second) && !is_ltng_reserved(second.value) && second.type != TOKEN_RPAREN) {
                     /* catch (Type e) */
                     lexer_next(lexer);
-                    node->catch_type = ltng_strdup(first.value);
+                    { free(cn->catch_type); cn->catch_type = ltng_strdup(first.value); }
                     free(catch_var_src); catch_var_src = ltng_strdup(second.value);
                     has_var = 1;
                 } else {
@@ -4797,33 +4800,37 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
             error_state_add(parser_errors, clb.line, clb.col,
                 "Expected '{' after 'catch'");
             skip_to_newline(lexer);
-            node->has_catch = 1;
-            return node;
+            if (!node->params) node->params = cn; else catch_tail->next = cn;
+            catch_tail = cn;
+            break;
         }
 
         Scope *catch_scope = (Scope *)malloc(sizeof(Scope));
         if (!catch_scope) {
             error_state_add(parser_errors, kw.line, kw.col, "Memory allocation failed");
-            return node;
+            if (!node->params) node->params = cn; else catch_tail->next = cn;
+            catch_tail = cn;
+            break;
         }
         scope_init(catch_scope, table, 0);
 
         if (has_var) {
             char *mangled = mangle_name_alloc(catch_var_src);
-            /* Catch variables always receive a unique emitted C name so nested
-               catches with the same source name cannot collide. */
             symbol_table_add_in_ex(catch_scope, mangled, TYPE_OBJECT, 1);
             const char *cname = symbol_table_get_cname(catch_scope, mangled);
-            { free(node->name); node->name = ltng_strdup(cname); }
-            { free(node->for_var); node->for_var = ltng_strdup(catch_var_src); }
+            { free(cn->name); cn->name = ltng_strdup(cname); }
+            { free(cn->for_var); cn->for_var = ltng_strdup(catch_var_src); }
             build_catch_schema(cname);
         }
+        free(catch_var_src);
 
         g_in_catch++;
-        node->orelse = parse_block(lexer, catch_scope, 0);
+        cn->body = parse_block(lexer, catch_scope, 0);
         g_in_catch--;
         free(catch_scope);
 
+        if (!node->params) node->params = cn; else catch_tail->next = cn;
+        catch_tail = cn;
         skip_newlines(lexer);
     }
 
@@ -5115,6 +5122,7 @@ void collect_return_nodes(ASTNode *node, ASTNode **nodes, int *count, int max) {
     collect_return_nodes(node->orelse, nodes, count, max);
     collect_return_nodes(node->else_body, nodes, count, max);
     collect_return_nodes(node->cases, nodes, count, max);
+    collect_return_nodes(node->params, nodes, count, max);
     collect_return_nodes(node->next, nodes, count, max);
 }
 
@@ -5164,7 +5172,13 @@ int stmt_always_exits(ASTNode *node) {
                Normal completion cannot occur if try always exits, so else is irrelevant. */
             if (block_always_exits(node->body)) {
                 if (!node->has_catch) return 1;
-                if (node->orelse && block_always_exits(node->orelse)) return 1;
+                if (node->params) {
+                    int all = 1;
+                    for (ASTNode *c = node->params; c; c = c->next) {
+                        if (!block_always_exits(c->body)) { all = 0; break; }
+                    }
+                    if (all) return 1;
+                } else if (node->orelse && block_always_exits(node->orelse)) return 1;
             }
             return 0;
         default:
@@ -5330,8 +5344,8 @@ VarType analyze_function_returns(ASTNode *node, int *has_return) {
     int have_type = 0;
     VarType child;
 
-    ASTNode *kids[5] = { node->body, node->orelse, node->cases, node->else_body, node->next };
-    for (int k = 0; k < 5; k++) {
+    ASTNode *kids[6] = { node->body, node->orelse, node->cases, node->else_body, node->params, node->next };
+    for (int k = 0; k < 6; k++) {
         int child_has_return = 0;
         child = analyze_function_returns(kids[k], &child_has_return);
         if (child_has_return) {
@@ -6323,6 +6337,7 @@ void collect_declared_locals(ASTNode *node, char ***names, int *count, int *cap,
     collect_declared_locals(node->orelse, names, count, cap, depth + 1);
     collect_declared_locals(node->else_body, names, count, cap, depth + 1);
     collect_declared_locals(node->cases, names, count, cap, depth + 1);
+    collect_declared_locals(node->params, names, count, cap, depth + 1);
     collect_declared_locals(node->next, names, count, cap, depth + 1);
 }
 

@@ -1526,67 +1526,94 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
     pad(out, indent + 2); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", tf);
 
     if (node->has_catch) {
-        if (node->has_finally) {
-            codegen_catch_bind(out, node, indent + 2);
-                if (node->catch_type && node->catch_type[0]) {
-                    pad(out, indent + 2); fprintf(out, "if (strcmp(_ltng_exc_s(_ltng_exc_type), \"%s\") != 0) {\n", node->catch_type);
-                    pad(out, indent + 3); fprintf(out, "LtngExcSaved _ltng_ctm%d; _ltng_exc_saved_init(&_ltng_ctm%d);\n", id, id);
-                    pad(out, indent + 3); fprintf(out, "_ltng_exc_save_to(&_ltng_ctm%d);\n", id);
+        ASTNode *cc_first = node->params;
+        int old_style = (!cc_first && node->orelse);
+        int cc_n = 0;
+        for (ASTNode *c = cc_first; c; c = c->next) cc_n++;
+        if (old_style) cc_n = 1;
+
+        for (int ci = 0; ci < cc_n; ci++) {
+            ASTNode *cc = NULL;
+            if (!old_style) { cc = cc_first; for (int k=0;k<ci;k++) cc = cc->next; }
+            const char *ct = old_style ? node->catch_type : (cc ? cc->catch_type : NULL);
+            int has_type = (ct && ct[0]);
+            ASTNode *cbody = old_style ? node->orelse : (cc ? cc->body : NULL);
+            ASTNode *cbind = old_style ? node : cc;
+
+            if (has_type) {
+                pad(out, indent + 2); fprintf(out, "if (strcmp(_ltng_exc_s(_ltng_exc_type), \"%s\") == 0) {\n", ct);
+            } else {
+                pad(out, indent + 2); fprintf(out, "{\n");
+            }
+            int bi = indent + 3;
+
+            if (node->has_finally) {
+                codegen_catch_bind(out, cbind, bi);
+                char *cfv=_ltng_cfmt("_ltng_cf%d_%d", id, ci);
+                char *crv=_ltng_cfmt("_ltng_cr%d_%d", id, ci);
+                char *ecv=_ltng_cfmt("_ltng_ec%d_%d", id, ci);
+                if(cfv&&crv&&ecv) {
+                    pad(out, bi); fprintf(out, "LtngTryFrame %s;\n", cfv);
+                    pad(out, bi); fprintf(out, "%s.prev = _ltng_try_top;\n", cfv);
+                    pad(out, bi); fprintf(out, "%s.stack_depth = _ltng_stack_depth;\n", cfv);
+                    pad(out, bi); fprintf(out, "_ltng_try_top = &%s;\n", cfv);
+                    pad(out, bi); fprintf(out, "int %s = setjmp(%s.env);\n", crv, cfv);
+                    pad(out, bi); fprintf(out, "if (%s == 0) {\n", crv);
+
+                    ensure_cleanup_cap();
+                    if (g_cleanup_count < g_cleanup_cap) {
+                        CgCleanup *cl = &g_cleanups[g_cleanup_count++];
+                        cl->top_expr = _ltng_cfmt("%s.prev", cfv);
+                        cl->finally_body = node->cases;
+                    }
+                    if (cbody) emit_block(out, cbody, table, bi + 1);
+                    if (g_cleanup_count > base) g_cleanup_count--;
+                    pad(out, bi + 1); fprintf(out, "_ltng_try_top = %s.prev;\n", cfv);
                     {
                         int saved = g_cleanup_count;
                         g_cleanup_count = base;
-                        if (node->cases) emit_block(out, node->cases, table, indent + 3);
+                        if (node->cases) emit_block(out, node->cases, table, bi + 1);
                         g_cleanup_count = saved;
                     }
-                    pad(out, indent + 3); fprintf(out, "_ltng_exc_restore_from(&_ltng_ctm%d); _ltng_exc_saved_free(&_ltng_ctm%d);\n", id, id);
-                    pad(out, indent + 3); fprintf(out, "_ltng_rethrow();\n");
-                    pad(out, indent + 2); fprintf(out, "}\n");
+                    pad(out, bi); fprintf(out, "} else {\n");
+                    pad(out, bi + 1); fprintf(out, "_ltng_try_top = %s.prev;\n", cfv);
+                    pad(out, bi + 1); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", cfv);
+                    pad(out, bi + 1); fprintf(out, "LtngExcSaved %s; _ltng_exc_saved_init(&%s);\n", ecv, ecv);
+                    pad(out, bi + 1); fprintf(out, "_ltng_exc_save_to(&%s);\n", ecv);
+                    {
+                        int saved = g_cleanup_count;
+                        g_cleanup_count = base;
+                        if (node->cases) emit_block(out, node->cases, table, bi + 1);
+                        g_cleanup_count = saved;
+                    }
+                    pad(out, bi + 1); fprintf(out, "_ltng_exc_restore_from(&%s); _ltng_exc_saved_free(&%s);\n", ecv, ecv);
+                    pad(out, bi + 1); fprintf(out, "_ltng_rethrow();\n");
+                    pad(out, bi); fprintf(out, "}\n");
                 }
-            pad(out, indent + 2); fprintf(out, "LtngTryFrame %s;\n", cf);
-            pad(out, indent + 2); fprintf(out, "%s.prev = _ltng_try_top;\n", cf);
-            pad(out, indent + 2); fprintf(out, "%s.stack_depth = _ltng_stack_depth;\n", cf);
-            pad(out, indent + 2); fprintf(out, "_ltng_try_top = &%s;\n", cf);
-            pad(out, indent + 2); fprintf(out, "int %s = setjmp(%s.env);\n", cr, cf);
-            pad(out, indent + 2); fprintf(out, "if (%s == 0) {\n", cr);
-
-            ensure_cleanup_cap();
-            if (g_cleanup_count < g_cleanup_cap) {
-                CgCleanup *c = &g_cleanups[g_cleanup_count++];
-                c->top_expr = _ltng_cfmt("%s.prev", cf);
-                c->finally_body = node->cases;
-            }
-            if (node->orelse) emit_block(out, node->orelse, table, indent + 3);
-            if (g_cleanup_count > base) g_cleanup_count--;
-            pad(out, indent + 3); fprintf(out, "_ltng_try_top = %s.prev;\n", cf);
-
-            {
-                int saved = g_cleanup_count;
-                g_cleanup_count = base;
-                if (node->cases) emit_block(out, node->cases, table, indent + 3);
-                g_cleanup_count = saved;
+                free(cfv);free(crv);free(ecv);
+            } else {
+                codegen_catch_bind(out, cbind, bi);
+                if (cbody) emit_block(out, cbody, table, bi);
             }
 
-            pad(out, indent + 2); fprintf(out, "} else {\n");
-            pad(out, indent + 3); fprintf(out, "_ltng_try_top = %s.prev;\n", cf);
-            pad(out, indent + 3); fprintf(out, "_ltng_stack_depth = %s.stack_depth;\n", cf);
-            pad(out, indent + 3); fprintf(out, "LtngExcSaved %s; _ltng_exc_saved_init(&%s);\n", ec, ec);
-            pad(out, indent + 3); fprintf(out, "_ltng_exc_save_to(&%s);\n", ec);
-            {
-                int saved = g_cleanup_count;
-                g_cleanup_count = base;
-                if (node->cases) emit_block(out, node->cases, table, indent + 3);
-                g_cleanup_count = saved;
-            }
-            pad(out, indent + 3); fprintf(out, "_ltng_exc_restore_from(&%s); _ltng_exc_saved_free(&%s);\n", ec, ec);
-            pad(out, indent + 3); fprintf(out, "_ltng_rethrow();\n");
+            pad(out, bi); fprintf(out, "goto _ltng_cd%d;\n", id);
             pad(out, indent + 2); fprintf(out, "}\n");
-        } else {
-            codegen_catch_bind(out, node, indent + 2);
-            if (node->catch_type && node->catch_type[0]) {
-                pad(out, indent + 2); fprintf(out, "if (strcmp(_ltng_exc_s(_ltng_exc_type), \"%s\") != 0) { _ltng_rethrow(); }\n", node->catch_type);
-            }
-            if (node->orelse) emit_block(out, node->orelse, table, indent + 2);
         }
+
+        /* No catch matched: run finally (if any) and rethrow */
+        if (node->has_finally) {
+            pad(out, indent + 2); fprintf(out, "LtngExcSaved _ltng_cm%d; _ltng_exc_saved_init(&_ltng_cm%d);\n", id, id);
+            pad(out, indent + 2); fprintf(out, "_ltng_exc_save_to(&_ltng_cm%d);\n", id);
+            {
+                int saved = g_cleanup_count;
+                g_cleanup_count = base;
+                if (node->cases) emit_block(out, node->cases, table, indent + 2);
+                g_cleanup_count = saved;
+            }
+            pad(out, indent + 2); fprintf(out, "_ltng_exc_restore_from(&_ltng_cm%d); _ltng_exc_saved_free(&_ltng_cm%d);\n", id, id);
+        }
+        pad(out, indent + 2); fprintf(out, "_ltng_rethrow();\n");
+        pad(out, indent + 2); fprintf(out, "_ltng_cd%d: ;\n", id);
     } else {
         pad(out, indent + 2); fprintf(out, "LtngExcSaved %s; _ltng_exc_saved_init(&%s);\n", es, es);
         pad(out, indent + 2); fprintf(out, "_ltng_exc_save_to(&%s);\n", es);
@@ -2059,6 +2086,8 @@ static void traverse_record_param_schemas(ASTNode *node, ASTNode *fns) {
     traverse_record_param_schemas(node->body, fns);
     traverse_record_param_schemas(node->orelse, fns);
     traverse_record_param_schemas(node->cases, fns);
+    traverse_record_param_schemas(node->else_body, fns);
+    traverse_record_param_schemas(node->params, fns);
     traverse_record_param_schemas(node->args, fns);
     traverse_record_param_schemas(node->next, fns);
 }

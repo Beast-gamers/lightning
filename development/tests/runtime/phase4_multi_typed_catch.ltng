@@ -1,0 +1,34 @@
+try {
+    throw error("B", "boom")
+} catch (A e) {
+    write("A")
+} catch (B e) {
+    write(e.type)
+} catch (e) {
+    write("other")
+}
+
+try {
+    try {
+        throw error("A", "a")
+    } catch (A e) {
+        write("inner-a")
+        throw error("B", "from-a")
+    } catch (B e) {
+        write("inner-b")
+    }
+} catch (e) {
+    write("outer:" + e.type)
+}
+
+try {
+    throw error("C", "c")
+} catch (A e) {
+    write("A")
+} catch (B e) {
+    write("B")
+} catch (e) {
+    write("fallback:" + e.type)
+} finally {
+    write("fin")
+}

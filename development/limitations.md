@@ -61,7 +61,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - Compile-time detection/rejection of literal division/modulo by zero (int and float literal forms).
 - Improved numeric promotion in key mixed expressions, comparison normalization for numeric conversion helpers, and return/call/indirect-call expression typing fixes (including self-reference/body-parsing cases) to prevent incorrect string typing/internal compile failures.
 - Support for explicit type declarations `let x = float` and `let x = char`.
-- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**216 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context (e.g. non-constant conversion expressions used as `switch case` labels showed a codegen limitation in an ad-hoc probe).
+- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**221 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context (e.g. non-constant conversion expressions used as `switch case` labels showed a codegen limitation in an ad-hoc probe).
 
 ### Remaining limitations
 - **Distinct int/float semantics (addressed in covered paths):** Step 4/5 work made int/float behavior consistent across covered expression, assignment, comparison, codegen, and runtime paths; rare edge cases may remain in less-common emitted forms.
@@ -152,7 +152,7 @@ These limitations were identified in the initial audit and remain relevant acros
 ### Remaining limitations
 - **Function stack depth limited by memory/C stack:** the runtime function-name/trace stack is heap-backed and grows dynamically, but extremely deep recursion can still exhaust process stack/memory.
 - **Dynamic exception payloads/traces:** exception type, message, value, trace, and function-stack storage are heap-backed/dynamic (not fixed-size buffers), so very large payloads are limited by available memory rather than fixed buffer sizes.
-- **Typed catch filtering (basic):** `catch (Type e)` is supported for exact `e.type` string match; if it does not match, the exception is rethrown (and finally blocks still run). Multiple typed catch clauses on the same try are not supported.
+- **Typed catch filtering:** `catch (Type e)` is supported for exact `e.type` string match. Multiple typed catch clauses on the same try are supported; the first matching catch runs, non-matching catches are skipped, and if none match the exception is rethrown (finally blocks still run). Sibling catches do not catch exceptions thrown by another sibling catch body.
 - **`exit` unwinds `finally`:** `exit` now evaluates its exit code, unwinds pending `finally` blocks, then exits. A `return`/`throw` inside `finally` can override the pending exit (consistent with existing finally override semantics).
 - **Inlined cleanup / code size:** `finally` bodies are inlined at each exit point (including exception unwinding), which can increase generated code size for deeply nested `try`/`finally` blocks.
 - **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values during exception-path `finally` execution; values are heap-backed/dynamic, but very deep exception-path `finally` nesting still consumes additional C stack.
