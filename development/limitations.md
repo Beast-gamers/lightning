@@ -153,7 +153,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Function stack depth limited by memory/C stack:** the runtime function-name/trace stack is heap-backed and grows dynamically, but extremely deep recursion can still exhaust process stack/memory.
 - **Dynamic exception payloads/traces:** exception type, message, value, trace, and function-stack storage are heap-backed/dynamic (not fixed-size buffers), so very large payloads are limited by available memory rather than fixed buffer sizes.
 - **No typed catch filtering:** there is no `catch (Type e)` syntax; a `catch` handles every exception thrown in its `try`. Type-based dispatch must be done manually on `e.type`.
-- **`exit` skips `finally`:** `exit` terminates the process immediately, so pending `finally` cleanup does not run.
+- **`exit` unwinds `finally`:** `exit` now evaluates its exit code, unwinds pending `finally` blocks, then exits. A `return`/`throw` inside `finally` can override the pending exit (consistent with existing finally override semantics).
 - **Inlined cleanup / code size:** `finally` bodies are inlined at each exit point (including exception unwinding), which can increase generated code size for deeply nested `try`/`finally` blocks.
 - **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values during exception-path `finally` execution; values are heap-backed/dynamic, but very deep exception-path `finally` nesting still consumes additional C stack.
 - **Exception object model:** catch values are object-like fixed-buffer values; they are not first-class exception instances with inheritance, custom fields, or user-defined exception classes.

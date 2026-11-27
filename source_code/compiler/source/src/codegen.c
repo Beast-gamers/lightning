@@ -1904,11 +1904,23 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
             break;
         }
         case NODE_EXIT: {
-            pad(out, indent);
-            if (node->var_type == TYPE_FLOAT) {
-                fprintf(out, "exit((int)(%s));\n", node->value[0] ? node->value : "0");
+            const char *ev = node->value[0] ? node->value : "0";
+            if (g_cleanup_count > 0) {
+                pad(out, indent); fprintf(out, "{\n");
+                if (node->var_type == TYPE_FLOAT)
+                    pad(out, indent + 1), fprintf(out, "int _ltng_ec = (int)(%s);\n", ev);
+                else
+                    pad(out, indent + 1), fprintf(out, "int _ltng_ec = (int)(long long)(%s);\n", ev);
+                emit_cleanup_unwind(out, table, indent + 1, 0);
+                pad(out, indent + 1); fprintf(out, "exit(_ltng_ec);\n");
+                pad(out, indent); fprintf(out, "}\n");
             } else {
-                fprintf(out, "exit((long long)(%s));\n", node->value[0] ? node->value : "0");
+                pad(out, indent);
+                if (node->var_type == TYPE_FLOAT) {
+                    fprintf(out, "exit((int)(%s));\n", ev);
+                } else {
+                    fprintf(out, "exit((int)(long long)(%s));\n", ev);
+                }
             }
             break;
         }

@@ -5126,6 +5126,7 @@ int stmt_always_exits(ASTNode *node) {
     switch (node->type) {
         case NODE_RETURN:
         case NODE_THROW:
+        case NODE_EXIT:
             return 1;
         case NODE_BLOCK:
             return block_always_exits(node->body);

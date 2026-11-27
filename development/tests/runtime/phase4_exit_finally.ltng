@@ -1,0 +1,5 @@
+try {
+    exit(0)
+} finally {
+    write("finally")
+}
