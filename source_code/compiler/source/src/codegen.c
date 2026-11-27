@@ -1528,6 +1528,20 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
     if (node->has_catch) {
         if (node->has_finally) {
             codegen_catch_bind(out, node, indent + 2);
+                if (node->catch_type && node->catch_type[0]) {
+                    pad(out, indent + 2); fprintf(out, "if (strcmp(_ltng_exc_s(_ltng_exc_type), \"%s\") != 0) {\n", node->catch_type);
+                    pad(out, indent + 3); fprintf(out, "LtngExcSaved _ltng_ctm%d; _ltng_exc_saved_init(&_ltng_ctm%d);\n", id, id);
+                    pad(out, indent + 3); fprintf(out, "_ltng_exc_save_to(&_ltng_ctm%d);\n", id);
+                    {
+                        int saved = g_cleanup_count;
+                        g_cleanup_count = base;
+                        if (node->cases) emit_block(out, node->cases, table, indent + 3);
+                        g_cleanup_count = saved;
+                    }
+                    pad(out, indent + 3); fprintf(out, "_ltng_exc_restore_from(&_ltng_ctm%d); _ltng_exc_saved_free(&_ltng_ctm%d);\n", id, id);
+                    pad(out, indent + 3); fprintf(out, "_ltng_rethrow();\n");
+                    pad(out, indent + 2); fprintf(out, "}\n");
+                }
             pad(out, indent + 2); fprintf(out, "LtngTryFrame %s;\n", cf);
             pad(out, indent + 2); fprintf(out, "%s.prev = _ltng_try_top;\n", cf);
             pad(out, indent + 2); fprintf(out, "%s.stack_depth = _ltng_stack_depth;\n", cf);
@@ -1568,6 +1582,9 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
             pad(out, indent + 2); fprintf(out, "}\n");
         } else {
             codegen_catch_bind(out, node, indent + 2);
+            if (node->catch_type && node->catch_type[0]) {
+                pad(out, indent + 2); fprintf(out, "if (strcmp(_ltng_exc_s(_ltng_exc_type), \"%s\") != 0) { _ltng_rethrow(); }\n", node->catch_type);
+            }
             if (node->orelse) emit_block(out, node->orelse, table, indent + 2);
         }
     } else {

@@ -4756,13 +4756,22 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
         Token t = lexer_peek(lexer);
         if (t.type == TOKEN_LPAREN) {
             lexer_next(lexer); /* ( */
-            Token var = lexer_next(lexer);
-            if (!token_is_name(var) || is_ltng_reserved(var.value)) {
-                error_state_add(parser_errors, var.line, var.col,
+            Token first = lexer_next(lexer);
+            if (!token_is_name(first) || is_ltng_reserved(first.value)) {
+                error_state_add(parser_errors, first.line, first.col,
                     "Expected catch variable name");
             } else {
-                free(catch_var_src); catch_var_src = ltng_strdup(var.value);
-                has_var = 1;
+                Token second = lexer_peek(lexer);
+                if (token_is_name(second) && !is_ltng_reserved(second.value) && second.type != TOKEN_RPAREN) {
+                    /* catch (Type e) */
+                    lexer_next(lexer);
+                    node->catch_type = ltng_strdup(first.value);
+                    free(catch_var_src); catch_var_src = ltng_strdup(second.value);
+                    has_var = 1;
+                } else {
+                    free(catch_var_src); catch_var_src = ltng_strdup(first.value);
+                    has_var = 1;
+                }
             }
             Token rp = lexer_next(lexer);
             if (rp.type != TOKEN_RPAREN) {

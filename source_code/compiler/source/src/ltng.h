@@ -167,6 +167,7 @@ typedef struct ASTNode {
     int has_catch;      /* NODE_TRY: catch clause present */
     int has_else;       /* NODE_TRY: else (success) clause present */
     int has_finally;    /* NODE_TRY: finally clause present */
+    char *catch_type;   /* NODE_TRY: optional catch type filter (NULL = catch all) */
     int has_default;    /* NODE_PARAM: default value expression supplied */
     int has_return_type;/* NODE_FUNCTION: explicit '-> type' annotation present */
     VarType return_type;/* NODE_FUNCTION: annotated return type */

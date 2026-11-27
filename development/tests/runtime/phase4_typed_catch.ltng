@@ -1,0 +1,28 @@
+try {
+    throw error("MyError", "hi")
+} catch (MyError e) {
+    write(e.type)
+    write(e.message)
+}
+
+try {
+    try {
+        throw error("MyError", "boom")
+    } catch (OtherError e) {
+        write("wrong")
+    }
+} catch (e) {
+    write(e.type)
+}
+
+try {
+    try {
+        throw error("MyError", "x")
+    } catch (OtherError e) {
+        write("wrong")
+    } finally {
+        write("inner-finally")
+    }
+} catch (e) {
+    write(e.type)
+}
