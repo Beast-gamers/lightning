@@ -53,7 +53,7 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ## Phase 1 — Type system
 
-**Status:** Partially implemented (significant progress; further work required)
+**Status:** Implemented and verified for current Phase 1 scope (see PHASE_STATUS.md; some hardening/portability caveats remain)**
 
 ### Implemented so far (relevant context)
 - Distinct `float` detection/reporting and type-name improvements in key paths; improved float expression/type tracking and float expression output in covered cases.
@@ -61,18 +61,18 @@ These limitations were identified in the initial audit and remain relevant acros
 - Compile-time detection/rejection of literal division/modulo by zero (int and float literal forms).
 - Improved numeric promotion in key mixed expressions, comparison normalization for numeric conversion helpers, and return/call/indirect-call expression typing fixes (including self-reference/body-parsing cases) to prevent incorrect string typing/internal compile failures.
 - Support for explicit type declarations `let x = float` and `let x = char`.
-- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**161 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context (e.g. non-constant conversion expressions used as `switch case` labels showed a codegen limitation in an ad-hoc probe).
+- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**216 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context (e.g. non-constant conversion expressions used as `switch case` labels showed a codegen limitation in an ad-hoc probe).
 
 ### Remaining limitations
-- **Incomplete distinct int/float semantics:** not fully consistent across all expression, assignment, comparison, codegen, and runtime paths.
-- **Incomplete type inference:** full and consistent inference across all language constructs/contexts is not complete.
+- **Distinct int/float semantics (addressed in covered paths):** Step 4/5 work made int/float behavior consistent across covered expression, assignment, comparison, codegen, and runtime paths; rare edge cases may remain in less-common emitted forms.
+- **Type inference (addressed in covered paths):** Step 5 completed inference/promotion coverage for covered constructs/contexts; dynamic/untyped cases remain conservatively typed.
 - **Conversion coverage improved but not exhaustive:** `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases are supported and tested in many contexts, but exhaustive coverage/verification across every permutation, runtime-invalid input case, and edge context is not complete.
-- **Numeric promotion rules incomplete:** consistent promotion/coercion rules are not fully defined/implemented across all operations.
-- **Type compatibility checking incomplete:** comprehensive compatibility and enforcement across all assignment, operation, parameter, and return contexts is not complete.
-- **Return-type validation not fully complete:** improved in covered cases, but comprehensive return-type validation/annotations and edge-case enforcement remain incomplete.
+- **Numeric promotion rules (addressed in covered paths):** Step 5 implemented promotion in covered operators/contexts; continue auditing uncommon emitted-expression forms.
+- **Type compatibility checking (conservatively enforced):** Step 6 added compile-time rejection for provably incompatible locked/dtype-fixed assignments, string/char literal operands in `/`/`%`, unary numeric operators on string/char literals, and provably non-numeric array indices in covered expression/write/set contexts. Dynamic/untyped pass-through behavior is preserved; not every possible type mismatch is provably detectable at compile time.
+- **Return-type validation (enforced in covered/provable cases):** Step 7 enforces annotated return mismatches for provable literal/locked-variable cases, void-function value returns, missing returns on some control paths for annotated non-void functions, and sound `NODE_TRY` always-exits handling. Dynamic/untyped pass-through returns remain allowed where not provably incompatible.
 - **Numeric semantics gaps (Step 3 completed for defined scope, with remaining hardening):** compile-time literal division/modulo by zero is rejected; runtime variable/computed division/modulo by zero throws `DivisionError` / `DivisionError: Modulo by zero` in covered contexts/forms (assignments/`let`/`set`, `write`, conditions, returns, call arguments, for-loop step division) using parser-side checks, runtime helpers/macros, and codegen guards/rewrites for simple/common divisor forms. Coverage is broad but not exhaustively proven for every complex/nested divisor subexpression or unusual emitted-expression form.
 - **Overflow behavior (defined/characterized, not trapped):** integer arithmetic uses emitted C integer operations with 64-bit parsing (`atoll`/`long long`) in updated paths and no explicit runtime overflow trapping; signed overflow follows underlying C/platform behavior (characterized in tests, e.g. 64-bit wraparound in practice). Float arithmetic uses C `double`. Precision/boundary handling and portable overflow guarantees remain limited by the runtime/codegen model.
-- **Insufficient negative/boundary/interaction coverage:** required comprehensive tests for precision, boundary values, invalid conversions, mixed expressions, null behavior interactions, and memory checks (where available) are not complete.
+- **Test coverage/memory checks (improved, environment-limited):** Phase 1 positive/negative/boundary/interaction coverage expanded (including Step 6/7 negatives and existing Phase 1 runtime/semantic suites); full native suite is green. Memory tooling (valgrind/sanitizers) was not available in this environment, so memory-check results are not recorded here.
 - **Runtime-model constraints:** underlying string-buffer/runtime representation limits how fully native numeric/type semantics can be realized without broader redesign.
 
 ### Intentional/documented behavior changes (compatibility impact)

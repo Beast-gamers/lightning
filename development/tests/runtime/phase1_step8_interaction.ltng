@@ -1,0 +1,16 @@
+function add(a, b) -> int {
+    return a + b
+}
+function to_s(x) -> string {
+    return tostring(x)
+}
+let x = 5
+let y = 2.5
+write(add(10, 20))
+write(typeof(x + y))
+write(to_s(x) + ":" + to_s(y))
+let arr = [1, 2, 3]
+write(arr[1] + arr[3])
+let b = true
+write(b and true)
+write(not b)

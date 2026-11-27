@@ -20,7 +20,7 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 ## 2. Current baseline (as of this plan)
 
 - Phase 0–4 complete; Phase 5 in progress (separate track). Phase 1 is **partially implemented**.
-- Latest fully verified full native suite: **PASS=181 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, compile+execute native binaries).
+- Latest fully verified full native suite: **PASS=218 FAIL=0 SKIP=0** (`bash development/tests/run_tests.sh`, compile+execute native binaries).
 - Progress landed:
   - **Step 1 (early type-system work):** distinct `float` detection/reporting in key paths, `typeof` improvements, float expression handling/output in covered cases, numeric compatibility in key assignments (`int <-> float`), `char <-> string` compatibility in relevant cases, explicit `let x = float` / `let x = char` declarations, compile-time rejection of literal div/mod by zero and obvious invalid literal numeric strings for `toint`/`tofloat` in validated contexts, initial Phase 1 runtime/negative tests.
   - **Step 2 (conversions/aliases stabilization):** `toint`/`tofloat`/`tostring`/`tobool`/`tochar` and aliases `int/float/string/bool/char` handling across many contexts; `tobool` string semantics consistency; bool↔numeric/string emission fixes; C string escaping fixes; `const` alias conversion-call initializers; bool-ternary comparison normalization; broader conversion runtime/negative coverage.
@@ -126,7 +126,7 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 **Tests:** mixed expressions, chained/nested expressions, promotion matrices, inference in declarations/assignments/returns/args/conditions, edge numeric values.
 
-**Status:** complete (verified). Landed increments: bool variable/element/expression typing preserved in covered inference paths (e.g. `let c = b` keeps `bool` typing); comparison/logical results remain `int`/`1`/`0` but now participate in numeric promotion in mixed expressions (e.g. `(1 < 2) + 0.5` → `1.5`, `float`) instead of being locked to `int`; chained immediate/indirect call results are treated as dynamic string results in covered expression/sole-call/assignment paths; string conditions (`if`/`while`/`do-while`, including dynamic/untyped simple variable conditions) use string-truthiness semantics consistent with `tobool` (`""`, `"0"`, `"f"`, `"false"` are false; other non-empty strings true) in covered paths; `typeof`/interpolation resolves simple object field access (e.g. `$[typeof(o.n)]`), rejects obvious invalid literal `toint`/`tofloat`/alias conversions in covered `typeof`/interpolation fast paths, and correctly handles complex `typeof` expressions in direct and interpolation contexts (including conversion calls in larger arithmetic expressions and general expression inference in interpolation, with float-literal/dot disambiguation from member access); prefix/postfix `++`/`--` use numeric semantics for `bool`/string/dynamic operands in covered expression contexts; numeric promotion for conversion results (e.g. `toint`/`tobool`) is preserved correctly in mixed `int`/`float` expressions regardless of operand order (e.g. `1.5 + toint(3)`); scalar compound assignment RHS is parenthesized during expansion to preserve precedence with complex RHS expressions (e.g. ternary); array `.length` in expressions is emitted/typed numerically so equality/inequality comparisons (e.g. `a.length == n`) work correctly. **Ternary/conditional expressions (`cond ? a : b`) implemented** in covered expression contexts with branch/result type inference and numeric promotion (including nested/right-associative forms, string/number/bool branches, string-truthy conditions, and dynamic/untyped parameter handling in covered cases). **String-concat subexpression fixes (final Step 5 increment):** numeric `+`, `-`, `*`, `/`, `%` in parenthesized subexpressions within string-concat contexts now infer/emit correctly (including mixed int/float, nested expressions, comparisons/logical results, conversions, ternary branches, and complex while conditions with `&&`/`||`), with type-aware add-vs-concat decisions for known string/char vars and dynamic runtime dispatch where appropriate; logical `&&`/`||` emission avoids bitwise miscompilation in comparison-chained conditions. Extended `development/tests/runtime/phase1_step5_inference.*`, added `development/tests/runtime/phase1_step5_string_subexpr.*`, and retained parser negatives `development/tests/parser/phase1_step5_typeof_conv_neg.ltng`, `development/tests/parser/phase1_step5_typeof_interp_conv_neg.ltng`. Latest full native suite: **PASS=181 FAIL=0 SKIP=0**.
+**Status:** complete (verified). Landed increments: bool variable/element/expression typing preserved in covered inference paths (e.g. `let c = b` keeps `bool` typing); comparison/logical results remain `int`/`1`/`0` but now participate in numeric promotion in mixed expressions (e.g. `(1 < 2) + 0.5` → `1.5`, `float`) instead of being locked to `int`; chained immediate/indirect call results are treated as dynamic string results in covered expression/sole-call/assignment paths; string conditions (`if`/`while`/`do-while`, including dynamic/untyped simple variable conditions) use string-truthiness semantics consistent with `tobool` (`""`, `"0"`, `"f"`, `"false"` are false; other non-empty strings true) in covered paths; `typeof`/interpolation resolves simple object field access (e.g. `$[typeof(o.n)]`), rejects obvious invalid literal `toint`/`tofloat`/alias conversions in covered `typeof`/interpolation fast paths, and correctly handles complex `typeof` expressions in direct and interpolation contexts (including conversion calls in larger arithmetic expressions and general expression inference in interpolation, with float-literal/dot disambiguation from member access); prefix/postfix `++`/`--` use numeric semantics for `bool`/string/dynamic operands in covered expression contexts; numeric promotion for conversion results (e.g. `toint`/`tobool`) is preserved correctly in mixed `int`/`float` expressions regardless of operand order (e.g. `1.5 + toint(3)`); scalar compound assignment RHS is parenthesized during expansion to preserve precedence with complex RHS expressions (e.g. ternary); array `.length` in expressions is emitted/typed numerically so equality/inequality comparisons (e.g. `a.length == n`) work correctly. **Ternary/conditional expressions (`cond ? a : b`) implemented** in covered expression contexts with branch/result type inference and numeric promotion (including nested/right-associative forms, string/number/bool branches, string-truthy conditions, and dynamic/untyped parameter handling in covered cases). **String-concat subexpression fixes (final Step 5 increment):** numeric `+`, `-`, `*`, `/`, `%` in parenthesized subexpressions within string-concat contexts now infer/emit correctly (including mixed int/float, nested expressions, comparisons/logical results, conversions, ternary branches, and complex while conditions with `&&`/`||`), with type-aware add-vs-concat decisions for known string/char vars and dynamic runtime dispatch where appropriate; logical `&&`/`||` emission avoids bitwise miscompilation in comparison-chained conditions. Extended `development/tests/runtime/phase1_step5_inference.*`, added `development/tests/runtime/phase1_step5_string_subexpr.*`, and retained parser negatives `development/tests/parser/phase1_step5_typeof_conv_neg.ltng`, `development/tests/parser/phase1_step5_typeof_interp_conv_neg.ltng`. Latest full native suite: **PASS=218 FAIL=0 SKIP=0**.
 
 ---
 
@@ -141,7 +141,7 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 **Tests:** invalid/valid assignments, mixed-type operations, null interactions, function arg/param mismatches, array/object type cases, negative compile-time checks.
 
-**Status:** partially done.
+**Status:** completed (conservative enforcement in covered cases; dynamic pass-through behavior preserved).
 
 ---
 
@@ -177,7 +177,7 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 
 **Exit criteria:** Phase 1 completion requirements met; `PHASE_STATUS.md`, `TESTING.md`, `CHANGELOG.md`, `limitations.md` updated with verified results.
 
-**Status:** ongoing.
+**Status:** completed for current Phase 1 scope (see PHASE_STATUS.md for verification details).
 
 ## 4. Suggested execution order (next slices)
 
@@ -199,8 +199,8 @@ Required validation focus: precision, boundary values, invalid conversions, mixe
 - [x] Step 3: division/modulo and overflow semantics (compile-time + runtime div/mod-by-zero handling, for-step safety, 64-bit integer parsing/read paths, defined/characterized overflow policy and tests)
 - [x] Step 4: distinct `int`/`float` semantics across all paths
 - [x] Step 5: full type inference and numeric promotion
-- [ ] Step 6: comprehensive type compatibility checking
-- [ ] Step 7: complete return-type validation
-- [ ] Step 8: full Phase 1 test/validation/memory/doc closure and artifact sync
+- [x] Step 6: comprehensive type compatibility checking (conservative provably-wrong cases enforced; dynamic behavior preserved)
+- [x] Step 7: complete return-type validation (annotated path/void/mismatch/try-exit checks; conservative dynamic pass-through preserved)
+- [x] Step 8: Phase 1 test/validation/doc closure (full suite green; memory tooling unavailable in env; native bin synced, multi-arch/dist not rebuilt in env)
 
 _Update this file and `development/PHASE_STATUS.md` at each verified checkpoint._

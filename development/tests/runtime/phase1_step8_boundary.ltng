@@ -1,0 +1,15 @@
+let a = 9223372036854775807
+let b = -9223372036854775807
+write(a)
+write(b)
+let x = 0
+write(x)
+let fval = 3.14159
+let gval = -3.14159
+write(fval)
+write(gval)
+let flag = true
+write(flag)
+write(typeof(flag))
+write(typeof(fval))
+write(typeof(a))
