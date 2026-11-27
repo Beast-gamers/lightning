@@ -1,0 +1,3 @@
+function baz() -> int {
+    let x = 1
+}
