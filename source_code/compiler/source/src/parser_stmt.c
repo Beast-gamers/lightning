@@ -679,7 +679,17 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                 idx_exprs_w[idx_n_w] = (char*)malloc(65536);
                 if (!idx_exprs_w[idx_n_w]) { ok_w = 0; break; }
                 idx_exprs_w[idx_n_w][0] = 0;
-                collect_expression(lexer, table, &idx_exprs_w[idx_n_w], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                {
+                    Token _ip = lexer_peek(lexer);
+                    if (_ip.type == TOKEN_STRING || _ip.type == TOKEN_CHAR) {
+                        error_state_add(parser_errors, _ip.line, _ip.col, "Array index must be numeric");
+                    }
+                }
+                VarType _idx_tw = collect_expression(lexer, table, &idx_exprs_w[idx_n_w], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                if (_idx_tw == TYPE_ARRAY) {
+                    Token _rb2 = lexer_peek(lexer);
+                    error_state_add(parser_errors, _rb2.line, _rb2.col, "Array index must be numeric");
+                }
                 Token rb = lexer_peek(lexer);
                 if (rb.type != TOKEN_RBRACKET) { ok_w = 0; break; }
                 lexer_next(lexer); /* ] */
@@ -2927,7 +2937,17 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             index_exprs[index_count] = (char*)malloc(65536);
             if (!index_exprs[index_count]) { for(int _i=0;_i<index_count;_i++) free(index_exprs[_i]); free(index_exprs); skip_to_newline(lexer); return; }
             index_exprs[index_count][0] = 0;
-            collect_expression(lexer, table, &index_exprs[index_count], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+            {
+                Token _ip = lexer_peek(lexer);
+                if (_ip.type == TOKEN_STRING || _ip.type == TOKEN_CHAR) {
+                    error_state_add(parser_errors, _ip.line, _ip.col, "Array index must be numeric");
+                }
+            }
+            VarType _idx_ts = collect_expression(lexer, table, &index_exprs[index_count], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+            if (_idx_ts == TYPE_ARRAY) {
+                Token _rb2 = lexer_peek(lexer);
+                error_state_add(parser_errors, _rb2.line, _rb2.col, "Array index must be numeric");
+            }
             index_count++;
             Token rb = lexer_next(lexer);
             if (rb.type != TOKEN_RBRACKET) {

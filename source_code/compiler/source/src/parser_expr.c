@@ -2422,7 +2422,18 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 index_exprs[index_count] = (char*)malloc(65536);
                                 if (!index_exprs[index_count]) { index_error = 1; break; }
                                 index_exprs[index_count][0] = 0;
-                                collect_expression(lexer, table, &index_exprs[index_count], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                                {
+                                    Token _idx_peek = lexer_peek(lexer);
+                                    if (_idx_peek.type == TOKEN_STRING || _idx_peek.type == TOKEN_CHAR) {
+                                        error_state_add(parser_errors, _idx_peek.line, _idx_peek.col,
+                                            "Array index must be numeric");
+                                    }
+                                }
+                                VarType _idx_t = collect_expression(lexer, table, &index_exprs[index_count], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                                if (_idx_t == TYPE_ARRAY) {
+                                    error_state_add(parser_errors, nxt.line, nxt.col,
+                                        "Array index must be numeric");
+                                }
                                 Token rbracket = lexer_peek(lexer);
                                 if (rbracket.type != TOKEN_RBRACKET) {
                                     error_state_add(parser_errors, rbracket.line, rbracket.col,
