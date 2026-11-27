@@ -1,0 +1,4 @@
+function foo() -> int {
+    let s = string
+    return s
+}

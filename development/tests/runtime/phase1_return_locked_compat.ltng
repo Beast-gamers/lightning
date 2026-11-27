@@ -1,0 +1,6 @@
+function geti() -> int {
+    let x = int
+    set x = 7
+    return x
+}
+write(geti())

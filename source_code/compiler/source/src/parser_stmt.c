@@ -5118,7 +5118,7 @@ int stmt_always_exits(ASTNode *node) {
     }
 }
 
-int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!ret) return 1;
+int return_type_matches_annotation(ASTNode *ret, VarType want, SymbolTable *table) {    if (!ret) return 1;
     if (ret->value[0] == '\0' && !ret->is_expr) return want == TYPE_VOID;
     if (want == TYPE_VOID) return 0;
     if (ret->fs_sl >= 1000) {
@@ -5130,8 +5130,26 @@ int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!ret) re
         if (want == TYPE_BOOL && (ct == TYPE_BOOL || ct == TYPE_INT)) return 1;
     }
     /* Pass-through variables and call results are represented as strings at
-       runtime; only reject clearly conflicting literal returns. */
-    if (ret->is_variable) return 1;
+       runtime; only reject clearly conflicting literal returns. For variables
+       with known locked types, enforce compatibility. */
+    if (ret->is_variable) {
+        if (table && ret->value && ret->value[0]) {
+            VarType svt = symbol_table_get(table, ret->value);
+            int slocked = symbol_table_get_locked(table, ret->value);
+            /* Only reject when type is provably fixed (locked or non-dynamic) */
+            if (slocked && svt != TYPE_NULL) {
+                if (svt == want) return 1;
+                if ((svt == TYPE_INT || svt == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
+                if (want == TYPE_STRING && (svt == TYPE_CHAR || svt == TYPE_STRING || svt == TYPE_BOOL || svt == TYPE_INT || svt == TYPE_FLOAT)) return 1;
+                if (want == TYPE_CHAR && (svt == TYPE_CHAR || svt == TYPE_STRING)) return 1;
+                if (want == TYPE_BOOL && (svt == TYPE_BOOL || svt == TYPE_INT)) return 1;
+                if (svt == TYPE_BOOL && (want == TYPE_INT || want == TYPE_FLOAT)) return 0;
+                /* clear mismatch for locked known type */
+                if (svt != want) return 0;
+            }
+        }
+        return 1;
+    }
     if (ret->value[0] == '(' || strstr(ret->value, "_ltng_") != NULL) {
         if (ret->var_type == want) return 1;
         if ((ret->var_type == TYPE_INT || ret->var_type == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
@@ -5192,7 +5210,7 @@ int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!ret) re
     return 0;
 }
 
-void validate_function_return_types(ASTNode *fn) {
+void validate_function_return_types(ASTNode *fn, SymbolTable *table) {
     if (!fn) return;
     ASTNode *nodes[64];
     int count = 0;
@@ -5217,7 +5235,7 @@ void validate_function_return_types(ASTNode *fn) {
             return;
         }
         for (int i = 0; i < count; i++) {
-            if (!return_type_matches_annotation(nodes[i], fn->return_type)) {
+            if (!return_type_matches_annotation(nodes[i], fn->return_type, table)) {
                 char *msg = _ltng_cfmt("Return type mismatch in function '%s': expected '%s'", fn->for_var[0] ? fn->for_var : fn->name, type_name_str(fn->return_type));
                 error_state_add(parser_errors, nodes[i]->line, nodes[i]->col, msg ? msg : "");
                 free(msg);
@@ -6058,6 +6076,28 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
                     (void)_pdt2;
                 }
                 if (etype == TYPE_OBJECT) record_return_obj_schema(cname);
+                /* Step 6/7: reject provably incompatible locked-variable returns */
+                if ((g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
+                    FuncInfo *_efi_rt = find_funcinfo_by_cname(g_enclosing_cname);
+                    if (_efi_rt && _efi_rt->has_return_type && _efi_rt->return_type != TYPE_VOID) {
+                        int _locked = symbol_table_get_locked(table, m);
+                        VarType _svt = symbol_table_get(table, m);
+                        if (_locked && _svt != TYPE_NULL) {
+                            VarType _want = _efi_rt->return_type;
+                            int _ok = 0;
+                            if (_svt == _want) _ok = 1;
+                            else if ((_svt == TYPE_INT || _svt == TYPE_FLOAT) && (_want == TYPE_INT || _want == TYPE_FLOAT)) _ok = 1;
+                            else if (_want == TYPE_STRING && (_svt == TYPE_CHAR || _svt == TYPE_STRING || _svt == TYPE_BOOL || _svt == TYPE_INT || _svt == TYPE_FLOAT)) _ok = 1;
+                            else if (_want == TYPE_CHAR && (_svt == TYPE_CHAR || _svt == TYPE_STRING)) _ok = 1;
+                            else if (_want == TYPE_BOOL && (_svt == TYPE_BOOL || _svt == TYPE_INT)) _ok = 1;
+                            if (!_ok) {
+                                char *_msg = _ltng_cfmt("Return type mismatch in function '%s': expected '%s'", _efi_rt->src[0] ? _efi_rt->src : _efi_rt->name, type_name_str(_want));
+                                error_state_add(parser_errors, kw.line, kw.col, _msg ? _msg : "");
+                                free(_msg);
+                            }
+                        }
+                    }
+                }
                 emit(node);
                 return;
             }
@@ -6610,8 +6650,8 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
         free(used); free(locals);
     }
 
+    validate_function_return_types(fn, func_scope);
     free(func_scope);
-    validate_function_return_types(fn);
     /* Propagate inferred return type and object-return schema for unannotated functions. */
     {
         FuncInfo *fi2 = NULL;

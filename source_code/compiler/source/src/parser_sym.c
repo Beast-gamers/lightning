@@ -649,7 +649,7 @@ void symbol_table_update(SymbolTable *table, const char *name, VarType type) {
 VarType symbol_table_get(SymbolTable *table, const char *name) {
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
-            if (strcmp(s->vars[i].name, name) == 0) {
+            if (strcmp(s->vars[i].name, name) == 0 || (s->vars[i].cname && strcmp(s->vars[i].cname, name) == 0)) {
                 return s->vars[i].type;
             }
         }
@@ -743,7 +743,7 @@ int symbol_table_is_const(SymbolTable *table, const char *name) {
 int symbol_table_get_locked(SymbolTable *table, const char *name) {
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
-            if (strcmp(s->vars[i].name, name) == 0) {
+            if (strcmp(s->vars[i].name, name) == 0 || (s->vars[i].cname && strcmp(s->vars[i].cname, name) == 0)) {
                 return s->vars[i].is_locked;
             }
         }
@@ -765,7 +765,7 @@ void symbol_table_set_locked(SymbolTable *table, const char *name, int locked) {
 int symbol_table_is_param(SymbolTable *table, const char *name) {
     for (Scope *s = table; s; s = s->parent) {
         for (int i = 0; i < s->count; i++) {
-            if (strcmp(s->vars[i].name, name) == 0) {
+            if (strcmp(s->vars[i].name, name) == 0 || (s->vars[i].cname && strcmp(s->vars[i].cname, name) == 0)) {
                 return s->vars[i].is_param;
             }
         }
