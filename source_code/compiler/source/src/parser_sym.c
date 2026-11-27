@@ -115,7 +115,7 @@ const char *obj_resolve_field(const char *mangled_var, const char *field, char *
 
 char *obj_resolve_field_alloc(const char *mangled_var, const char *field) {
     char *fm = mangle_name_alloc(field);
-    size_t n = strlen(mangled_var ? mangled_var : "") + 2 + strlen(fm ? fm : "") + 1;
+    size_t n = strlen(mangled_var ? mangled_var : "") + 2 + strlen(fm ? fm : "") + 3;
     char *out = (char*)malloc(n);
     if (!out) { free(fm); return ltng_strdup(""); }
     snprintf(out, n, "%s__%s", mangled_var ? mangled_var : "", fm ? fm : "");
@@ -494,7 +494,12 @@ void mangle_name(const char *in, char *out, int out_size) {
     if (!out || out_size <= 0) return;
     if (!in) { out[0] = 0; return; }
     if (is_c_reserved(in)) {
-        snprintf(out, out_size, "%s_res", in);
+        size_t n = strlen(in);
+        size_t pos = n < (size_t)out_size - 1 ? n : (size_t)out_size - 1;
+        memcpy(out, in, pos);
+        const char *suf = "_res";
+        for (int i = 0; suf[i] && pos < (size_t)out_size - 1; i++) out[pos++] = suf[i];
+        out[pos] = '\0';
     } else {
         size_t n = strlen(in);
         if (n >= (size_t)out_size) n = (size_t)out_size - 1;
@@ -506,7 +511,7 @@ void mangle_name(const char *in, char *out, int out_size) {
 char *mangle_name_alloc(const char *in) {
     if (!in) return ltng_strdup("");
     if (is_c_reserved(in)) {
-        size_t n = strlen(in) + 5;
+        size_t n = strlen(in) + 6;
         char *out = (char*)malloc(n);
         if (!out) return ltng_strdup("");
         snprintf(out, n, "%s_res", in);
@@ -1409,9 +1414,15 @@ void normalize_string_expr(char **bufp, int *cap, int array_access_used, SymbolT
                 free(st);
                 free(nse_p);
             }
-            size_t nb_cap = strlen(work) + strlen(ires) + 64;
-            char *nb = (char*)malloc(nb_cap); if(!nb) nb=(char*)calloc(1,1);
-            { int _n = snprintf(NULL,0,"%.*s%s%s", bs, work, ires, work + be + 1); if(_n>=0){ if((size_t)_n+1>nb_cap){ char*_nn=(char*)realloc(nb,(size_t)_n+1); if(_nn){nb=_nn;nb_cap=(size_t)_n+1;} } snprintf(nb,nb_cap,"%.*s%s%s", bs, work, ires, work + be + 1); } }
+            int _n = snprintf(NULL,0,"%.*s%s%s", bs, work, ires, work + be + 1);
+            size_t nb_cap = (_n >= 0) ? (size_t)_n + 1 : strlen(work) + strlen(ires) + 64;
+            char *nb = (char*)malloc(nb_cap); if(!nb) { nb=(char*)calloc(1,1); nb_cap=1; }
+            if (_n >= 0) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+                snprintf(nb, nb_cap, "%.*s%s%s", bs, work, ires, work + be + 1);
+#pragma GCC diagnostic pop
+            }
             { size_t _nl=strlen(nb); if(_nl+1>work_cap){ char*_nw=(char*)realloc(work,_nl+1); if(_nw){work=_nw;work_cap=_nl+1;} } memcpy(work,nb,_nl+1); }
             free(nb);
         } else if (do_mul) {

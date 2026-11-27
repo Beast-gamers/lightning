@@ -20,7 +20,7 @@ These limitations were identified in the initial audit and remain relevant acros
 ### Compiler implementation
 - **Integrated parse/semantic pipeline:** semantic analysis and type tracking are largely integrated into parsing/expression collection rather than separated into fully independent, unit-testable stages.
 - **Complex expression/codegen paths:** string-oriented expression collection and specialized code generation paths are fragile for new constructs and require careful regression testing.
-- **Build warnings partially addressed:** several compiler-source warnings were fixed (unused functions/parameters/variables, missing switch/default handling in key paths, label/declaration issues, embedded-NUL format issue, const-correctness in a helper path, and path buffer sizing in `main.c`). However, many format-truncation warnings still remain in complex expression/codegen formatting paths and require careful refactoring to eliminate safely.
+- **Build warnings (addressed):** compiler source builds cleanly with default flags (`-Wall -Wextra -pedantic -std=c99`) and also with `-Wformat-truncation=2` (as of latest verified build). Continue keeping new code warning-clean.
 - **Generated C safety/visibility:** normal compile paths suppress backend C warnings in some workflows; generated code and helper usage still need ongoing safety/overflow/truncation auditing.
 
 ### Memory and ownership
@@ -47,7 +47,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Baseline coverage breadth is limited:** infrastructure and initial smokes/regression/negative coverage exist, but category-specific suites (lexer/parser/semantic/runtime/codegen/e2e/native/adversarial) require ongoing expansion.
 - **Negative classification edge cases:** some corpus files require special handling (e.g. `test_errors2.ltng` is comment-only/valid and excluded from negative classification).
 - **Environment/workspace execution constraints:** compiler binaries may require copying to an executable temp location (e.g. `/tmp/opencode/ltng`) in some environments.
-- **Build warnings not fully eliminated:** some compiler-source warnings were addressed in later fixes, but format-truncation warnings in complex paths remain and are tracked as cross-cutting technical debt.
+- **Build warnings addressed:** default and `-Wformat-truncation=2` builds are clean as of latest verified build; keep warning-clean discipline for new code.
 
 ---
 
@@ -72,7 +72,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Return-type validation (enforced in covered/provable cases):** Step 7 enforces annotated return mismatches for provable literal/locked-variable cases, void-function value returns, missing returns on some control paths for annotated non-void functions, and sound `NODE_TRY` always-exits handling. Dynamic/untyped pass-through returns remain allowed where not provably incompatible.
 - **Numeric semantics gaps (Step 3 completed for defined scope, with remaining hardening):** compile-time literal division/modulo by zero is rejected; runtime variable/computed division/modulo by zero throws `DivisionError` / `DivisionError: Modulo by zero` in covered contexts/forms (assignments/`let`/`set`, `write`, conditions, returns, call arguments, for-loop step division) using parser-side checks, runtime helpers/macros, and codegen guards/rewrites for simple/common divisor forms. Coverage is broad but not exhaustively proven for every complex/nested divisor subexpression or unusual emitted-expression form.
 - **Overflow behavior (defined/characterized, not trapped):** integer arithmetic uses emitted C integer operations with 64-bit parsing (`atoll`/`long long`) in updated paths and no explicit runtime overflow trapping; signed overflow follows underlying C/platform behavior (characterized in tests, e.g. 64-bit wraparound in practice). Float arithmetic uses C `double`. Precision/boundary handling and portable overflow guarantees remain limited by the runtime/codegen model.
-- **Test coverage/memory checks (improved, environment-limited):** Phase 1 positive/negative/boundary/interaction coverage expanded (including Step 6/7 negatives and existing Phase 1 runtime/semantic suites); full native suite is green. Memory tooling (valgrind/sanitizers) was not available in this environment, so memory-check results are not recorded here.
+- **Test coverage/memory checks (improved, environment-limited):** Phase 1 positive/negative/boundary/interaction coverage expanded (including Step 6/7 negatives and existing Phase 1 runtime/semantic suites); full native suite is green. UBSAN full-suite is clean in the validated environment; ASan is unusable in this proot/container environment and valgrind unavailable, so memory-safety evidence is not comprehensive.
 - **Runtime-model constraints:** underlying string-buffer/runtime representation limits how fully native numeric/type semantics can be realized without broader redesign.
 
 ### Intentional/documented behavior changes (compatibility impact)
@@ -157,7 +157,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **Inlined cleanup / code size:** `finally` bodies are inlined at each exit point (including exception unwinding), which can increase generated code size for deeply nested `try`/`finally` blocks.
 - **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values during exception-path `finally` execution; values are heap-backed/dynamic, but very deep exception-path `finally` nesting still consumes additional C stack.
 - **Exception object model:** catch values are object-like fixed-buffer values; they are not first-class exception instances with inheritance, custom fields, or user-defined exception classes.
-- **Memory validation:** ASan could not run in this environment and valgrind is unavailable; validation relied on UBSan and native execution, so memory-safety evidence is not comprehensive.
+- **Memory validation:** UBSAN full-suite runs are clean in the validated environment; ASan was unusable in this proot/container environment and valgrind unavailable, so memory-safety evidence is not comprehensive.
 
 ### Behavior notes (defined)
 - A bare `throw` outside a `catch` block is a compile-time error.
@@ -170,7 +170,7 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ## Documentation and test-coverage limitations related to Phases 0–4
 
-- **Phase 1 requirements not fully met:** remaining type-system work and required comprehensive positive/negative/boundary/interaction/memory tests are incomplete.
+- **Phase 1 hardening caveats remain:** Phase 1 is verified complete for current scope, but conversion/runtime-invalid edge permutations, provable-check limits, and environment-limited memory-check evidence remain (see Phase 1 section).
 - **Phase 0 harness is foundational, not exhaustive:** category-specific and adversarial/fuzz/memory automation suites need continued expansion.
 - **Memory/tooling evidence is environment-limited:** where sanitizers/leak tools are unavailable or incompatible, results cannot be claimed beyond executed native tests.
 - **Some limitations are architectural:** arrays-of-objects/jagged collections, first-class array expressions, full typed semantics, and robust shared ownership/cleanup are likely to require broader runtime/design changes in later phases.
@@ -179,7 +179,7 @@ These limitations were identified in the initial audit and remain relevant acros
 
 ## Summary
 
-Phases 0–4 established reproducible testing infrastructure, improved scope semantics, delivered a substantially more capable dynamic array system, and added structured exception handling with stack traces and `finally` cleanup while preserving existing behavior. However, major limitations remain in **type-system completeness (Phase 1)**, **runtime/value representation and ownership**, **first-class collection/expression semantics**, **bounded exception/trace buffers**, and **comprehensive memory/tooling validation**. These are expected to be addressed incrementally in future phases where feasible, with compatibility preserved unless intentionally documented.
+Phases 0–4 established reproducible testing infrastructure, improved scope semantics, delivered a substantially more capable dynamic array system, and added structured exception handling with stack traces and `finally` cleanup while preserving existing behavior. However, major limitations remain in **type semantics hardening (Phase 1 caveats)**, **runtime/value representation and ownership**, **first-class collection/expression semantics**, **exception model depth/ergonomics**, and **comprehensive memory/tooling validation**. These are expected to be addressed incrementally in future phases where feasible, with compatibility preserved unless intentionally documented.
 - **Anonymous functions/closures/named function references (Phase 5, partial):** `function(params){...}` expressions, closure capture of enclosing-scope variables with **shared, mutable** semantics, named function references as first-class values, returning/passing function values, and dynamic dispatch through variables/parameters are supported. Variadic arguments and function overloading are now implemented (see above); return-type checking is annotation/inference based and richer generic type annotations remain future work.
 - **Immediate chained calls:** chained invocation of call results (e.g. `maker()(5)`, multi-chain) is supported in general expression contexts, including sole RHS contexts (`let`/`const`/`set`/`return`), conditions/comparisons, arithmetic expressions, `write(...)` arguments, and standalone call statements. Deep chains are limited by internal expression-buffer/complexity bounds (very long chains may produce a compile-time "Chained call expression too deep/complex" error; in tested cases ~20 chained groups work). Edge cases in highly complex expression forms may still exist.
 - **Sole-call typing inference (partial):** type inference for sole-call RHS/assignments relies on inferred function return types; mixed/unknown returns may still be treated conservatively as string-typed in some paths, and complex non-sole expressions continue to follow existing expression typing rules.

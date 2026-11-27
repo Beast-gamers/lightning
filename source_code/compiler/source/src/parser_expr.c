@@ -3190,7 +3190,7 @@ const char *var_type_name(VarType t) {
    into the enclosing interpolation. Used by `$[typeof(...)]` for array elements
    and call results, which need the same typing rules as direct `typeof(...)`. */
 VarType infer_expression_text_type(const char *expr, SymbolTable *table) {
-    size_t blen = strlen(expr ? expr : "") + 2;
+    size_t blen = strlen(expr ? expr : "") + 3;
     char *buf = (char*)malloc(blen);
     if (!buf) return TYPE_NULL;
     snprintf(buf, blen, "%s\n", expr ? expr : "");
@@ -3216,7 +3216,7 @@ VarType infer_expression_text_type(const char *expr, SymbolTable *table) {
 
 void append_resolved_text(char *resolved, int *rlen, const char *text) {
     int avail = 65536 - *rlen;
-    if (avail <= 0) return;
+    if (avail <= 1) return;
     int n = snprintf(resolved + *rlen, (size_t)avail, "%s", text);
     if (n > 0) *rlen += (n < avail ? n : avail - 1);
 }
