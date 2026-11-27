@@ -129,7 +129,7 @@ These limitations were identified in the initial audit and remain relevant acros
 #### Aliasing, ownership, and memory
 - **No true shared-reference aliasing model for arrays:** assignment/copy/slice operations use copy semantics for safety in the current ownership model; shared mutable backing storage with robust multi-owner semantics is not implemented.
 - **No comprehensive automatic cleanup/GC:** runtime helpers allocate/free/replace elements on mutation/copy/slice/pop/remove paths, but generated programs do not provide a complete ownership/lifetime management framework for all values/scopes.
-- **Memory validation not fully proven:** no recorded sanitizer/valgrind/leak-stress validation in this environment (ASan was not usable here; valgrind not available). Large-array stress/performance characterization was not recorded.
+- **Memory validation not fully proven:** UBSAN full-suite is clean in the validated environment; ASan is unusable in this proot/container environment and valgrind unavailable. Large-array stress/performance characterization not recorded.
 
 #### Behavior and edge-case notes (preserved/defined)
 - **Index `0` is invalid** for array access/set semantics (returns empty/no-op behavior as implemented).
@@ -156,7 +156,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - **`exit` unwinds `finally`:** `exit` now evaluates its exit code, unwinds pending `finally` blocks, then exits. A `return`/`throw` inside `finally` can override the pending exit (consistent with existing finally override semantics).
 - **Inlined cleanup / code size:** `finally` bodies are inlined at each exit point (including exception unwinding), which can increase generated code size for deeply nested `try`/`finally` blocks.
 - **Saved-exception stack depth:** pending exceptions are preserved in stack-local `LtngExcSaved` values during exception-path `finally` execution; values are heap-backed/dynamic, but very deep exception-path `finally` nesting still consumes additional C stack.
-- **Exception object model:** catch values are object-like fixed-buffer values; they are not first-class exception instances with inheritance, custom fields, or user-defined exception classes.
+- **Exception object model:** catch values are object-like runtime values; they are not first-class exception instances with inheritance, custom fields, or user-defined exception classes.
 - **Memory validation:** UBSAN full-suite runs are clean in the validated environment; ASan was unusable in this proot/container environment and valgrind unavailable, so memory-safety evidence is not comprehensive.
 
 ### Behavior notes (defined)
