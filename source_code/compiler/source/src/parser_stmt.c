@@ -5167,6 +5167,7 @@ int return_type_matches_annotation(ASTNode *ret, VarType want) {    if (!ret) re
     if ((ret->var_type == TYPE_INT || ret->var_type == TYPE_FLOAT) && (want == TYPE_INT || want == TYPE_FLOAT)) return 1;
     if (want == TYPE_BOOL && ret->var_type == TYPE_BOOL) return 1;
     if (want == TYPE_CHAR && ret->var_type == TYPE_CHAR) return 1;
+    if (ret->var_type == TYPE_BOOL && (want == TYPE_INT || want == TYPE_FLOAT)) return 0;
 
     if (got == want) return 1;
     if ((got == TYPE_INT || got == TYPE_FLOAT) &&
