@@ -1,0 +1,1 @@
+function foo() -> bool { return 3.14 }

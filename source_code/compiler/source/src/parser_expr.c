@@ -1193,6 +1193,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 pending_divmod = 0; pending_mod_op_pos = -1;
                 break;
             case TOKEN_STRING:
+                if (pending_divmod) {
+                    error_state_add(parser_errors, tok.line, tok.col,
+                        "Division or modulo requires numeric operands");
+                    pending_divmod = 0; pending_mod_op_pos = -1;
+                }
                 {
                     CE_GROW(1); if (1) out[pos++] = '"';
                     for (const char *sp = tok.value; *sp && pos < out_size - 2; sp++) {
@@ -1210,10 +1215,15 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 }
                 break;
             case TOKEN_CHAR:
+                if (pending_divmod) {
+                    error_state_add(parser_errors, tok.line, tok.col,
+                        "Division or modulo requires numeric operands");
+                    pending_divmod = 0; pending_mod_op_pos = -1;
+                }
                 if (tok.value[0] != '\0') {
                     CE_SNPRINTF_ADD( "\"%s\"", tok.value);
                 } else {
-                    CE_SNPRINTF_ADD( "\"\"");
+                    CE_SNPRINTF_ADD( "\"\"" );
                 }
                 if (!type_locked) result_type = TYPE_STRING;
                 break;

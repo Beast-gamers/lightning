@@ -1,0 +1,4 @@
+function foo() -> void {
+    let x = 1
+    return x
+}
