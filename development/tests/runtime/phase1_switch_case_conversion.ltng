@@ -1,0 +1,12 @@
+let x = 3
+switch (x) {
+    case toint("3"): { write("ok") }
+    default: { write("bad") }
+}
+
+let y = "hello"
+switch (y) {
+    case tostring(123): { write("num") }
+    case "hello": { write("hi") }
+    default: { write("no") }
+}

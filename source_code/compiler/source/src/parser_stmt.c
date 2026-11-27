@@ -3923,82 +3923,18 @@ ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
 
                 if (t.type == TOKEN_CASE) {
             lexer_next(lexer);
-            char *cexpr = (char*)calloc(1,65536);
+            char *cexpr = (char*)malloc(65536); if(cexpr) cexpr[0]=0;
             int cexpr_cap = 65536;
-            int pos = 0;
-            int depth_paren = 0, depth_bracket = 0, depth_brace = 0;
-            while (1) {
-                Token ct = lexer_peek(lexer);
-                if (ct.type == TOKEN_EOF) break;
-                if (ct.type == TOKEN_COLON && depth_paren == 0 && depth_bracket == 0 && depth_brace == 0) break;
-                if (ct.type == TOKEN_LPAREN) depth_paren++;
-                else if (ct.type == TOKEN_RPAREN) { if (depth_paren > 0) depth_paren--; }
-                else if (ct.type == TOKEN_LBRACE) depth_brace++;
-                else if (ct.type == TOKEN_RBRACE) { if (depth_brace > 0) depth_brace--; }
-                ct = lexer_next(lexer);
-                if (ct.type == TOKEN_NEWLINE) continue;
-                if (ct.type == TOKEN_STRING) {
-                    STMT_APPEND(cexpr, cexpr_cap, pos, "\"%s\"", ct.value);
-                } else if (ct.type == TOKEN_CHAR) {
-                    if (ct.value[0] != '\0') {
-                        if (ctype == TYPE_STRING)
-                            STMT_APPEND(cexpr, cexpr_cap, pos, "\"%s\"", ct.value);
-                        else
-                            STMT_APPEND(cexpr, cexpr_cap, pos, "'%s'", ct.value);
-                    } else {
-                        if (ctype == TYPE_STRING)
-                            STMT_APPEND(cexpr, cexpr_cap, pos, "\"\"");
-                        else
-                            STMT_APPEND(cexpr, cexpr_cap, pos, "'\\0'");
-                    }
-                } else if (ct.type == TOKEN_IDENT) {
-                    if (is_bool_value(ct.value)) {
-                        STMT_APPEND(cexpr, cexpr_cap, pos, "%s",
-                            (strcmp(ct.value, "true") == 0 || strcmp(ct.value, "t") == 0) ? "true" : "false");
-                    } else {
-                        char *mangled = mangle_name_alloc(ct.value);
-                        if (symbol_table_has(table, mangled)) {
-                            VarType vt = symbol_table_get(table, mangled);
-                            if (vt == TYPE_STRING) STMT_APPEND(cexpr, cexpr_cap, pos, "%s", mangled);
-                            else if (vt == TYPE_BOOL) STMT_APPEND(cexpr, cexpr_cap, pos, "(%s[0]=='t'||%s[0]=='T')?1:0", mangled, mangled);
-                            else if (vt == TYPE_INT) STMT_APPEND(cexpr, cexpr_cap, pos, "atoll(%s)", mangled);
-                            else if (vt == TYPE_FLOAT) STMT_APPEND(cexpr, cexpr_cap, pos, "atof(%s)", mangled);
-                            else STMT_APPEND(cexpr, cexpr_cap, pos, "atoll(%s)", mangled);
-                        } else if (is_c_reserved(ct.value)) {
-                            STMT_APPEND(cexpr, cexpr_cap, pos, "%s", ct.value);
-                        } else {
-                            STMT_APPEND(cexpr, cexpr_cap, pos, "%s", ct.value);
-                        }
-                    }
-                } else if (ct.type == TOKEN_INT_LIT || ct.type == TOKEN_FLOAT_LIT) {
-                    STMT_APPEND(cexpr, cexpr_cap, pos, "%s", ct.value);
-                }                 else if (ct.type == TOKEN_PLUS) STMT_APPEND(cexpr, cexpr_cap, pos, "+");
-                else if (ct.type == TOKEN_MINUS) STMT_APPEND(cexpr, cexpr_cap, pos, "-");
-                else if (ct.type == TOKEN_STAR) STMT_APPEND(cexpr, cexpr_cap, pos, "*");
-                else if (ct.type == TOKEN_SLASH) STMT_APPEND(cexpr, cexpr_cap, pos, "/");
-                else if (ct.type == TOKEN_PERCENT) STMT_APPEND(cexpr, cexpr_cap, pos, "%%");
-                else if (ct.type == TOKEN_EQ_EQ) STMT_APPEND(cexpr, cexpr_cap, pos, "==");
-                else if (ct.type == TOKEN_BANG_EQ) STMT_APPEND(cexpr, cexpr_cap, pos, "!=");
-                else if (ct.type == TOKEN_LT_EQ) STMT_APPEND(cexpr, cexpr_cap, pos, "<=");
-                else if (ct.type == TOKEN_GT_EQ) STMT_APPEND(cexpr, cexpr_cap, pos, ">=");
-                else if (ct.type == TOKEN_LT) STMT_APPEND(cexpr, cexpr_cap, pos, "<");
-                else if (ct.type == TOKEN_GT) STMT_APPEND(cexpr, cexpr_cap, pos, ">");
-                else if (ct.type == TOKEN_AMP_AMP) STMT_APPEND(cexpr, cexpr_cap, pos, "&&");
-                else if (ct.type == TOKEN_PIPE_PIPE) STMT_APPEND(cexpr, cexpr_cap, pos, "||");
-                else if (ct.type == TOKEN_BANG) STMT_APPEND(cexpr, cexpr_cap, pos, "!");
-                else if (ct.type == TOKEN_LPAREN) STMT_APPEND(cexpr, cexpr_cap, pos, "(");
-                else if (ct.type == TOKEN_RPAREN) STMT_APPEND(cexpr, cexpr_cap, pos, ")");
-
-                else if (ct.type == TOKEN_EQUALS) STMT_APPEND(cexpr, cexpr_cap, pos, "=");
-                else STMT_APPEND(cexpr, cexpr_cap, pos, "%s", ct.value);
-            }
+            VarType cvt = collect_expression_ex(lexer, table, &cexpr, &cexpr_cap, 1, 0, NULL, NULL, NULL, NULL, 1);
             Token colon = lexer_next(lexer);
             if (colon.type != TOKEN_COLON) {
                 error_state_add(parser_errors, colon.line, colon.col,
                     "Expected ':' after case value");
                 skip_to_newline(lexer);
+                free(cexpr);
                 continue;
             }
+            (void)cvt;
             /* Normalize string expressions in case values (e.g. "a"+"b", s*2) */
             if (ctype == TYPE_STRING || strchr(cexpr, '"') != NULL) {
                 int _hp=0,_hs=0,_in=0; char _qc=0;
@@ -4010,9 +3946,10 @@ ASTNode *parse_switch(Lexer *lexer, SymbolTable *table) {
                 }
                 if (_hp || _hs) normalize_string_expr(&cexpr, &cexpr_cap, 0, table);
             }
-ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
+            ASTNode *cnode = create_node(NODE_CASE, "", cexpr);
             cnode->is_default = 0;
             cnode->var_type = ctype;
+            free(cexpr);
 
             Token lb2 = lexer_next(lexer);
             while (lb2.type == TOKEN_NEWLINE) lb2 = lexer_next(lexer);

@@ -28,6 +28,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Phase 1 Step 4 completed: default-typed parameters now drive body/expression typing without locking params; call results use pass-through call-site specialization for direct, nested/chained, method, sole-call, argument, and first-class/indirect calls; `typeof` uses the same specialized call-result typing. Homogeneous array element assignment preserves/coerces to the inferred element dtype instead of de-typing the whole array; compound element assignment is supported.
 
 ### Fixed
+- Switch case labels now use full expression collection (`collect_expression_ex`), fixing conversion builtins and complex expressions in case labels. Added `development/tests/runtime/phase1_switch_case_conversion.ltng` (+ `.expected`).
 - Multiple typed catches: `try` supports multiple `catch (Type e)` clauses; first exact type match runs, no-match rethrows (finally runs), sibling catches do not catch exceptions from other catch bodies. Added `development/tests/runtime/phase4_multi_typed_catch.ltng` (+ `.expected`).
 - Typed catch filtering: `catch (Type e)` catches only when exception `type` matches exactly; mismatches rethrow (running finally as needed). Added `development/tests/runtime/phase4_typed_catch.ltng` (+ `.expected`).
 - `exit` now unwinds pending `finally` blocks before terminating (evaluates exit code, runs finally cleanup, then exits); `NODE_EXIT` treated as always-exiting in return-path analysis. Added `development/tests/runtime/phase4_exit_finally.ltng` (+ `.expected`).
