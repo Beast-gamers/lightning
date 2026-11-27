@@ -1,1923 +1,577 @@
 # Lightning (ltng) Documentation
 
-Lightning is a minimal, beginner-friendly programming language. No semicolons, no complex syntax — just write code and go.
+Lightning is a small, statically-parsed, natively-compiled language with dynamic runtime values. Source files use the `.ltng` extension and compile to native executables through the Lightning compiler.
 
-**Status:** The language is under active development. This document describes only
-features that are currently implemented. A missing feature is not a bug; a
-component that exists but behaves incorrectly is.
+This document describes the current language behavior as implemented in this repository.
 
----
+## Table of Contents
+
+- [Getting Started](#getting-started)
+- [Compilation](#compilation)
+- [Syntax Basics](#syntax-basics)
+- [Types and Values](#types-and-values)
+- [Variables and Constants](#variables-and-constants)
+- [Operators and Expressions](#operators-and-expressions)
+- [Strings and Interpolation](#strings-and-interpolation)
+- [Input and Output](#input-and-output)
+- [Control Flow](#control-flow)
+- [Functions](#functions)
+- [Arrays](#arrays)
+- [Objects](#objects)
+- [Exception Handling](#exception-handling)
+- [Type Conversion and Introspection](#type-conversion-and-introspection)
+- [Scoping and Lifetime](#scoping-and-lifetime)
+- [Known Limitations](#known-limitations)
 
 ## Getting Started
 
-### File Extension
+### File extension
 
-All Lightning source files use the `.ltng` extension.
+Lightning source files use:
 
-### Writing Your First Program
-
-Create a file called `hello.ltng`:
-
-```
-write("hello world")
+```text
+program.ltng
 ```
 
-### Compiling & Running
+### Hello World
 
-**Option 1: Compile and run in one step (via `bolt`)**
-
-```
-bolt hello.ltng
+```ltng
+write("Hello, World!")
 ```
 
-**Option 2: Compile first, then run**
+### Compile and run
 
-```
-ltng hello.ltng
-./hello
-```
+Use `bolt` (the user-facing interface) or the compiler with `LTNG_BOLT=1` as required by the environment.
 
-**With debug output**
+Typical compile:
 
-```
-bolt --debug hello.ltng
+```bash
+LTNG_BOLT=1 ltng program.ltng program
+./program
 ```
 
----
+Useful modes:
 
-## Syntax
+```bash
+LTNG_BOLT=1 ltng --check program.ltng      # parse/semantic checks only
+LTNG_BOLT=1 ltng --emit-c program.ltng out.c  # emit generated C
+```
+
+## Compilation
+
+The compiler parses Lightning source, performs semantic/type checks, generates C, and invokes the system C compiler to produce a native executable.
+
+- `--check`: validates without producing a native binary.
+- `--emit-c`: writes generated C.
+- Normal mode: produces a native executable.
+
+Generated programs are native binaries; runtime behavior is defined by the language semantics implemented by the compiler/runtime.
+
+## Syntax Basics
 
 ### Comments
 
-Use `#` to write comments. Comments run to the end of the line and are ignored by the compiler.
+Single-line comments start with `#`:
 
-```
+```ltng
 # this is a comment
-write("hello") # inline comment
+let x = 1 # inline comment
 ```
 
 ### Statements
 
-Each statement goes on its own line. **Semicolons are not allowed** — the compiler rejects them.
-
-```
-write("hello")
-write("world")
-```
-
-One statement per line is the convention.
+Statements are generally written one per line. Blocks use `{ ... }`.
 
 ### Blocks
 
-Standalone blocks `{ ... }` are supported and create a nested scope. Variables declared inside a block are local to that block and can shadow variables from outer scopes.
-
-```
-let x = 1
-{
-    let x = 2
-    write(x)  # 2
+```ltng
+if (x > 0) {
+    write("positive")
 }
-write(x)      # 1
 ```
 
----
+Blocks create scope for `let`/`const` declarations.
 
-## Output
+## Types and Values
 
-### Writing Text
+Lightning has these core types:
 
-Use `write()` to print text to the screen. A newline is added automatically.
-
-```
-write("hello world")
-write("lightning is fast")
-```
-
-### Escape Sequences
-
-| Sequence | Meaning |
-|----------|---------|
-| `\n`     | Newline |
-| `\t`     | Tab     |
-| `\\`     | Backslash |
-| `\"`     | Double quote |
-| `\'`     | Single quote |
-| `\0`     | Null character |
-| `\<`     | Less-than sign `<` |
-| `\>`     | Greater-than sign `>` |
-
-```
-write("line one\nline two")
-write("tab\there")
-write("price \< 100")
-write("tag \>end\>")
-```
-
-### String Interpolation
-
-Use `$[variable]` inside strings to embed variable values:
-
-```
-let name = "bolt"
-let age = 10
-write("Hello, $[name]!")
-write("Name: $[name], Age: $[age]")
-```
-
-Output:
-
-```
-Hello, bolt!
-Name: bolt, Age: 10
-```
-
-Expressions work inside interpolation too:
-
-```
-write("Result: $[x + 1]")
-write("Type: $[typeof(x)]")
-```
-
-Object fields work inside interpolation:
-
-```
-let x = { name = "saim", age = 17 }
-write("Hello $[x.name]")     # Hello saim
-write("Age $[x.age]")        # Age 17
-```
-
-A literal `$` not followed by `[` is preserved as-is:
-
-```
-write("cost is $5")          # cost is $5
-```
-
----
-
-## Input
-
-### Reading User Input
-
-Use `read()` to get input from the user. The variable must already be declared.
-
-```
-let name = string
-let age = int
-let score = int
-let letter = char
-let flag = bool
-
-write("Enter your name:")
-read(name)
-
-write("Enter your age:")
-read(age)
-
-write("Enter a score:")
-read(score)
-
-write("Enter a letter:")
-read(letter)
-
-write("Enter true/false:")
-read(flag)
-```
-
-You can also read into a null variable declared with bare `let x`. The `read()`
-does **not** lock the null variable's type — it just stores the input value.
-This means you can `read()` into the same null variable multiple times:
-
-```
-let x          # null variable
-read(x)        # x stores the input, type stays null
-write(x)       # prints whatever was typed
-read(x)        # read again - type still null, new value stored
-set x = 42     # OK - null allows one type transition
-```
-
-### Read Behavior by Type
-
-| Type | Reads | Example Input |
-|------|-------|---------------|
-| `int` | Integer (validated — non-numeric input causes runtime error) | `42`, `-10` |
-| `char` | Single character (first char of input) | `A`, `z` |
-| `string` | Raw input line | `hello` |
-| `bool` | `true`/`t` → true, anything else → false | `true`, `false` |
-| `obj` | Not supported (compile-time error) | — |
-
-Input is read as a full line (until newline). For `int` variables, the input is
-validated — if the user enters a non-numeric string, the program exits with a
-runtime error. Numeric input is converted (`atoi`) and stored back as a string
-buffer.
-
----
-
-## Variables
-
-### Declaration with Type Inference
-
-Use `let` to declare a variable. The type is inferred automatically from the value.
-
-```
-let x = 42
-let name = "lightning"
-let pi = 3.14
-let letter = 'A'
-```
-
-When a variable is declared with an initial value, it is **dtype-unlocked by default**. This means you can change both its value and its type later with `set`:
-
-```
-let x = 5
-write(typeof(x))   # int
-set x = "hi"
-write(typeof(x))   # string
-write(x)           # hi
-```
-
-To keep a variable's dtype fixed, use an explicit type declaration without a value (e.g. `let x = int`), or call `x.lock()` after declaration. Use `x.unlock()` to allow dtype changes again.
-
-### Bare `let` (null variable)
-
-Use `let x` without an assignment to declare a `null`-typed variable that can
-hold any type. A null variable is **not** dtype-locked, so `set` can change its
-dtype to match the assigned value on every assignment:
-
-```
-let x           # null variable
-write(x)        # prints empty line
-set x = 5       # x becomes int
-write(x)        # 5
-set x = "hi"    # OK - x becomes string
-write(x)        # hi
-set x = true    # OK - x becomes bool
-write(x)        # true
-```
-
-To prevent dtype changes on a variable with a concrete type, use an explicit
-type declaration without a value (e.g. `let x = int`, which is locked by
-default), or call `x.lock()`. Use `x.unlock()` to allow dtype changes again.
-
-### Explicit Type Declaration
-
-You can specify the type explicitly by placing a type keyword after `=` (without
-a value). The variable is initialized to the type's default and is **locked by
-default** (its dtype cannot be changed with `set`).
-
-```
-let x = int        # x = 0
-let score = float  # y = 0.0
-let greeting = string  # s = ""
-let letter = char  # c = '\0'
-```
-
-A typed declaration cannot include a value on the same line:
-
-```
-let x = int 42     # error: cannot assign a value with a type declaration
-let score = float 99.5  # error
-```
-
-Use a separate `set` to assign a value after declaring the type (same dtype is allowed for a locked variable):
-
-```
-let x = int
-set x = 42   # OK
-```
-
-### Constants
-
-Use `const` to declare a constant. Constants must be initialized with a value
-and cannot be changed afterward. The value can be any dtype (int, float, string,
-char, bool) — type declarations like `const x = int` are **not** supported.
-
-```
-const pi = 3.14
-const name = "lightning"
-const max = 100
-const flag = true
-const letter = 'A'
-```
-
-Uninitialized constants are not allowed:
-
-```
-const x = int     # error: const requires a value assignment, not a type declaration
-const x = int 5   # error: const requires a value assignment, not a type declaration
-```
-
-### Setting Variables
-
-Use `set` to change the value of a variable.
-
-- **Value-initialized `let` declarations** (e.g. `let x = 5`, `let s = "hi"`) are **dtype-unlocked by default**, so `set` can change both their value and dtype.
-- **Dtype-only declarations** (e.g. `let x = int`) are **locked by default**, so `set` can change the value but not the dtype.
-- **Bare `let` declarations** (`let x`, null) are not dtype-locked.
-
-```
-let x = 5           # value-initialized: unlocked by default
-set x = "hi"        # OK - dtype changes to string
-set x = 3.5         # OK - dtype changes to float
-
-let y = int         # dtype-only declaration: locked by default
-set y = 20          # OK - same dtype
-set y = "hello"     # error: cannot change type of locked variable
-```
-
-The variable must already be declared:
-
-```
-set y = 10          # error: Variable not declared
-```
-
-You cannot assign to a constant:
-
-```
-const c = 1
-set c = 2           # error: Cannot assign to constant
-```
-
-### Dtype Lock: `lock()` and `unlock()`
-
-Use `lock()` to freeze a variable's dtype so it cannot be changed by `set`.
-Use `unlock()` to allow dtype changes via `set`.
-
-By default, **value-initialized `let` declarations** (e.g. `let x = 5`) are
-dtype-unlocked, while **dtype-only declarations** (e.g. `let x = int`) are
-locked.
-
-```
-let x = 5
-set x = "hi"    # OK - value-initialized variables are unlocked by default
-x.lock()        # x's dtype (string) is now locked
-set x = "ok"    # OK - same type
-set x = 10      # error: Cannot change type of locked variable 'x' from string to int
-x.unlock()      # lock removed - dtype can now change freely
-set x = 10      # OK - x becomes int
-```
-
-**Rules:**
-
-- `lock()` / `unlock()` are called with method syntax: `variable.lock()` /
-  `variable.unlock()` — they take no arguments.
-- The variable must already be declared.
-- The variable's dtype must **not** be `null` when locking or unlocking:
-  `let x` (null) followed by `x.lock()` is a compile error.
-- Once locked, `set` cannot change the dtype at all — `set x = <newtype>`
-  is a compile error.
-- Calling `unlock()` removes the dtype lock, after which `set` can change the
-  variable's dtype freely (e.g. `int` → `string` → `int`), subject to the
-  current implementation's type/assignment rules.
-- Locking an already-locked variable, or unlocking an already-unlocked one,
-  produces a **warning** but compilation still succeeds.
-- `lock()`/`unlock()` are compile-time operations only — no runtime code is
-  generated. The lock state is tracked by the compiler.
-
-### Type Conversion: `toint()`, `tostring()`, `tobool()`
-
-Use type conversion functions to convert values between types. These can be
-used in any expression context (`let`, `const`, `set`, `write()`, `if`,
-`switch`, etc.):
-
-```
-# toint() - convert a numeric string to a number
-write(toint("3.14"))      # 3.14
-write(toint("10"))        # 10
-write(toint(-5))          # -5
-let s = "42"
-write(toint(s))           # 42
-
-# tostring() - convert a value to a string
-write(tostring(true))     # true
-write(tostring(false))    # false
-write(tostring(42))       # 42
-write(tostring("hello"))  # hello
-
-# tobool() - convert to true/false (true unless null/empty/0/false)
-write(tobool("true"))     # true
-write(tobool("false"))    # false
-write(tobool(0))          # false
-write(tobool(42))         # true
-write(tobool(""))         # false
-```
-
-**Rules:**
-
-- `toint(expr)` — If `expr` is a string containing a number (e.g. `"3.14"`),
-  the quotes are stripped and the numeric value is used. If `expr` is a
-  variable, its string value is used as-is. `typeof(toint(expr))` returns
-  `"int"`.
-- `tostring(expr)` — Converts `true`/`false` to `"true"`/`"false"`, number
-  literals to quoted strings, and passes other values through as-is.
-  `typeof(tostring(expr))` returns `"string"`.
-- `tobool(expr)` — Returns `"true"` unless `expr` is null/empty/`0`/`false`,
-  in which case returns `"false"`. Number literals (`0` → false, else →
-  true) and string literals are evaluated at compile time; variables use a
-  runtime check. `typeof(tobool(expr))` returns `"bool"`.
-- All three functions produce string results and can be used anywhere a
-  string expression is expected.
-
-### Object literals and the `obj` dtype
-
-Objects group named fields into a single value. Create an object literal with
-`{ ... }` and `field = value` pairs (values are literals: string, int, float,
-bool, or char).
-
-```
-let x = {
-    default = "object"
-    name = "saim"
-    age = 17
-    class = "xi"
-}
-
-write(x)        # prints the "default" field value -> object
-write(x.age)    # field access -> 17
-write(x.name)   # -> saim
-write(x.obj)    # all field values in order -> object saim 17 xi
-```
-
-The `default` field defines what `write(x)` displays. `obj` is a synthesized
-view of every value in field order.
-
-You can also declare an object-typed variable explicitly:
-
-```
-let x = obj                  # x is an object-typed null variable
-set x = { name = "saim", age = 17 }   # assign an object literal
-write(x.age)                 # 17
-```
-
-Object fields can be used inside string interpolation:
-
-```
-let x = { default = "myobj" name = "saim" age = 17 }
-write("the name is $[x.name]")   # the name is saim
-write("age is $[x.age]")         # age is 17
-```
-
-Object fields can also be accessed as function parameters — the schema transfers
-to the parameter name:
-
-```
-function show(p) {
-    write(p.age)
-    write(p.default)
-}
-
-let person = obj
-set person = { default = "Person" name = "Saim" age = 17 }
-show(person)   # prints 17, Person
-```
-
-### Booleans
-
-Use `true`/`t` for true and `false`/`f` for false:
-
-```
-let flag = true
-let off = false
-let flag2 = bool true
-let off2 = bool false
-
-write(flag)    # true
-write(off)     # false
-```
-
-### Type Introspection with typeof()
-
-Use `typeof()` to get the type of a variable or literal value as a string. This is resolved at compile time.
-
-```
-let x = 10
-let t = typeof(x)
-write(t)        # int
-
-write(typeof(3.14))    # float
-write(typeof("hi"))    # string
-write(typeof('A'))     # char
-write(typeof(true))    # bool
-```
-
-`typeof()` accepts variables, literal values, reserved words, type conversion calls, user-defined function calls, array element expressions, and nested typeof calls, returning:
-
-| Input | Returns |
-|-------|---------|
-| `typeof(3)` | `"int"` |
-| `typeof(3.14)` | `"float"` |
-| `typeof("hello")` | `"string"` |
-| `typeof('A')` | `"string"` |
-| `typeof(true)` | `"bool"` |
-| `typeof(int)` | `"reserved"` |
-| `typeof(let)` | `"reserved"` |
-| `typeof(x)` | looks up variable type |
-| `typeof(typeof(x))` | `"string"` |
-| `typeof(toint(expr))` | `"int"` |
-| `typeof(tostring(expr))` | `"string"` |
-| `typeof(tobool(expr))` | `"bool"` |
-| `typeof(func(args))` | inferred/call-site specialized return type of user-defined function |
-| `typeof(arr[i])` | inferred element type of a homogeneous array (otherwise `"string"`) |
-
-The number of indices in `typeof(arr[i][j]...)` must match the array's dimension count; a mismatch is a compile-time error. `typeof` inside string interpolation (`"$[typeof(expr)]"`) uses the same inference rules.
-
-It works with let, const, set, and write:
-
-```
-const my_pi = 3.14
-const my_type = typeof(my_pi)    # "float"
-
-let v = int 10
-set v = typeof(3.14)             # v becomes the string "float"
-write(typeof(v))                 # string
-
-# typeof with type conversion calls
-write(typeof(toint("5")))        # int
-write(typeof(tostring("x")))     # string
-write(typeof(tobool("t")))       # bool
-
-# typeof with user-defined functions (returns inferred type)
-function add(a, b) {
-    return a + b
-}
-write(typeof(add(1, 2)))         # string (fully untyped params use dynamic add)
-
-function id(x) { return x }
-write(typeof(id(5)))             # int (pass-through call-site specialization)
-write(typeof(id(3.5)))           # float
-write(typeof(id("hi")))          # string
-
-function flag() {
-    return true
-}
-write(typeof(flag()))            # bool
-```
-
-### Type Keywords
-
-| Keyword | Type | Example Value |
-|---------|------|---------------|
-| `int` | Integer (includes float values) | `42`, `0`, `-10`, `3.14` |
-| `string` | Text (includes char values) | `"hello"`, `'A'`, `"world"` |
+| Type | Description | Examples |
+|------|-------------|----------|
+| `int` | Integer number | `0`, `42`, `-7` |
+| `float` | Floating-point number | `3.14`, `-0.5` |
+| `string` | Text | `"hello"` |
+| `char` | Single character/string-char value | `'a'` (represented as string in many contexts) |
 | `bool` | Boolean | `true`, `false` |
-| `obj` | Object | `{ name = "saim", age = 17 }` |
+| `null` | Null/empty value | `null` (where supported as literal/value context) |
+| `array` | Ordered collection | `[1, 2, 3]` |
+| `object`/`obj` | Key/value object | object literals / `obj` dtype |
 
-The `char` and `float` keywords have been removed. All numeric values are treated as `int`,
-and all character values are treated as `string`. A `char` literal like `'A'` is a valid
-string value and can be assigned to `string` variables.
+`typeof(value)` returns a type name string such as `"int"`, `"float"`, `"string"`, `"bool"`, `"array"`, `"obj"`, or `"null"` depending on value/context.
 
-The `float` keyword has been removed. All numeric values (integers and floats)
-are treated as `int` type. A variable declared with `let x = int` can be assigned
-any numeric value via `set x = 3.14`, and `typeof()` always returns `"int"` for
-numbers.
+## Variables and Constants
 
-### String Concatenation
+### `let`
 
-Strings can be concatenated using the `+` operator:
-
-```
-let s = "hello" + "world"
-write(s)
-write("hello " + "world")
-```
-
-### Type Inference Rules
-
-Without explicit type, the compiler detects the type automatically:
-
-| Value | Detected Type |
-|-------|---------------|
-| `42` | int |
-| `3.14` | int |
-| `"hello"` | string |
-| `'A'` | string |
-| `true` | bool |
-
-### Using Variables
-
-Pass a variable name to `write()` to print its value.
-
-```
-let age = 25
-let name = "bolt"
-let score = 99.5
-let grade = 'A'
-
-write(age)
-write(name)
-write(score)
-write(grade)
-```
-
-Output:
-
-```
-25
-bolt
-3.14
-A
-```
-
----
-
-## Objects
-
-Objects group named fields into a single value. Create an object literal with `{ ... }` and `field = value` pairs (values are literals: string, int, float, bool, or char).
-
-```
-let x = {
-    default = "object"
-    name = "saim"
-    age = 17
-    class = "xi"
-}
-```
-
-- `write(x)` prints the object's `default` field value.
-- `write(x.age)` / `write(x.name)` accesses a field by name.
-- `write(x.obj)` prints all field values in order (space-separated).
-
-```
-write(x)        # object
-write(x.age)    # 17
-write(x.obj)    # object saim 17 xi
-```
-
-The `default` field defines what `write(x)` displays. `obj` is a synthesized view of every value in field order.
-
-Empty objects are allowed:
-
-```
-let e = {}
-write(e)        # object
-write(e.obj)    # (empty)
-```
-
----
-
-## Expressions & Operators
-
-Expressions can be used anywhere a value is expected: in `let`, `const`, `set`, `write()`, and inside string interpolation `$[...]`.
-
-```
-let x = 2 + 3 * 4
-set x = (x + 1) * 2
-write(x)
-write("result: $[x / 2]")
-```
-
-### Arithmetic Operators
-
-| Operator | Meaning | Example | Result |
-|----------|---------|---------|--------|
-| `+` | Addition | `2 + 3` | `5` |
-| `-` | Subtraction | `10 - 4` | `6` |
-| `*` | Multiplication | `3 * 7` | `21` |
-| `/` | Division (integer truncates) | `10 / 3` | `3` |
-| `/` | Division (float) | `10.0 / 3.0` | `3.33333` |
-| `%` | Modulo | `10 % 3` | `1` |
-| `-` | Unary minus | `-5`, `-x` | negated value |
-
-Integer division truncates: `7 / 2` gives `3`. If either operand is a float,
-the result is a float.
-
-### Comparison Operators
-
-Comparisons evaluate to an integer: `1` for true, `0` for false.
-
-| Operator | Meaning | Example | Result |
-|----------|---------|---------|--------|
-| `==` | Equal | `5 == 5` | `1` |
-| `!=` | Not equal | `5 != 3` | `1` |
-| `<` | Less than | `3 < 5` | `1` |
-| `>` | Greater than | `5 > 3` | `1` |
-| `<=` | Less than or equal | `5 <= 5` | `1` |
-| `>=` | Greater than or equal | `4 >= 5` | `0` |
-
-Comparisons work on numbers, characters, and booleans. String comparison is not
-supported — `==` on two strings compares addresses, not content. Use a simple
-variable check (`if (text)`) or compare against a flag instead.
-
-### Logical Operators
-
-Boolean literals print as `true`/`false`, but logical and comparison expressions evaluate to integers (`1`/`0`).
-
-| Operator | Meaning | Example | Result |
-|----------|---------|---------|--------|
-| `&&` | And | `true && false` | `0` |
-| `\|\|` | Or | `true \|\| false` | `1` |
-| `!` | Not | `!true` | `0` |
-| `^^` | XOR | `true ^^ true` | `0` |
-
-The words `and`, `or`, and `not` can be used in place of `&&`, `||`, and `!`:
-
-```
-write(true and false)  # 0
-write(true or false)   # 1
-write(not true)        # 0
-```
-
-### Bitwise Operators
-
-When both operands are integers, `&&`, `||`, `!`, and `^^` operate on the bits instead:
-
-| Operator | Meaning | Example | Result |
-|----------|---------|---------|--------|
-| `&&` | Bitwise AND | `15 && 9` | `9` |
-| `\|\|` | Bitwise OR | `15 \|\| 9` | `15` |
-| `!` | Bitwise NOT | `!0` | `-1` |
-| `^^` | Bitwise XOR | `15 ^^ 9` | `6` |
-
-```
-write(true && false)   # 0 (logical)
-write(15 && 9)         # 9 (bitwise)
-```
-
-### Precedence
-
-Operators bind from highest to lowest:
-
-1. `()` — grouping
-2. unary `-`, `!`
-3. `*`, `/`, `%`
-4. `+`, `-`
-5. `<`, `>`, `<=`, `>=`
-6. `==`, `!=`
-7. `&&` (bitwise `&` on ints)
-8. `^^` (`^`)
-9. `||` (bitwise `|` on ints)
-
-Parentheses override precedence:
-
-```
-write(2 + 3 * 4)     # 14
-write((2 + 3) * 4)   # 20
-```
-
-### Booleans and Chars in Arithmetic
-
-Boolean and char variables can be used in numeric expressions. A bool is treated as `1`/`0`, and a char is treated as its character code.
-
-```
-let flag = true
-let letter = 'A'
-write(flag + 1)      # 2
-write(letter + 1)    # 66
-```
-
-### String Multiplication
-
-Use `*` to repeat a string a specified number of times.
-
-```
-let stars = "*" * 5
-write(stars)  # *****
-
-let repeated = "ab" * 3
-write(repeated)  # ababab
-
-let msg = 3 * "ha"
-write(msg)  # hahaha
-```
-
-String multiplication has higher precedence than string concatenation.
-
-String concatenation works in assignments, `write()` statements, `if` conditions, and `switch` statements.
-
-Format specifiers (like `%s`, `%d`, `%f`, etc.) are **not allowed** in string literals. Use string concatenation, string interpolation with `$[variable]`, or other string operations instead.
-
----
-
-## Increment and Decrement
-
-Use `++` and `--` for pre-increment/decrement and post-increment/decrement. They
-can be used as statements (on their own line) or as expressions inside `write()`,
-`if`, `switch`, and other expression contexts.
-
-```
-let i = 5
-++i        # pre-increment (statement)
-i++        # post-increment (statement)
---i        # pre-decrement (statement)
-i--        # post-decrement (statement)
-write(i)
-
-# As expressions inside write():
-write(++x)   # returns the new value
-write(x++)   # returns the old value
-write(--x)   # returns the new value
-write(x--)   # returns the old value
-```
-
-`++`/`--` work on `int`, `float`, `string`, `char`, and `bool` variables.
-
-### Compound Assignment Operators
-
-Use compound assignment operators to modify a variable in place.
-
-```
-let x = 10
-set x += 5   # x = x + 5
-set x -= 3   # x = x - 3
-set x *= 2   # x = x * 2
-set x /= 4   # x = x / 4
-set x %= 2   # x = x % 2
-write(x)
-```
-
----
-
-## Conditionals
-
-Use `if` to run a block of code only when a condition is true. The condition goes inside parentheses `( )`, and the block is wrapped in `{ }`. Each statement inside goes on its own line.
-
-```
-let age = 20
-if (age >= 18) {
-    write("adult")
-}
-```
-
-### else
-
-```
-let age = 15
-if (age >= 18) {
-    write("adult")
-} else {
-    write("minor")
-}
-```
-
-### else if
-
-Chain multiple conditions with `else if`:
-
-```
-let score = 85
-if (score >= 90) {
-    write("A")
-} else if (score >= 80) {
-    write("B")
-} else if (score >= 70) {
-    write("C")
-} else {
-    write("F")
-}
-```
-
-### Conditions
-
-A condition may be a comparison, a logical expression, a boolean variable, a number, or a string. Numeric `0` and boolean `false` are false; nonzero numbers and `true` are true. String conditions use `tobool`-style truthiness in covered paths: `""`, `"0"`, `"f"`, and `"false"` are false, while other non-empty strings are true.
-
-```
-let n = 3
-if (n) {
-    write("nonzero is true")
-}
-
-let flag = true
-if (flag and n > 2) {
-    write("both true")
-}
-```
-
-### Nesting
-
-```
-if (n > 0) {
-    if (n % 2 == 0) {
-        write("positive even")
-    } else {
-        write("positive odd")
-    }
-}
-```
-
-### Variables and Blocks
-
-`let` and `const` declarations are allowed inside control-flow blocks, nested
-blocks, and function bodies. Declarations inside a block are scoped to that
-block and can shadow outer variables.
-
-```
-let x = 0
-if (true) {
-    let y = 5
-    set x = y
-    write(y)
-}
-{
-    let x = 2   # shadows outer x
-    write(x)
-}
-write(x)        # outer x
-```
-
-### Ternary (Conditional) Expression
-
-Use the ternary operator `condition ? value_if_true : value_if_false` to choose between two expressions based on a condition.
-
-```
-let x = 1 < 2 ? 10 : 20      # 10
-let y = 1 > 2 ? 10 : 20      # 20
-write(x > 5 ? "big" : "small")
-
-# nested / chained
-let n = 1 < 2 ? 3 < 4 ? 1 : 2 : 3
-```
-
-- The condition follows the same truthiness rules as `if` conditions (including string truthiness in covered paths: `""`, `"0"`, `"f"`, and `"false"` are false).
-- Branch result types are inferred; numeric branches participate in promotion (e.g. `int`/`float` mixes produce `float` in covered cases).
-- Ternary expressions can be used in declarations, assignments, returns, arguments, conditions, and other expression contexts.
-
----
-
-## Switch Statement
-
-Use `switch` to compare a value against multiple cases. The condition goes in parentheses `()` and cases are wrapped in `{ }`. Every `case` and `default` must be followed by `{ }`.
+Declare a variable:
 
 ```ltng
-let x = 2
-switch (x) {
-    case 1: {
-        write("one")
-    }
-    case 2: {
-        write("two")
-    }
-    default: {
-        write("other")
-    }
-}
+let x = 5
+let name = "Lightning"
+let pi = 3.14
+let ok = true
 ```
 
-### Full expressions in cases
-
-Cases can contain full expressions:
+#### Dtype-only declaration
 
 ```ltng
-let x = 3
-let y = 2
-switch (x) {
-    case y > 1: {
-        write("yes")
-    }
-    default: {
-        write("no")
-    }
-}
+let n = int
+let s = string
+let f = float
+let b = bool
 ```
 
-### Multiple cases and different types
+Dtype-only declarations create a default-initialized variable and are locked to that dtype.
+
+#### Value-initialized declaration
+
+Value-initialized `let` declarations are dtype-unlocked by default (their dtype can change through `set`), unless otherwise constrained by semantics.
 
 ```ltng
-let c = 'A'
-switch (c) {
-    case 'A':
-    case 'a': {
-        write("letter A")
-    }
-    default: {
-        write("other")
-    }
-}
-
-let flag = true
-switch (flag) {
-    case true: {
-        write("true")
-    }
-    case false: {
-        write("false")
-    }
-}
+let x = 5
+set x = "now a string"   # allowed for unlocked value-initialized let
 ```
 
-### Rules
+### `const`
 
-- Switch works with `int`, `char`, and `bool` values
-- `case` values must be constants (literals)
-- `default` is optional and matches if no case matches
-- Multiple `default` cases are not allowed
+Constants cannot be reassigned:
 
----
-
-## Loops
-
-### For Loop
-
-Use `for` with `from ... to ...` to iterate over a range.
-
-```
-for (i from 0 to 5) {
-    write(i)
-}
+```ltng
+const PI = 3.14159
 ```
 
-Add `step` to control how the loop variable changes each iteration. A plain number means an additive step (e.g., `step 2` is the same as `step +2`). Explicit operators `+`, `-`, `*`, and `/` are supported; `%` is not allowed in `step`.
+### `set`
 
-```
-for (i from 0 to 10 step 2) {
-    write(i)
-}
+Use `set` to assign/update variables:
 
-for (i from 5 to 0 step -1) {
-    write(i)
-}
-
-for (i from 1 to 16 step *2) {
-    write(i)
-}
-
-for (i from 64 to 1 step /2) {
-    write(i)
-}
+```ltng
+let x = 1
+set x = 2
+set x += 3
 ```
 
-### While Loop
+Compound assignments supported in covered forms include `+=`, `-=`, `*=`, `/=`, `%=`.
 
-Use `while` to repeatedly execute a block of code as long as a condition is true.
+### `lock()` and `unlock()`
 
+`lock(x)` prevents dtype changes for a variable; `unlock(x)` allows dtype changes when permitted.
+
+```ltng
+let x = 5
+lock(x)
+# set x = "hi"   # type-locked mismatch rejected
+unlock(x)
+set x = "hi"
 ```
+
+## Operators and Expressions
+
+### Arithmetic
+
+| Operator | Meaning |
+|----------|---------|
+| `+` | Addition / string concatenation (context-dependent) |
+| `-` | Subtraction |
+| `*` | Multiplication / string repetition in supported contexts |
+| `/` | Division |
+| `%` | Modulo/remainder |
+
+Notes:
+
+- `int / int` uses integer division semantics.
+- Mixed `int`/`float` arithmetic promotes to `float` in covered numeric contexts.
+- Division/modulo by zero is rejected at compile time for provable literal cases and throws runtime `DivisionError` / `DivisionError: Modulo by zero` in covered runtime cases.
+- Unary numeric operators on string/char literals are rejected at compile time.
+
+### Comparison
+
+`==`, `!=`, `<`, `<=`, `>`, `>=`
+
+Comparisons return boolean-like results (often represented as `true/false` in output and `1/0` in numeric contexts).
+
+### Logical
+
+`and`, `or`, `not` (and `&&`, `||`, `!` where supported)
+
+Logical/comparison conditions are used in `if`, `while`, `for`, ternary, etc.
+
+### Bitwise
+
+Bitwise operators are supported where implemented (`&`, `|`, `^`, `~`, shifts) in supported numeric contexts.
+
+### Ternary
+
+```ltng
+let label = (x > 0) ? "positive" : "non-positive"
+```
+
+Ternary expressions are supported in covered expression contexts, including nesting.
+
+### Increment/decrement
+
+```ltng
 let i = 0
-while (i < 5) {
-    write(i)
-    set i = i + 1
+set i++
+set ++i
+```
+
+Postfix/prefix increment/decrement are supported in covered contexts.
+
+## Strings and Interpolation
+
+### String literals
+
+```ltng
+let s = "hello"
+```
+
+### Escape sequences
+
+Common escapes include `\n`, `\t`, `\\`, `\"` (as supported by lexer/parser).
+
+### Interpolation
+
+String interpolation is supported with `$[ ... ]`:
+
+```ltng
+let name = "World"
+write("Hello, $[name]!")
+```
+
+`typeof(...)` and expressions can be used inside interpolation in covered cases.
+
+### Concatenation
+
+```ltng
+write("Hello, " + "World")
+```
+
+`+` can mean numeric addition or string concatenation depending on types/context. Use explicit conversion when intent matters.
+
+## Input and Output
+
+### `write()`
+
+Writes a value to output:
+
+```ltng
+write("hello")
+write(42)
+```
+
+`write()` accepts expressions, variables, function calls, and array/object access in supported forms.
+
+### `read()`
+
+Reads input into a variable:
+
+```ltng
+let name = string
+read(name)
+```
+
+`read()` behavior depends on target type/context and runtime input.
+
+## Control Flow
+
+### `if` / `else if` / `else`
+
+```ltng
+if (x > 0) {
+    write("positive")
+} else if (x < 0) {
+    write("negative")
+} else {
+    write("zero")
 }
 ```
 
-### Do-While Loop
+### `while`
 
-Use `do-while` to execute a block of code at least once, then repeatedly while the condition is true.
-
+```ltng
+let i = 0
+while (i < 3) {
+    write(i)
+    set i++
+}
 ```
+
+### `do-while`
+
+```ltng
 let i = 0
 do {
     write(i)
-    set i = i + 1
+    set i++
 } while (i < 3)
 ```
 
-The do-while loop always executes the body at least once, even if the condition is false initially.
+### `for`
 
-### Break
-
-Use `break` to exit from a loop early.
-
-```
-let i = 0
-while (i < 10) {
-    if (i == 5) {
-        break
-    }
-    write(i)
-    set i = i + 1
-}
-```
-
-### Continue
-
-Use `continue` to skip the rest of the current loop iteration and move to the next one. `continue` is only valid inside loops (`for`, `while`, `do-while`), not inside `switch` cases.
-
-```
-let i = 0
-while (i < 5) {
-    set i = i + 1
-    if (i == 3) { continue }
-    write(i)
-}
-# prints: 1 2 4 5
-```
-
-### Exit
-
-Use `exit` to terminate the program instantly with an integer exit code. The argument must be an integer expression (a literal, variable, or arithmetic expression). Floats are cast to int.
-
-```
-exit 0
-exit 1
-exit 42
-
-let code = 7
-exit code
-
-exit x + 5
-```
-
-The generated program calls C's `exit()` function immediately — no further statements run.
-
----
-
-## Functions
-
-Define a named function with `function`, a name, parameters, and a body block.
-
-```
-function add(a, b) {
-    return a + b
-}
-
-let result = add(2, 3)
-write(result)        # 5
-write(add(10, 5))    # 15
-```
-
-Functions can take any number of parameters (including none) and can `return` a value. A `return` exits the function immediately.
-
-```
-function greet(name) {
-    return name
-}
-
-write(greet("hello"))   # hello
-
-function sayhi() {
-    write("hi")
-    return 0
-}
-sayhi()
-```
-
-### Locals and scoping
-
-Use `let` and `const` inside function bodies to declare local variables. Declarations are also allowed inside `if`/`else`, `switch`/`case`/`default`, loop bodies, and nested blocks, where they are scoped to that block.
-
-```
-function compute(x) {
-    let doubled = x + x
-    const bonus = 1
-    if (doubled > 5) {
-        return doubled + bonus
-    } else {
-        return doubled
-    }
-}
-```
-
-### Calls
-
-Functions can be called as statements, in `let`/`const`/`set` assignments, in `write()`, and inside expressions and conditions. Functions can call other functions and recurse. Top-level functions support forward references (a function can call another top-level function defined later in the file).
-
-```
-function fact(n) {
-    if (n <= 1) {
-        return 1
-    } else {
-        return n * fact(n - 1)
-    }
-}
-write(fact(5))   # 120
-```
-
-### Default parameters
-
-Functions may declare default parameter values using `=` after the parameter name. Parameters with defaults may be omitted at the call site; the default value is used.
-
-```
-function add(a, b = 100) {
-    return a + b
-}
-
-write(add(5))     # 105   (b defaults to 100)
-write(add(5, 7))  # 12    (explicit value overrides the default)
-
-function greet(name, greeting = "Hello") {
-    return greeting + ", " + name
-}
-
-write(greet("World"))   # Hello, World   (greeting defaults to "Hello")
-write(greet("World", "Hi"))  # Hi, World
-```
-
-- Defaults are positional: omitted arguments take the value of the first parameter that has a default and has not been supplied yet.
-- Defaults may be numeric or string literals, or expressions (including references to enclosing-scope variables, as in `function abc(a = x) { ... }`).
-- Literal default types drive typing in the function body and call-result inference without locking the parameter to that dtype.
-- Omitted arguments before a defaulted argument are not allowed; supply earlier arguments first.
-
-### Named arguments
-
-Function calls may pass arguments by parameter name using `name = value` syntax. Named arguments can be provided in any order and can be mixed with positional arguments; positional arguments bind left-to-right to parameters not supplied by name.
-
-```
-function sub(a, b) {
-    return a - b
-}
-
-write(sub(b = 3, a = 10))   # 7
-
-function add3(a, b = 10, c = 100) {
-    return a + b + c
-}
-
-write(add3(1))              # 111
-write(add3(1, c = 200))     # 211
-write(add3(c = 3, b = 2, a = 1))  # 6
-```
-
-- Unknown parameter names, duplicate named arguments, missing required arguments (no default provided), and too many arguments are compile-time errors.
-
-### Anonymous functions
-
-Anonymous functions are function expressions written without a name using the `function` keyword:
-
-```
-let dbl = function(x) {
-    return x * 2
-}
-write(dbl(5))   # 10
-
-const add = function(a, b) {
-    return a + b
-}
-write(add(3, 4))   # 7
-```
-
-**Syntax**
-
-- Expression form: `function(parameters) { ... }` (same parameter/body syntax as named functions, but no function name).
-- Common usage: assign to a variable with `let` or `const`, or reassign with `set`:
-
-```
-let op = function(x) { return x + 10 }
-set op = function(x) { return x + 20 }
-write(op(5))   # 25
-```
-
-- Anonymous functions can be called through the variable they are assigned to: `name(args)`.
-- They can be used in expressions, as call arguments (including nested calls), returned from functions, and passed as values to other functions.
-
-**Closures (capture)**
-
-Anonymous functions may capture variables from their enclosing function scope (parameters and local `let`/`const` variables). Captured variables use **shared, mutable** storage: a closure and its enclosing scope (and any other closures capturing the same variables) observe and can mutate the same underlying values. Captured variables remain valid for closures that outlive the creating call.
-
-```
-function makeAdder(n) {
-    return function(x) {
-        return x + n
-    }
-}
-let add5 = makeAdder(5)
-write(add5(10))   # 15
-```
-
-```
-# Shared/mutable capture
-function makeCounter() {
-    let n = 0
-    return function() {
-        set n = n + 1
-        return n
-    }
-}
-let c = makeCounter()
-write(c())   # 1
-write(c())   # 2
-```
-
-**Named function references as values**
-
-Existing named functions can be used as first-class values by referring to them by name (when not followed by a call). Named function references can be assigned to variables, passed as arguments, returned, and called through variables/parameters with dynamic dispatch.
-
-```
-function add1(x) { return x + 1 }
-
-let fn = add1
-write(fn(5))          # 6
-
-function apply(cb, v) { return cb(v) }
-write(apply(add1, 10)) # 11
-```
-
-**First-class use and dynamic dispatch**
-
-Function values (anonymous functions, closures, and named function references) can be stored in variables, returned, and passed to other functions. Calls through function-valued parameters/variables are dispatched dynamically at runtime.
-
-```
-function apply(fn, v) {
-    return fn(v)
-}
-function makeOffset(n) {
-    return function(x) { return x + n }
-}
-let off5 = makeOffset(5)
-write(apply(off5, 10))   # 15
-```
-
-**Current limitations**
-
-- Return-type checking is annotation/inference based; richer generic type annotations remain future work.
-
-### Return type annotations
-
-Named functions may declare their return type using an arrow annotation followed by a type keyword (`-> type`).
-
-```
-function add(a, b) -> int {
-    return a + b
-}
-
-function greet(name) -> string {
-    return "hi " + name
-}
-
-function cleanup() -> void {
-    write("cleaning up")
-}
-```
-
-- The annotation may be `int`, `float`, `string`, `char`, `bool`, `obj`, or `void`.
-- `void` is permitted only as a return annotation; a `void` function may not return a value.
-- Return statements are checked when the types are clear (annotations and literals): a declared return type that cannot hold the returned value is a compile-time error, a function declared to return a type without a valid return path is an error, and a non-`void` function returning on only some paths is an error.
-
-### Variadic arguments
-
-Functions may declare a trailing variadic parameter using `...rest`:
-
-```
-function sum(...nums) -> int {
-    let total = 0
-    for (i from 1 to nums.length) {
-        set total = total + tofloat(nums[i])
-    }
-    return total
-}
-
-function join(...parts) -> string {
-    let out = ""
-    for (i from 1 to parts.length) {
-        set out = out + parts[i]
-    }
-    return out
-}
-```
-
-- The variadic parameter must be the last parameter of the function.
-- Internally the rest parameter is implemented as a dynamic array (`_ltng_arr_new` backed by hidden count/array parameters `_ltng_restc` / `_ltng_restv`); users interact with it through the normal array interface (`.length`, indexing).
-- Calls pass extra positional arguments through a generated rest-array statement expression, and indirect/dynamic calls flatten arguments so the dispatcher splits fixed parameters from the variadic tail at runtime.
-
-### Function overloading
-
-Multiple functions may share a source name; calls select an overload by argument count (arity), taking required parameters, defaults, and variadic-ness into account.
-
-```
-function pick(a, b) -> int {
-    return a + b
-}
-function pick(a, b, c) -> int {
-    return a + b + c
-}
-function pick(a) -> string {
-    return "single"
-}
-
-write(pick(2, 3))    # 5
-write(pick(2, 3, 4)) # 9
-write(pick("only"))  # single
-```
-
-- Overloads are distinguished by arity (fixed parameter count, required count, and variadic-ness).
-- Duplicate signatures (same arity shape) are rejected at pre-scan with an error.
-- Ambiguous calls (multiple overloads matching equally) are rejected at the call site.
-
-### Method-style calls (UFCS)
-
-A function can also be called with method-style syntax: `receiver.func(args...)`. The receiver becomes the first argument, so `receiver.func(args...)` is equivalent to `func(receiver, args...)`. This works with any first parameter name (for example `base`).
-
-```
-function a(base) {
-    return base + 1
-}
-
-let x = 5
-write(x.a())        # 6  (same as a(x))
-
-function add(base, n) {
-    return base + n
-}
-write(x.add(10))    # 15 (same as add(x, 10))
-let y = x.add(3)    # assignment
-set x = x.add(1)    # set
-```
-
-### Nested functions
-
-A `function` can be defined inside another function's body. Nested functions are scoped to the enclosing function (the name is visible within that enclosing function) and are lifted internally with a unique name, so the same nested name can be used in different functions without conflict.
-
-```
-function outer(a) {
-    function inner(b) {
-        return b * 2
-    }
-    return inner(a) + 1
-}
-write(outer(5))   # 11
-
-function one() { function helper() { return 1 }  return helper() }
-function two() { function helper() { return 2 }  return helper() }
-write(one())  # 1
-write(two())  # 2
-```
-
-- Nested function declarations follow the same placement rule as `let`/`const`: they are **not allowed** inside `if`/`else`, `switch`/`case`/`default`, or loop bodies (allowed in function bodies).
-- A nested function must be **defined before it is called** within its enclosing scope (nested functions do not have local forward-reference pre-scanning).
-- Nested functions are **non-capturing**: they can use their own parameters/locals, but they cannot access the enclosing function's locals or parameters.
-
----
-
-## Exception Handling
-
-Lightning provides structured exceptions with `try`, `catch`, `finally`, and `throw`.
-
-### `try` / `catch`
-
-A `try` block runs normally until a `throw` occurs inside it (directly or in any function it calls). Control then jumps to the matching `catch` block.
-
-```
-try {
-    throw error("ValueError", "bad value")
-} catch (e) {
-    write(e.type)      # ValueError
-    write(e.message)   # bad value
-}
-```
-
-The `catch` variable is optional. `catch (e) { ... }` and `catch e { ... }` are both accepted.
-
-```
-try {
-    throw "something went wrong"
-} catch {
-    write("handled")
-}
-```
-
-### The catch variable
-
-The catch variable is an object-like value describing the active exception. It exposes these fields:
-
-| Field | Description |
-|-------|-------------|
-| `type` | Error type name (defaults to `Error`) |
-| `message` | Error message text |
-| `trace` | Multi-line stack trace |
-| `line`, `column` | Source location of the `throw` |
-| `function` | Name of the function that threw |
-| `value` | Raw thrown value |
-| `obj` | The formatted `type: message` string |
-
-```
-try {
-    deep_call()
-} catch (e) {
-    write(e.type + ": " + e.message)
-    write(e.function)
-    write(e.trace)
-}
-```
-
-A catch variable is scoped to its catch block, so nested catches may reuse the same name without conflict. If no catch variable is declared, the exception details are still available through `finally` and rethrow behavior.
-
-### `throw`
-
-`throw` accepts any expression. Common forms are:
-
-```
-throw "plain message"                    # type Error
-throw 42                                 # type Error, value 42
-throw true                               # type Error, message "true"
-throw error("RangeError", "out of range")# explicit type and message
-throw CustomError("custom message")      # custom type name
-```
-
-`error(type, message)` requires both a string type and a message. A bare identifier ending in `Error` followed by a call is treated as a custom error type when it is not a user-defined function; the type name is the identifier itself and the first argument is the message. Additional arguments to a custom error are ignored.
-
-### `else` (success block)
-
-Add an optional `else` after `catch` to run code only when the `try` body completes normally. This is the explicit way to identify success.
+C-style for:
 
 ```ltng
-let result = ""
-try {
-    set result = compute()
-} catch (e) {
-    write("failed: " + e.message)
-} else {
-    write("succeeded: " + result)
+for (let i = 0; i < 3; set i++) {
+    write(i)
 }
 ```
 
-Semantics:
-
-- `else` runs only when the `try` body finishes without throwing.
-- It is skipped when the `try` body throws, `return`s, `break`s, or `continue`s out of the construct.
-- `else` requires a `catch` clause.
-- `else` must appear before `finally`.
-- Exceptions thrown in `else` are **not** caught by the same `catch`; they propagate to an outer handler. A `finally` on the same construct still runs.
-- On success, execution order is `try` body → `else` body → `finally` body.
+For-each over arrays:
 
 ```ltng
-try {
-    write("try")
-} catch (e) {
-    write("catch")
-} else {
-    write("else")
-} finally {
-    write("finally")
-}
-```
-
-On success this prints `try`, `else`, `finally`. If the `try` throws, it prints `try`, `catch`, `finally` and skips `else`.
-
-### `finally`
-
-`finally` runs when control leaves the associated `try`/`catch` — whether normally, by `throw`, or by `return`, `break`, or `continue`. This makes it suitable for cleanup.
-
-```
-try {
-    write("work")
-} finally {
-    write("cleanup")
-}
-```
-
-`try` requires at least one of `catch` or `finally`; `try { ... }` alone is an error. A `finally` block runs after a matching `catch` when both are present.
-
-### Propagation, rethrow, and uncaught exceptions
-
-An exception propagates outward through nested `try` blocks and function calls until a matching `catch` is found. If no handler exists, the program prints `<Type>: <message>` and a stack trace to stderr, then exits with status `1`.
-
-```
-before
-Fatal: unhandled
-  at main (program.ltng:2:1)
-```
-
-Inside a `catch` block, a bare `throw` rethrows the active exception:
-
-```
-try {
-    risky()
-} catch (e) {
-    write("logging: " + e.message)
-    throw
-}
-```
-
-A bare `throw` outside a `catch` block is a compile-time error.
-
-### Control flow inside `finally`
-
-`finally` interacts with control flow as follows:
-
-- `return` in `finally` overrides a pending `return` or exception.
-- `break` / `continue` in `finally` leave the enclosing loop after the cleanup runs.
-- If `finally` throws a new exception while handling an older one, the new exception replaces the pending one.
-- `exit` terminates the process immediately and does **not** run pending `finally` blocks.
-
-```
-function f() {
-    try {
-        return "try"
-    } finally {
-        return "finally"    # f() returns "finally"
-    }
-}
-
-for (i from 0 to 3) {
-    try {
-        throw "loop"
-    } finally {
-        if (i == 0) {
-            continue        # pending exception is discarded
-        }
-        break
-    }
-}
-```
-
-### Nested functions and returns
-
-Exceptions thrown inside nested functions propagate to the caller normally. Stack traces record the throw location and the call site of each caller, so the trace shows where each frame called the next.
-
-```
-function level3() { throw error("DeepError", "deep") }
-function level2() { level3() }
-function level1() { level2() }
-
-try {
-    level1()
-} catch (e) {
-    write(e.trace)
-}
-```
-
-Output:
-
-```
-  at level3 (program.ltng:1:20)
-  at level2 (program.ltng:2:20)
-  at level1 (program.ltng:3:20)
-  at main (program.ltng:6:5)
-```
-
-### Current limitations
-
-- Exception trace text is bounded (8192 bytes) and very deep traces may be truncated.
-- The function stack used for traces is bounded to 256 frames.
-- Exception state uses fixed-size buffers, so very large messages/values are truncated.
-- `exit` does not execute pending `finally` blocks.
-- There is no `catch (Type e)` filtering; a `catch` handles every exception thrown in its `try`.
-
----
-
-## CLI Reference
-
-### bolt — Main Command
-
-```
-bolt [--debug] [--check] [--compile] [--install] [--uninstall] [--reinstall] <file.ltng> [args...]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--check` | Check syntax only (no compilation) |
-| `--compile` | Compile to `compiled/<name>/` with per-architecture binaries and a universal executable |
-| `--install` | Install ltng and bolt to /usr/local/bin/ |
-| `--uninstall` | Remove ltng and bolt from /usr/local/bin/ |
-| `--reinstall` | Uninstall then install |
-| `--debug` | Show compilation log and preserve debug artifacts (IR/emitted C) |
-| `--help` | Show help message |
-
-**Examples:**
-
-```
-bolt hello.ltng            # compile and run (no executables left behind)
-bolt --compile hello.ltng  # compile only
-bolt --debug hello.ltng    # with debug output
-bolt --install             # install to /usr/local/bin/
-bolt --uninstall           # remove from /usr/local/bin/
-bolt --reinstall           # uninstall then install
-```
-
-### ltng — Compiler
-
-Compile a `.ltng` file to a native executable.
-
-```
-ltng [--debug] [--check] [--emit-c] [--cc <compiler>] <file.ltng> [output]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--debug` | Show compilation log and preserve debug artifacts (IR/emitted C) |
-| `--check` | Only check for errors, don't compile |
-| `--emit-c` | Emit C source instead of compiling |
-| `--cc <compiler>` | Use a specific C compiler |
-| `<output>` | Output executable path |
-
----
-
-## Rules
-
-- No semicolons — the compiler will reject them
-- One statement per line
-- Variable names must start with a letter or underscore
-- Variable names can only contain letters, numbers, and underscores
-- Strings must be wrapped in double quotes
-- Chars must be wrapped in single quotes and contain exactly one character
-- Comments start with `#`
-- Blocks are wrapped in `{ }`, one `{` per block and one `}` to close it
-- `let` and `const` declarations are allowed in control-flow blocks, nested blocks, and function bodies (block-scoped, with shadowing supported).
-- `let x = int` declares without a value (default 0) and is locked by default; `let x = int 42` is **not** allowed — use `set x = 42` afterward.
-- Value-initialized `let` declarations (e.g. `let x = 5`) are dtype-unlocked by default, so `set` can change their dtype. Dtype-only declarations (e.g. `let x = int`) are locked by default.
-- `const x = 42` requires a value; `const x = int` or `const x = int 42` are **not** allowed.
-- After a variable's dtype is locked (e.g. dtype-only declaration or `x.lock()`), `set` cannot change it. Bare `let x` (null) is not locked; value-initialized declarations start unlocked.
-- Reserved words cannot be used as variable names: `let`, `const`, `set`, `write`, `read`, `exit`, `typeof`, `if`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `from`, `to`, `step`, `and`, `or`, `not`, the type keywords, and `true`/`false`
-- C reserved words (e.g. `return`, `break`, `continue`, `switch`, `case`, `default`, `struct`, `main`, `printf`) **can** be used as variable names — they are mangled internally with a `_res` suffix.
-
-## Arrays
-
-Lightning supports 1D, 2D, and 3D+ arrays with 1-based indexing and negative indexing. Arrays are dynamically sized and grow automatically on `push()` and `insert()`.
-
-### Syntax
-
-```
-let x = [1, 2, 3]              # 1D array
-let m = [[1, 2], [3, 4]]       # 2D array
-let c = [[[1], [2]], [[3], [4]]]  # 3D array
-const names = ["alice", "bob"]   # const array
-let empty = array                 # empty dynamic array
-```
-
-### Indexing
-
-- Indices start at 1: `x[1]` is the first element
-- Negative indices wrap from the end: `x[-1]` is the last, `x[-2]` is second-to-last
-- Index 0 is invalid (returns empty string)
-- For an array of 3 elements: `x[-3]` = first, `x[-2]` = second, `x[-1]` = last
-- Multi-dimensional arrays use one bracket pair per dimension: `m[2][1]` is row 2, column 1
-- Negative indices wrap per dimension: `m[-1][-1]` is the last element of the last row
-- The number of indices must match the number of dimensions (`m[1]` on a 2D array is an error)
-- Arrays support arbitrary dimensions (1D, 2D, 3D, and beyond)
-- Indices can be arbitrary integer expressions: `x[i + 1]`, `m[i - 1][j]`, `cube[i][j][k]`
-- Out-of-bounds reads return an empty string
-
-### Element Access (get / set)
-
-- `x[i]` reads the element at position `i` (1-based); negative indices count from the live end (including pushes/pops for 1D arrays)
-- `set x[i] = value` assigns to position `i`; compound forms (`+=`, `-=`, `*=`, `/=`, `%=`) are supported
-- Array elements are stored as string buffers, but homogeneous `int`/`float`/`bool` literals keep an element dtype used by `typeof` and arithmetic; assigning to a typed element coerces the value to that dtype
-- `+` on array elements uses typed arithmetic for homogeneous typed arrays and the runtime numeric-or-string add for dynamic arrays
-- Out-of-bounds reads still return an empty string; typed-element comparisons/OOB behavior is normalized for compatibility
-- Array access works inside string interpolation: `write("first=$[arr[1]]")`; `write("$[typeof(arr[1])]")` resolves the element dtype
-
-### Array Length
-
-- `arr.length` returns the number of elements (1-based count)
-- Works in expressions: `write(arr.length)`, `for (i from 1 to arr.length)`
-
-### Array Methods
-
-**`push(value)`** — Appends a value to the end of the array. Grows automatically.
-
-```
-let arr = [1, 2, 3]
-arr.push(4)
-write(arr[4])   # prints 4
-```
-
-**`pop()`** — Removes and returns the last element.
-
-```
-let arr = [1, 2, 3]
-write(arr.pop())   # prints 3
-write(arr[3])      # prints empty (element removed)
-```
-
-**`pop(index)`** — Removes and returns the element at the given 1-based index.
-
-```
-let arr = [10, 20, 30, 40, 50]
-write(arr.pop(2))   # prints 20
-write(arr[2])       # prints 30 (elements shifted)
-write(arr[4])       # prints 50
-write(arr.pop(-1))  # prints 50 (last element)
-```
-
-**`insert(index, value)`** — Inserts a value at the given 1-based index, shifting elements after it up.
-
-```
-let ins = [10, 20, 30]
-ins.insert(2, 15)   # ins is now [10, 15, 20, 30]
-write(ins[2])       # prints 15
-ins.insert(-1, 25)  # insert before last: [10, 15, 20, 25, 30]
-```
-
-**`remove(index)`** — Removes and returns the element at the given 1-based index.
-
-```
-let rem = [10, 20, 30, 40, 50]
-write(rem.remove(3))  # prints 30
-write(rem.remove(-1)) # prints 50 (last element)
-```
-
-**`contains(value)`** — Returns `true` if the value exists in the array, `false` otherwise.
-
-```
-let ca = ["alice", "bob", "charlie"]
-write(ca.contains("bob"))   # prints true
-write(ca.contains("dave"))  # prints false
-```
-
-**`index_of(value)`** — Returns the 1-based index of the first occurrence, or 0 if not found.
-
-```
-let ia = [10, 20, 30, 20, 10]
-write(ia.index_of(20))   # prints 2
-write(ia.index_of(99))   # prints 0
-```
-
-**`sort()`** — Sorts the array in place. Uses numeric comparison when both compared elements are fully numeric; otherwise uses string comparison.
-
-```
-let sa = [3, 1, 4, 1, 5]
-sa.sort()
-write(sa[1])   # prints 1
-write(sa[5])   # prints 5
-```
-
-**`reverse()`** — Reverses the array in place.
-
-```
-let ra = [1, 2, 3, 4, 5]
-ra.reverse()
-write(ra[1])   # prints 5
-write(ra[5])   # prints 1
-```
-
-**`copy()`** — Returns a copy of the array (useful in `let` declarations).
-
-```
-let c1 = [10, 20, 30]
-let c2 = c1.copy()
-c2.push(40)
-write(c1.length)   # prints 3 (original unchanged)
-write(c2.length)   # prints 4
-```
-
-**`slice(start, end)`** — Returns a sub-array from 1-based `start` to `end` (exclusive). Negative indices count from the end.
-
-```
-let s1 = [1, 2, 3, 4, 5]
-let s2 = s1.slice(2, 4)   # [2, 3]
-let s3 = s1.slice(-3, -1) # [3, 4]
-```
-
-### Array Copy / Aliasing
-
-```
-let orig = [1, 2, 3]
-let alias = orig        # copies array contents into alias
-alias.push(4)
-write(orig[4])          # prints empty (independent copy semantics)
-```
-
-`let b = a.copy()` creates an independent copy. `set b = a`, `set b = a.copy()`, and `set b = a.slice(...)` are supported for existing array variables.
-
-### Iteration
-
-Index-based iteration works with `length`:
-
-```
-for (i from 1 to arr.length) {
-    write(arr[i])
-}
-```
-
-For-each iteration is supported:
-
-```
+let arr = [10, 20, 30]
 for (x in arr) {
     write(x)
 }
 ```
 
-### Example
+### `switch`
 
+```ltng
+switch (x) {
+    case 1 { write("one") }
+    case 2 { write("two") }
+    default { write("other") }
+}
 ```
+
+### `break`, `continue`, `exit`
+
+- `break`: exits current loop/switch as applicable.
+- `continue`: skips to next loop iteration.
+- `exit`: exits program (as supported).
+
+## Functions
+
+### Declaration
+
+```ltng
+function add(a, b) {
+    return a + b
+}
+```
+
+### Return type annotations
+
+```ltng
+function add(a, b) -> int {
+    return a + b
+}
+```
+
+Annotated return types are validated in covered/provable cases.
+
+### Default parameters
+
+```ltng
+function greet(name = "world") {
+    write("Hello, $[name]")
+}
+```
+
+### Named arguments
+
+```ltng
+function sub(a, b) {
+    return a - b
+}
+write(sub(b = 3, a = 10))
+```
+
+### Anonymous functions / closures
+
+```ltng
+let inc = function(x) { return x + 1 }
+write(inc(5))
+```
+
+Closures capture enclosing variables with shared mutable semantics in supported cases.
+
+### Variadic arguments
+
+```ltng
+function sum(...nums) {
+    let total = 0
+    for (n in nums) {
+        set total += n
+    }
+    return total
+}
+```
+
+### Overloading
+
+Functions may be overloaded by arity in supported Phase 5 behavior.
+
+### UFCS / method-style calls
+
+Lightning supports UFCS-style method calls for compatible functions/methods:
+
+```ltng
+let arr = [3, 1, 2]
+arr.sort()
+```
+
+### Nested functions
+
+Nested function declarations are supported in covered contexts.
+
+## Arrays
+
+### Literals
+
+```ltng
 let arr = [1, 2, 3]
-write(arr[1])   # prints 1
-write(arr[-1])  # prints 3
-
-let names = ["alice", "bob"]
-write(names[1]) # prints alice
-
-let m = [[1, 2], [3, 4]]
-write(m[2][1])  # prints 3
-write(m[-1][-2]) # prints 3
-
-let cube = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
-write(cube[2][1][2]) # prints 6
 ```
 
-`push()` and `pop()` work as standalone statements or inside `write()`:
+### Indexing
 
+Arrays are 1-based. Negative indices count from the end. Index `0` is invalid.
+
+```ltng
+let arr = [10, 20, 30]
+write(arr[1])    # 10
+write(arr[-1])   # 30
 ```
-write(arr.push(99))   # prints 99 (the pushed value)
-write(arr.pop())      # prints the popped value
+
+Out-of-bounds behavior in runtime string-based model may return empty string in some contexts; avoid relying on OOB reads.
+
+### Methods
+
+Common array methods:
+
+- `push(value)`
+- `pop()` / `pop(index)`
+- `insert(index, value)`
+- `remove(index)`
+- `contains(value)`
+- `index_of(value)`
+- `sort()`
+- `reverse()`
+- `copy()`
+- `slice(start, end)`
+- `length` / `.length`
+
+`copy()` and `slice()` are supported in `let`/`set` and in covered value-consumed expression contexts.
+
+### Iteration
+
+```ltng
+for (item in arr) {
+    write(item)
+}
 ```
 
-### Limitations
+## Objects
 
-- Arrays are auto-locked (dtype-immutable) after declaration.
-- Nested literals of unequal length are accepted; the array shape uses the largest size per dimension and missing slots read as empty strings.
-- Arrays of objects and jagged arrays (arrays of arrays with differing sizes) are not supported as first-class dynamic collections in this release; rectangular multidimensional arrays remain supported.
-- `copy()` and `slice()` are supported in `let`/`set` array assignment forms (e.g. `let b = a.copy()`, `set b = a.slice(1,3)`), but not as general array-producing expressions in all contexts.
-- Elements follow the current string-buffer runtime model (formatted storage/comparison), so operations like `sort`, `contains`, and `index_of` use string-form semantics.
+Objects support field access/assignment in supported forms.
+
+```ltng
+let o = obj
+set o.name = "Lightning"
+set o.version = 1
+write(o.name)
+```
+
+Object literals/field access behavior is supported in covered language paths. Array-of-objects and general nested dynamic collections are limited (see limitations).
+
+## Exception Handling
+
+Lightning supports structured exceptions:
+
+```ltng
+try {
+    throw error("MyError", "something went wrong")
+} catch (e) {
+    write(e.type)
+    write(e.message)
+} finally {
+    write("cleanup")
+}
+```
+
+### Forms
+
+- `try { ... } catch (e) { ... }`
+- `try { ... } catch { ... }`
+- `try { ... } finally { ... }`
+- `try { ... } catch (e) { ... } else { ... } finally { ... }`
+
+### Catch object
+
+Catch variable exposes fields such as `type`, `message`, `trace`, `line`, `column`, `function`, `value`, `obj` (as supported).
+
+### Throw
+
+```ltng
+throw error("TypeError", "bad value")
+throw "simple error"
+```
+
+### Semantics
+
+- `finally` runs on normal completion, throw, return, break, and continue (covered semantics).
+- `else` runs only when `try` completes normally and requires a `catch`.
+- Uncaught exceptions print traceback to stderr and exit with status 1.
+
+## Type Conversion and Introspection
+
+### Conversions
+
+Built-in conversion functions/aliases in covered contexts:
+
+- `toint(x)` / `int(x)`
+- `tofloat(x)` / `float(x)`
+- `tostring(x)` / `string(x)`
+- `tobool(x)` / `bool(x)`
+- `tochar(x)` / `char(x)`
+
+```ltng
+let n = toint("42")
+let s = tostring(3.14)
+let b = tobool("true")
+```
+
+Invalid literal conversions are rejected at compile time in provable cases. Runtime-invalid conversion behavior depends on the specific conversion/runtime path.
+
+### `typeof()`
+
+```ltng
+write(typeof(1))      # int
+write(typeof(3.14))   # float
+write(typeof("hi"))   # string
+write(typeof(true))   # bool
+```
+
+## Scoping and Lifetime
+
+- `let` and `const` are block-scoped.
+- Inner scopes can shadow outer variables.
+- Same-scope duplicate declarations are rejected.
+- Function parameters and locals follow function/block scope rules.
+- Declared control-flow/standalone blocks create scope.
+
+## Known Limitations
+
+This is a non-exhaustive summary; see `development/limitations.md` for details.
+
+- **Dynamic runtime model:** many runtime values are string-backed/dynamic-heap representations; some semantics are constrained by this model.
+- **`+` ambiguity:** `+` can mean addition or concatenation; mixed operands can be context-sensitive.
+- **Collections:** no first-class arrays-of-objects/jagged dynamic arrays; multidimensional rectangular arrays are supported.
+- **Array OOB reads:** may return empty string in runtime model; don't rely on OOB behavior.
+- **Diagnostics/tooling:** diagnostics are improving but not perfect; sanitizer/valgrind availability is environment-dependent.
+- **Cross-arch artifacts:** prebuilt multi-arch binaries require the build toolchain (zig/cross compilers) to rebuild/sync.
 
 ---
 
-## Compilation Pipeline and Debug Artifacts
-
-Lightning parses source, emits an intermediate representation (IR), generates C, then invokes the system C compiler.
-
-- After successful parsing, the compiler writes `<source basename>.ltng_ir` next to the source file.
-- On successful check/emit/compile (when `--debug` is not used), this IR file is removed.
-- With `--debug`, the compiler creates `debug/<source basename>/` next to the source file containing:
-  - `source.ltng` (input source)
-  - `intermediete.ltng_ir` (IR dump, when parsing succeeds)
-  - `emitted.c` (generated C, when available)
-  - `logs.txt` (timestamped/staged compiler logs, including Lightning and C compiler output/warnings/errors and success messages; debug output is also printed to the console at end)
-  - `compiler_log.txt` (best-effort mapping of Lightning source file/line and statement/node to emitted C, including expression/codegen-level breakdowns for conditions, RHS/values, bounds, indices, and arguments where available)
-  - On successful native compilation: a copied compiled binary, `<source basename>.dbg` (debug-symbol binary), `<source basename>.o` (object file), and `<source basename>.s` (assembly file)
-
-## Current Limitations
-
-The following are **not yet implemented** and are not considered bugs:
-
-- File I/O built-ins beyond `read()` from stdin
-- Modules / imports
-- String comparison by content
-- Fallthrough in `switch` cases
-- `else if` without braces after `switch` cases (every `case`/`default` needs `{ }`)
+For phase status and verified test counts, see `development/PHASE_STATUS.md`. For known issues, see `development/limitations.md`.
