@@ -5102,6 +5102,17 @@ int stmt_always_exits(ASTNode *node) {
             }
             return 1;
         }
+        case NODE_TRY:
+            /* finally with guaranteed exit overrides everything */
+            if (node->has_finally && node->cases && block_always_exits(node->cases))
+                return 1;
+            /* try always exits and catch (if present) always exits => always exits.
+               Normal completion cannot occur if try always exits, so else is irrelevant. */
+            if (block_always_exits(node->body)) {
+                if (!node->has_catch) return 1;
+                if (node->orelse && block_always_exits(node->orelse)) return 1;
+            }
+            return 0;
         default:
             return 0;
     }

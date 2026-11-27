@@ -1,0 +1,7 @@
+function foo(x) -> int {
+    try {
+        return 1
+    } catch (e) {
+        let y = 1
+    }
+}
