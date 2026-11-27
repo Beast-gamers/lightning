@@ -822,6 +822,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
     int pending_divmod_is_mod = 0;
     int pending_divmod_line = 0, pending_divmod_col = 0;
     int pending_mod_op_pos = -1; /* output position of % char for float-fmod rewrite */
+    int pending_numeric_unary = 0; /* 1 if last emitted + or - was unary (numeric-only operand expected) */
     int comparison_or_logical = 0;
     int depth_content_start[64];
     int depth_in_str_concat[64]; /* 1 if this paren depth is inside an outer string-concat context */
@@ -1141,6 +1142,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 break;
             }
             case TOKEN_INT_LIT:
+                pending_numeric_unary = 0;
                 if (pending_divmod && (strcmp(tok.value, "0") == 0)) {
                     error_state_add(parser_errors, tok.line, tok.col,
                         "Division or modulo by zero");
@@ -1193,10 +1195,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 pending_divmod = 0; pending_mod_op_pos = -1;
                 break;
             case TOKEN_STRING:
-                if (pending_divmod) {
+                if (pending_divmod || pending_numeric_unary) {
                     error_state_add(parser_errors, tok.line, tok.col,
-                        "Division or modulo requires numeric operands");
-                    pending_divmod = 0; pending_mod_op_pos = -1;
+                        pending_divmod ? "Division or modulo requires numeric operands" : "Unary numeric operator requires numeric operand");
+                    pending_divmod = 0; pending_mod_op_pos = -1; pending_numeric_unary = 0;
                 }
                 {
                     CE_GROW(1); if (1) out[pos++] = '"';
@@ -1215,10 +1217,10 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 }
                 break;
             case TOKEN_CHAR:
-                if (pending_divmod) {
+                if (pending_divmod || pending_numeric_unary) {
                     error_state_add(parser_errors, tok.line, tok.col,
-                        "Division or modulo requires numeric operands");
-                    pending_divmod = 0; pending_mod_op_pos = -1;
+                        pending_divmod ? "Division or modulo requires numeric operands" : "Unary numeric operator requires numeric operand");
+                    pending_divmod = 0; pending_mod_op_pos = -1; pending_numeric_unary = 0;
                 }
                 if (tok.value[0] != '\0') {
                     CE_SNPRINTF_ADD( "\"%s\"", tok.value);
@@ -1228,6 +1230,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 if (!type_locked) result_type = TYPE_STRING;
                 break;
             case TOKEN_IDENT: {
+                pending_numeric_unary = 0;
                 int saved_pos = pos;
                 int _pd_save = pending_divmod, _pd_mod_save = pending_divmod_is_mod;
                 int _pd_l_save = pending_divmod_line, _pd_c_save = pending_divmod_col;
@@ -2424,9 +2427,22 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 index_exprs[index_count][0] = 0;
                                 {
                                     Token _idx_peek = lexer_peek(lexer);
-                                    if (_idx_peek.type == TOKEN_STRING || _idx_peek.type == TOKEN_CHAR) {
+                                    if (_idx_peek.type == TOKEN_STRING || _idx_peek.type == TOKEN_CHAR ||
+                                        (_idx_peek.type == TOKEN_IDENT && (strcmp(_idx_peek.value, "true")==0 || strcmp(_idx_peek.value, "false")==0 || strcmp(_idx_peek.value, "null")==0))) {
                                         error_state_add(parser_errors, _idx_peek.line, _idx_peek.col,
                                             "Array index must be numeric");
+                                    } else if (_idx_peek.type == TOKEN_IDENT) {
+                                        Token _nxt_idx = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : _idx_peek;
+                                        if (_nxt_idx.type == TOKEN_RBRACKET) {
+                                            char *_im = mangle_name_alloc(_idx_peek.value);
+                                            VarType _ivt = symbol_table_get(table, _im);
+                                            int _ilk = symbol_table_get_locked(table, _im);
+                                            free(_im);
+                                            if (_ilk && _ivt != TYPE_INT && _ivt != TYPE_FLOAT) {
+                                                error_state_add(parser_errors, _idx_peek.line, _idx_peek.col,
+                                                    "Array index must be numeric");
+                                            }
+                                        }
                                     }
                                 }
                                 VarType _idx_t = collect_expression(lexer, table, &index_exprs[index_count], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
@@ -2560,6 +2576,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 }
                 break;
             case TOKEN_LPAREN:
+                pending_numeric_unary = 0;
                 CE_SNPRINTF_ADD( "(");
                 paren_depth++;
                 if (paren_depth < 64) {
@@ -2735,6 +2752,13 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         }
                     }
                 } else {
+                    int _dcs = (paren_depth >= 0 && paren_depth < 64) ? depth_content_start[paren_depth] : 0;
+                    int _is_unary_pm = (tok.type == TOKEN_MINUS || tok.type == TOKEN_PLUS) &&
+                        (pos <= _dcs || (pos > 0 && (out[pos-1]=='(' || out[pos-1]=='[' || out[pos-1]==',' ||
+                         out[pos-1]=='=' || out[pos-1]=='?' || out[pos-1]==':' || out[pos-1]=='!' ||
+                         out[pos-1]=='<' || out[pos-1]=='>' || out[pos-1]=='&' || out[pos-1]=='|' ||
+                         out[pos-1]=='^' || out[pos-1]=='%' || out[pos-1]=='+' || out[pos-1]=='-' ||
+                         out[pos-1]=='*' || out[pos-1]=='/')));
                     {
                         const char *_ops = tok.type == TOKEN_PLUS ? "+" :
                             tok.type == TOKEN_MINUS ? "-" :
@@ -2754,6 +2778,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                     } else {
                         pending_divmod = 0;
                     }
+                    pending_numeric_unary = _is_unary_pm ? 1 : 0;
                 }
                 break;
             case TOKEN_AMP_AMP:

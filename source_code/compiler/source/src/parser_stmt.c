@@ -681,8 +681,20 @@ void parse_write(Lexer *lexer, SymbolTable *table) {
                 idx_exprs_w[idx_n_w][0] = 0;
                 {
                     Token _ip = lexer_peek(lexer);
-                    if (_ip.type == TOKEN_STRING || _ip.type == TOKEN_CHAR) {
+                    if (_ip.type == TOKEN_STRING || _ip.type == TOKEN_CHAR ||
+                        (_ip.type == TOKEN_IDENT && (strcmp(_ip.value, "true")==0 || strcmp(_ip.value, "false")==0 || strcmp(_ip.value, "null")==0))) {
                         error_state_add(parser_errors, _ip.line, _ip.col, "Array index must be numeric");
+                    } else if (_ip.type == TOKEN_IDENT) {
+                        Token _nxt_idx = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : _ip;
+                        if (_nxt_idx.type == TOKEN_RBRACKET) {
+                            char *_im = mangle_name_alloc(_ip.value);
+                            VarType _ivt = symbol_table_get(table, _im);
+                            int _ilk = symbol_table_get_locked(table, _im);
+                            free(_im);
+                            if (_ilk && _ivt != TYPE_INT && _ivt != TYPE_FLOAT) {
+                                error_state_add(parser_errors, _ip.line, _ip.col, "Array index must be numeric");
+                            }
+                        }
                     }
                 }
                 VarType _idx_tw = collect_expression(lexer, table, &idx_exprs_w[idx_n_w], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
@@ -2939,8 +2951,20 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
             index_exprs[index_count][0] = 0;
             {
                 Token _ip = lexer_peek(lexer);
-                if (_ip.type == TOKEN_STRING || _ip.type == TOKEN_CHAR) {
+                if (_ip.type == TOKEN_STRING || _ip.type == TOKEN_CHAR ||
+                    (_ip.type == TOKEN_IDENT && (strcmp(_ip.value, "true")==0 || strcmp(_ip.value, "false")==0 || strcmp(_ip.value, "null")==0))) {
                     error_state_add(parser_errors, _ip.line, _ip.col, "Array index must be numeric");
+                } else if (_ip.type == TOKEN_IDENT) {
+                    Token _nxt_idx = (lexer->current + 1 < lexer->count) ? lexer->tokens[lexer->current + 1] : _ip;
+                    if (_nxt_idx.type == TOKEN_RBRACKET) {
+                        char *_im = mangle_name_alloc(_ip.value);
+                        VarType _ivt = symbol_table_get(table, _im);
+                        int _ilk = symbol_table_get_locked(table, _im);
+                        free(_im);
+                        if (_ilk && _ivt != TYPE_INT && _ivt != TYPE_FLOAT) {
+                            error_state_add(parser_errors, _ip.line, _ip.col, "Array index must be numeric");
+                        }
+                    }
                 }
             }
             VarType _idx_ts = collect_expression(lexer, table, &index_exprs[index_count], &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
