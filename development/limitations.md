@@ -2,7 +2,7 @@
 
 This document consolidates known limitations, gaps, and unresolved issues recorded so far for Phases 0–4 of the Lightning enhancement effort. It reflects the current repository state, implementation status, test coverage, and documented constraints.
 
-> Status context: Phase 0 complete, Phase 1 partially implemented, Phase 2 complete, Phase 3 complete (with key limitations reduced), Phase 4 complete. Phases 5–13 are pending.
+> Status context: Phase 0 complete, Phase 1 complete (verified; env-limited memory/artifact caveats recorded), Phase 2 complete, Phase 3 complete (with key limitations reduced), Phase 4 complete. Phases 5–13 are pending/in progress.
 
 ---
 

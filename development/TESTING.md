@@ -98,7 +98,13 @@ Use available tooling on representative programs and generated executables, for 
 - Valgrind or similar leak/error detectors on native executables when installed.
 - Fuzz/adversarial runs for lexer/parser robustness.
 
-Record tool availability and results in `PHASE_STATUS.md` for each phase.
+Convenience script (UBSAN-instrumented compiler + full native test suite):
+
+```bash
+bash development/tests/run_ubsan.sh
+```
+
+Note: ASAN can be unusable in some proot/container environments due shadow-memory virtual-address limits; UBSAN is a lighter fallback. Record tool availability and results in `PHASE_STATUS.md` for each phase.
 
 ## Reproducibility notes
 
