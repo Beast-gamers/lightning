@@ -4339,16 +4339,65 @@ ASTNode *parse_for(Lexer *lexer, SymbolTable *table) {
 
     Token next_tok = lexer_peek(lexer);
     if (next_tok.type == TOKEN_IN) {
-        /* for-each: for (x in arr) { ... } */
+        /* for-each: for (x in arr) { ... } or for (x in arr.copy()/slice()) */
         lexer_next(lexer); /* consume 'in' */
-        Token arr_tok = lexer_next(lexer);
-        if (arr_tok.type != TOKEN_IDENT && !token_is_name(arr_tok)) {
+        Token arr_tok = lexer_peek(lexer);
+        char *am = NULL;
+        if (arr_tok.type == TOKEN_IDENT || token_is_name(arr_tok)) {
+            lexer_next(lexer);
+            am = mangle_name_alloc(arr_tok.value);
+            /* Handle arr.copy() / arr.slice(...) as temp iterable */
+            if (lexer_peek(lexer).type == TOKEN_DOT) {
+                int saved = lexer->current;
+                lexer_next(lexer); /* . */
+                Token mname = lexer_next(lexer);
+                if (token_is_name(mname) && (strcmp(mname.value, "copy") == 0 || strcmp(mname.value, "slice") == 0) &&
+                    lexer_peek(lexer).type == TOKEN_LPAREN) {
+                    lexer_next(lexer); /* ( */
+                    char *start_expr = NULL; char *end_expr = NULL;
+                    if (strcmp(mname.value, "slice") == 0) {
+                        start_expr = (char*)malloc(65536); if(start_expr) start_expr[0]=0;
+                        collect_expression(lexer, table, &start_expr, &(int){65536}, 1, 1, NULL,NULL,NULL,NULL);
+                        if (lexer_peek(lexer).type == TOKEN_COMMA) lexer_next(lexer);
+                        end_expr = (char*)malloc(65536); if(end_expr) end_expr[0]=0;
+                        collect_expression(lexer, table, &end_expr, &(int){65536}, 1, 0, NULL,NULL,NULL,NULL);
+                    }
+                    if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
+                    /* create temp array */
+                    static int _fi = 0; _fi++;
+                    char *tmpname = _ltng_cfmt("__fi_tmp%d", _fi);
+                    char *tmpm = mangle_name_alloc(tmpname);
+                    free(tmpname);
+                    symbol_table_add(table, tmpm, TYPE_ARRAY);
+                    VarType src_et = symbol_table_get_array_elem_type(table, am);
+                    symbol_table_set_array_elem_type(table, tmpm, src_et);
+                    int *_dims=NULL; int _dc=0;
+                    if (symbol_table_get_array_dims(table, am, &_dims, &_dc)) symbol_table_set_array_dims(table, tmpm, _dc, _dims);
+                    /* emit copy/slice into temp; -1 sentinel tells codegen to declare temp */
+                    ASTNode *tn = create_node(strcmp(mname.value,"copy")==0 ? NODE_ARRAY_COPY : NODE_ARRAY_SLICE, tmpm, am);
+                    if (strcmp(mname.value, "slice") == 0) {
+                        char *idx = _ltng_cfmt("%s,%s", start_expr ? start_expr : "0", end_expr ? end_expr : "0");
+                        free(tn->array_index); tn->array_index = idx ? idx : ltng_strdup("0,0");
+                    }
+                    tn->var_type = TYPE_ARRAY;
+                    tn->array_elem_type = src_et;
+                    tn->array_elem_count = -1; /* declare temp */
+                    tn->is_expr = 1;
+                    emit(tn);
+                    free(start_expr);
+                    free(end_expr);
+                    free(am);
+                    am = tmpm;
+                } else {
+                    lexer->current = saved;
+                }
+            }
+        } else {
             error_state_add(parser_errors, arr_tok.line, arr_tok.col,
                 "Expected array variable name after 'in'");
             skip_to_newline(lexer);
             return NULL;
         }
-        char *am = mangle_name_alloc(arr_tok.value);
         if (!symbol_table_has(table, am) || symbol_table_get(table, am) != TYPE_ARRAY) {
             error_state_add(parser_errors, arr_tok.line, arr_tok.col,
                 "for-in expects an array variable");
@@ -6632,11 +6681,13 @@ ASTNode *parse_function(Lexer *lexer, SymbolTable *table, const char *enclosing_
                         Token p1 = (scan - 1 >= 0) ? lexer->tokens[scan - 1] : t;
                         if (n1.type == TOKEN_DOT) {
                             Token n2 = (scan + 2 < lexer->count) ? lexer->tokens[scan + 2] : t;
+                            Token n3 = (scan + 3 < lexer->count) ? lexer->tokens[scan + 3] : t;
                             if ((n2.type == TOKEN_IDENT || token_is_name(n2)) &&
-                                (strcmp(n2.value,"push")==0||strcmp(n2.value,"pop")==0||strcmp(n2.value,"insert")==0||
-                                 strcmp(n2.value,"remove")==0||strcmp(n2.value,"contains")==0||strcmp(n2.value,"index_of")==0||
-                                 strcmp(n2.value,"sort")==0||strcmp(n2.value,"reverse")==0||strcmp(n2.value,"copy")==0||
-                                 strcmp(n2.value,"slice")==0||strcmp(n2.value,"length")==0)) {
+                                ((strcmp(n2.value,"push")==0||strcmp(n2.value,"pop")==0||strcmp(n2.value,"insert")==0||
+                                  strcmp(n2.value,"remove")==0||strcmp(n2.value,"contains")==0||strcmp(n2.value,"index_of")==0||
+                                  strcmp(n2.value,"sort")==0||strcmp(n2.value,"reverse")==0||strcmp(n2.value,"copy")==0||
+                                  strcmp(n2.value,"slice")==0||strcmp(n2.value,"length")==0) ||
+                                 (n3.type == TOKEN_LPAREN && strcmp(pp_scan->for_var, "base") == 0))) {
                                 param_as_array = 1; break;
                             }
                         } else if (n1.type == TOKEN_LBRACKET) {

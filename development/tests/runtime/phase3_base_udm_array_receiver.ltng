@@ -1,0 +1,6 @@
+function inc(base) { set base[1] = toint(base[1]) + 1 }
+function bump(base) { base.inc() }
+let a = [1, 2, 3]
+a.bump()
+write(a[1])
+write(a[2])

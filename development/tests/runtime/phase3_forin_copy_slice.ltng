@@ -1,0 +1,5 @@
+let a = [1, 2, 3]
+for (x in a.copy()) { write(x) }
+for (x in a.slice(1, 2)) { write(x) }
+for (x in a.slice(2, 3)) { write(x) }
+write(a.length)

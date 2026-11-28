@@ -1873,6 +1873,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
         }
         case NODE_ARRAY_COPY: {
             /* let b = a.copy(): node->name = dst cname, node->value = src cname. */
+            if (node->array_elem_count == -1) {
+                pad(out, indent); fprintf(out, "int %s_len = 0;\n", node->name);
+                pad(out, indent); fprintf(out, "int %s_cap = 0;\n", node->name);
+                pad(out, indent); fprintf(out, "char **%s_data = NULL;\n", node->name);
+            }
             char *srcname = _ltng_cfmt("%s_data", node->value ? node->value : "");
             char *dstname = _ltng_cfmt("%s_data", node->name ? node->name : "");
             pad(out, indent);
@@ -1884,6 +1889,11 @@ static void codegen_statement(FILE *out, ASTNode *node, SymbolTable *table, int 
         case NODE_ARRAY_SLICE: {
             /* let b = a.slice(s, e): node->name = dst cname, node->value = src cname,
                node->array_index = "start,end" C expressions. */
+            if (node->array_elem_count == -1) {
+                pad(out, indent); fprintf(out, "int %s_len = 0;\n", node->name);
+                pad(out, indent); fprintf(out, "int %s_cap = 0;\n", node->name);
+                pad(out, indent); fprintf(out, "char **%s_data = NULL;\n", node->name);
+            }
             char *srcname = _ltng_cfmt("%s_data", node->value ? node->value : "");
             pad(out, indent);
             fprintf(out, "_ltng_arr_slice(%s, %s_len, %s, &%s_data, &%s_len, &%s_cap);\n",

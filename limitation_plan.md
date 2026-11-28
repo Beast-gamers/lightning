@@ -11,8 +11,8 @@
 6. [x] **More provable type-compatibility checks** - Extend conservative compile-time rejection for obvious mismatches in more contexts, while preserving dynamic pass-through behavior.
 7. [x] **Return-type/path validation hardening** - Cover more provable annotated-return mismatch/control-flow cases; avoid false positives in dynamic code.
 8. **Sole-call typing inference gaps (partial)** - Reduce conservative string fallback in more sole-call/propagation paths without breaking mixed/unknown cases.
-9. **Copy/slice general expression-context gaps (partial)** - Expand where copy/slice results can be used, but still within non-first-class array-value limits.
-10. **Base-param UDM array-receiver detection gaps (partial)** - Improve detection/handling for `base` array usage patterns not caught by current pre-scan.
+9. **Copy/slice general expression-context gaps (partial)** - For-in `arr.copy()/slice()` supported via temp arrays; other expression-context gaps remain within non-first-class array-value limits.
+10. **Base-param UDM array-receiver detection gaps (partial)** - Pre-scan now detects any `base.method(...)` call; other unrecognized patterns remain.
 11. [x] **Exception model ergonomics** - e.g., better catch-type matching utilities/patterns or clearer runtime error typing; still without inheritance/user-defined exception classes.
 
 ## Tier 3 — Hard (cross-cutting semantics/runtime)
