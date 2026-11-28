@@ -8,7 +8,7 @@
 5. [x] **Limitations/PHASE_STATUS drift cleanup** - Keep counts/caveats precise as tests change; trivial but important.
 
 ## Tier 2 — Medium (contained compiler/codegen work)
-6. **More provable type-compatibility checks** - Extend conservative compile-time rejection for obvious mismatches in more contexts, while preserving dynamic pass-through behavior.
+6. [x] **More provable type-compatibility checks** - Extend conservative compile-time rejection for obvious mismatches in more contexts, while preserving dynamic pass-through behavior.
 7. **Return-type/path validation hardening** - Cover more provable annotated-return mismatch/control-flow cases; avoid false positives in dynamic code.
 8. **Sole-call typing inference gaps (partial)** - Reduce conservative string fallback in more sole-call/propagation paths without breaking mixed/unknown cases.
 9. **Copy/slice general expression-context gaps (partial)** - Expand where copy/slice results can be used, but still within non-first-class array-value limits.

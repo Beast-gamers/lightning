@@ -1576,6 +1576,18 @@ int parse_object_literal(Lexer *lexer, SymbolTable *table, const char *mangled, 
     return 1;
 }
 
+static int provably_incompatible_array_elem(VarType arr_et, VarType arg_t, const char *arg_expr) {
+    if (arr_et != TYPE_INT && arr_et != TYPE_FLOAT && arr_et != TYPE_BOOL) return 0;
+    if (arg_t == TYPE_CHAR) return 1;
+    if (arg_t == TYPE_OBJECT || arg_t == TYPE_ARRAY) return 1;
+    if (arg_t == TYPE_STRING) {
+        const char *p = arg_expr ? arg_expr : "";
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '"') return 1; /* string literal */
+    }
+    return 0;
+}
+
 /* Parse and emit chained array methods (and scoped user-defined methods) on a known array variable.
    Called after copy/slice in let/set contexts, e.g. let b = a.copy().sort().reverse()
    target_src is the original source name (for UDM receiver construction),
@@ -1616,7 +1628,12 @@ void emit_chained_methods_on_array_var(Lexer *lexer, SymbolTable *table,
                 }
                 lexer_next(lexer);
                 {
-                    VarType cur_et = symbol_table_get_array_elem_type(table, target_rm);
+                    VarType cur_et0 = symbol_table_get_array_elem_type(table, target_rm);
+                    if (provably_incompatible_array_elem(cur_et0, arg_type, arg_expr)) {
+                        error_state_add(parser_errors, mname.line, mname.col, "Incompatible value type for locked array element");
+                        skip_to_newline(lexer); return;
+                    }
+                    VarType cur_et = cur_et0;
                     VarType new_et = arg_type;
                     if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
                         new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
@@ -1645,7 +1662,12 @@ void emit_chained_methods_on_array_var(Lexer *lexer, SymbolTable *table,
                 }
                 lexer_next(lexer);
                 {
-                    VarType cur_et = symbol_table_get_array_elem_type(table, target_rm);
+                    VarType cur_et0 = symbol_table_get_array_elem_type(table, target_rm);
+                    if (provably_incompatible_array_elem(cur_et0, arg_type, arg_expr)) {
+                        error_state_add(parser_errors, mname.line, mname.col, "Incompatible value type for locked array element");
+                        skip_to_newline(lexer); return;
+                    }
+                    VarType cur_et = cur_et0;
                     VarType new_et = arg_type;
                     if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
                         new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
@@ -6941,7 +6963,12 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
                             lexer_next(lexer); /* consume ) */
                             /* Update inferred array element type */
                             {
-                                VarType cur_et = symbol_table_get_array_elem_type(table, rm);
+                                VarType cur_et0 = symbol_table_get_array_elem_type(table, rm);
+                                if (provably_incompatible_array_elem(cur_et0, arg_type, arg_expr)) {
+                                    error_state_add(parser_errors, mname.line, mname.col, "Incompatible value type for locked array element");
+                                    skip_to_newline(lexer); return;
+                                }
+                                VarType cur_et = cur_et0;
                                 VarType new_et = arg_type;
                                 if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
                                     new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)
@@ -6978,7 +7005,12 @@ void parse_statement(Lexer *lexer, SymbolTable *table) {
                             lexer_next(lexer); /* consume ) */
                             /* Update inferred array element type */
                             {
-                                VarType cur_et = symbol_table_get_array_elem_type(table, rm);
+                                VarType cur_et0 = symbol_table_get_array_elem_type(table, rm);
+                                if (provably_incompatible_array_elem(cur_et0, arg_type, arg_expr)) {
+                                    error_state_add(parser_errors, mname.line, mname.col, "Incompatible value type for locked array element");
+                                    skip_to_newline(lexer); return;
+                                }
+                                VarType cur_et = cur_et0;
                                 VarType new_et = arg_type;
                                 if (new_et == TYPE_CHAR || new_et == TYPE_OBJECT || new_et == TYPE_ARRAY ||
                                     new_et == TYPE_NULL || new_et == TYPE_VOID || new_et == TYPE_STRING)

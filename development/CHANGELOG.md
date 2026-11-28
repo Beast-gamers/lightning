@@ -28,6 +28,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Phase 1 Step 4 completed: default-typed parameters now drive body/expression typing without locking params; call results use pass-through call-site specialization for direct, nested/chained, method, sole-call, argument, and first-class/indirect calls; `typeof` uses the same specialized call-result typing. Homogeneous array element assignment preserves/coerces to the inferred element dtype instead of de-typing the whole array; compound element assignment is supported.
 
 ### Fixed
+- Tier 2: reject provably incompatible literal/char/object/array values in push/insert on locked numeric/bool arrays. Added semantic neg tests.
 - Tier 2: multi-type catch syntax `catch (A, B e)` matches any listed exception type by exact `e.type`. Added `development/tests/runtime/phase4_multi_type_catch.ltng` (+ `.expected`).
 - `cg_rewrite_divmod` now respects operator precedence for RHS operand boundaries and rewrites remaining tail div/mod ops, fixing miscompiled expressions like `10 / (b-c) + 1`. Added `development/tests/runtime/phase1_divmod_unusual_forms.ltng` (+ `.expected`).
 - Strict runtime `tochar` trims whitespace and accepts whitespace-padded numeric char codes. Updated `development/tests/runtime/phase1_tochar_strict.ltng`.
