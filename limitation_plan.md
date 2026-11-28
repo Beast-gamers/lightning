@@ -10,9 +10,9 @@
 ## Tier 2 — Medium (contained compiler/codegen work) — IN PROGRESS
 6. [x] **More provable type-compatibility checks** - Extend conservative compile-time rejection for obvious mismatches in more contexts, while preserving dynamic pass-through behavior.
 7. [x] **Return-type/path validation hardening** - Cover more provable annotated-return mismatch/control-flow cases; avoid false positives in dynamic code.
-8. **Sole-call typing inference gaps (partial)** - Reduce conservative string fallback in more sole-call/propagation paths without breaking mixed/unknown cases.
-9. **Copy/slice general expression-context gaps (partial)** - For-in, write args, return array literals, return arr.copy()/slice(), and .length/call-chain expression contexts supported; remaining gaps are constrained by non-first-class array-value model.
-10. **Base-param UDM array-receiver detection gaps (partial)** - Pre-scan detects array methods/indexing/for-in and any `base.method(...)`; remaining plain-value patterns are ambiguous with string base-param UDMs.
+8. [x] **Sole-call typing inference gaps (partial)** - Covered paths infer through annotated/prescanned/analyzed returns; remaining conservative string fallback is limited to truly unknown/mixed forward-unparsed cases and is tracked under Tier 3 typing/heuristics work.
+9. [x] **Copy/slice general expression-context gaps (partial)** - Supported in let/set, for-in, write/args, return array literals, return arr.copy()/slice(), and .length/method scalar chains; remaining free-standing array-temp value use is constrained by Tier 3 first-class array-value model.
+10. [x] **Base-param UDM array-receiver detection gaps (partial)** - Pre-scan detects array methods/indexing/for-in and `base.method(...)` for base params; remaining plain-value patterns are intentionally conservative to avoid mis-typing string base-param UDMs.
 11. [x] **Exception model ergonomics** - e.g., better catch-type matching utilities/patterns or clearer runtime error typing; still without inheritance/user-defined exception classes.
 
 ## Tier 3 — Hard (cross-cutting semantics/runtime)
