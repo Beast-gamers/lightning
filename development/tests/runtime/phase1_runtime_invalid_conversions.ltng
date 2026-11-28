@@ -1,9 +1,11 @@
 let s = "abc"
-write(toint(s))
-write(tofloat(s))
+try { write(toint(s)) } catch (e) { write(e.type) }
+try { write(tofloat(s)) } catch (e) { write(e.type) }
 let e = ""
-write(toint(e))
-write(tofloat(e))
+try { write(toint(e)) } catch (e) { write(e.type) }
+try { write(tofloat(e)) } catch (e) { write(e.type) }
 let n = "12x"
-write(toint(n))
-write(tofloat(n))
+try { write(toint(n)) } catch (e) { write(e.type) }
+try { write(tofloat(n)) } catch (e) { write(e.type) }
+write(toint("12"))
+write(tofloat("12.5"))

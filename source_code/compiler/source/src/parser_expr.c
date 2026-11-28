@@ -476,8 +476,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                 {
                     char *lt = ltng_strdup(left ? left : ""); char *rt = ltng_strdup(right ? right : "");
                     if(lt&&rt){ trim_c_expr(lt); trim_c_expr(rt);
-                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll("));
-                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll("));
+                    int lnumh = (strstr(lt,"_ltng_from_double(")||strstr(lt,"_ltng_from_int(")||strstr(lt,"_ltng_ad(")||strstr(lt,"_LTNG_FMOD_D(")||strstr(lt,"_LTNG_DIV_D(")||strstr(lt,"atof(")||strstr(lt,"atoi(")||strstr(lt,"atoll(")||strstr(lt,"_ltng_strict_toint(")||strstr(lt,"_ltng_strict_tofloat("));
+                    int rnumh = (strstr(rt,"_ltng_from_double(")||strstr(rt,"_ltng_from_int(")||strstr(rt,"_ltng_ad(")||strstr(rt,"_LTNG_FMOD_D(")||strstr(rt,"_LTNG_DIV_D(")||strstr(rt,"atof(")||strstr(rt,"atoi(")||strstr(rt,"atoll(")||strstr(rt,"_ltng_strict_toint(")||strstr(rt,"_ltng_strict_tofloat("));
                     const char *lq2=lt; while(*lq2==' '||*lq2=='\t') lq2++; const char *rq2=rt; while(*rq2==' '||*rq2=='\t') rq2++;
                     int lnl = (*lq2=='-'||*lq2=='+'||isdigit((unsigned char)*lq2));
                     int rnl = (*rq2=='-'||*rq2=='+'||isdigit((unsigned char)*rq2));
@@ -526,8 +526,8 @@ void normalize_or_expr(char **bufp, int *cap, int array_access_used, SymbolTable
                     if (ln) { char *_t=_ltng_cfmt("\"%s\"", lp); if(_t){free(lq); lq=_t;} } else { char *_t=ltng_strdup(left?left:""); if(_t){free(lq); lq=_t;} }
                     if (rn) { char *_t=_ltng_cfmt("\"%s\"", rp); if(_t){free(rq); rq=_t;} } else { char *_t=ltng_strdup(right?right:""); if(_t){free(rq); rq=_t;} }
                     {
-                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll("));
-                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll("));
+                        int lnumh = (strstr(left,"_ltng_from_double(")||strstr(left,"_ltng_from_int(")||strstr(left,"_ltng_ad(")||strstr(left,"_LTNG_FMOD_D(")||strstr(left,"_LTNG_DIV_D(")||strstr(left,"atof(")||strstr(left,"atoi(")||strstr(left,"atoll(")||strstr(left,"_ltng_strict_toint(")||strstr(left,"_ltng_strict_tofloat("));
+                        int rnumh = (strstr(right,"_ltng_from_double(")||strstr(right,"_ltng_from_int(")||strstr(right,"_ltng_ad(")||strstr(right,"_LTNG_FMOD_D(")||strstr(right,"_LTNG_DIV_D(")||strstr(right,"atof(")||strstr(right,"atoi(")||strstr(right,"atoll(")||strstr(right,"_ltng_strict_toint(")||strstr(right,"_ltng_strict_tofloat("));
                         /* Numeric expression compared with quoted numeric string literal: compare numerically */
                         int lq_qnumlit = 0, rq_qnumlit = 0;
                         {
@@ -764,9 +764,12 @@ void normalize_mixed_expr(char **bufp, int *cap, int array_access_used, SymbolTa
             if (ok) {
                 char *h = ltng_strdup(helperside); if (!h) h = ltng_strdup("");
                 trim_c_expr(h);
+                int h_numeric = (strstr(h,"_ltng_strict_toint(")!=NULL || strstr(h,"_ltng_strict_tofloat(")!=NULL ||
+                                 strstr(h,"_LTNG_DIV_LL(")!=NULL || strstr(h,"_LTNG_MOD_LL(")!=NULL ||
+                                 strstr(h,"_LTNG_DIV_D(")!=NULL || strstr(h,"_LTNG_FMOD_D(")!=NULL);
                 char *repl = helper_left
-                    ? _ltng_cfmt("((double)atof(%s) %s (%s))", h, is_eq?"==":"!=", numside)
-                    : _ltng_cfmt("((%s) %s (double)atof(%s))", numside, is_eq?"==":"!=", h);
+                    ? _ltng_cfmt(h_numeric ? "((double)(%s) %s (%s))" : "((double)atof(%s) %s (%s))", h, is_eq?"==":"!=", numside)
+                    : _ltng_cfmt(h_numeric ? "((%s) %s (double)(%s))" : "((%s) %s (double)atof(%s))", numside, is_eq?"==":"!=", h);
                 if (repl) {
                     int prefix = (int)(p - *bufp);
                     char *newbuf = _ltng_cfmt("%.*s%s%s", prefix, *bufp, repl, endcmp);
@@ -1383,7 +1386,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         } else if (inner_is_cnum) {
                             CE_SNPRINTF_ADD( "(long long)(%s)", inner_expr);
                         } else {
-                            CE_SNPRINTF_ADD( "(long long)atoll(%s)", inner_expr);
+                            CE_SNPRINTF_ADD( "_ltng_strict_toint(%s, %d, %d)", inner_expr, tok.line, tok.col);
                         }
                         if (!type_locked) {
                             if (result_type == TYPE_FLOAT) { /* keep float promotion */ }
@@ -1404,7 +1407,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         } else if (inner_is_cnum) {
                             CE_SNPRINTF_ADD( "(double)(%s)", inner_expr);
                         } else {
-                            CE_SNPRINTF_ADD( "(double)atof(%s)", inner_expr);
+                            CE_SNPRINTF_ADD( "_ltng_strict_tofloat(%s, %d, %d)", inner_expr, tok.line, tok.col);
                         }
                         if (!type_locked) result_type = TYPE_FLOAT;
                     } else if (_ck_str) {
