@@ -1,0 +1,6 @@
+let s = " 42 "
+write(toint(s))
+write(tofloat(s))
+let b2 = "  true  "
+write(toint(b2))
+write(tofloat(b2))
