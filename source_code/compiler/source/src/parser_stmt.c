@@ -5936,6 +5936,39 @@ ASTNode *parse_call_node(Lexer *lexer, SymbolTable *table, const char *fname_tok
                     }
                     if (!args) args = alast = an; else { alast->next = an; alast = an; }
                 }
+            } else if (at.type == TOKEN_LBRACKET) {
+                /* Array literal argument: parse as temp array and pass as ah_pack */
+                lexer_next(lexer); /* consume [ */
+                static int _arg_arr = 0; _arg_arr++;
+                char *tmpname = _ltng_cfmt("__arg_arr_%d", _arg_arr);
+                char *tmpm = mangle_name_alloc(tmpname);
+                free(tmpname);
+                ASTNode *arr = create_node(NODE_ARRAY_LIT, tmpm, "");
+                if (!parse_array_literal(lexer, table, arr)) {
+                    error_state_add(parser_errors, at.line, at.col, "Invalid array literal argument");
+                    free(tmpm);
+                    skip_to_newline(lexer);
+                    break;
+                }
+                symbol_table_add(table, tmpm, TYPE_ARRAY);
+                symbol_table_set_array_dims(table, tmpm, arr->array_dim_count, arr->array_dims);
+                symbol_table_set_array_elem_type(table, tmpm, arr->array_elem_type);
+                const char *cname = symbol_table_get_cname(table, tmpm);
+                ASTNode *letn = create_node(NODE_LET, cname, arr->value);
+                letn->var_type = TYPE_ARRAY;
+                letn->array_dim_count = arr->array_dim_count;
+                letn->array_dims = malloc(arr->array_dim_count * sizeof(int));
+                for (int d = 0; d < arr->array_dim_count; d++) letn->array_dims[d] = arr->array_dims[d];
+                letn->array_elem_count = arr->array_elem_count;
+                letn->array_elem_type = arr->array_elem_type;
+                letn->is_expr = 0;
+                emit(letn);
+                ASTNode *an = create_node(NODE_PARAM, "", cname);
+                an->var_type = TYPE_ARRAY;
+                an->is_variable = 1;
+                an->is_expr = 1;
+                free(tmpm);
+                if (!args) args = alast = an; else { alast->next = an; alast = an; }
             } else {
                 /* Parse as expression (or named arg value) */
                 char *aexpr = (char*)malloc(65536); if(aexpr) aexpr[0]=0;

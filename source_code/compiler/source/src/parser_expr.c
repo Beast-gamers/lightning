@@ -1547,10 +1547,22 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                             CE_SNPRINTF_ADD( "%s", cexpr);
                             if (!type_locked) result_type = TYPE_STRING;
                         } else if (crt == TYPE_ARRAY) {
-                            CE_SNPRINTF_ADD(
-                                "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ for(int _i=0;_i<__ah->len;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__ah->d[_i]?__ah->d[_i]:\"\"); } _ltng_ah_free(__ah); } free(__ahv); __r; })",
-                                cexpr);
-                            if (!type_locked) result_type = TYPE_STRING;
+                            if (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+                                lexer_next(lexer); /* [ */
+                                char *idxe = (char*)malloc(65536); if(idxe) idxe[0]=0;
+                                collect_expression(lexer, table, &idxe, &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                                if (lexer_peek(lexer).type == TOKEN_RBRACKET) lexer_next(lexer);
+                                CE_SNPRINTF_ADD(
+                                    "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ int __i=(int)(%s); if(__i>0) __i--; else if(__i<0) __i=__ah->len+__i; if(__i>=0&&__i<__ah->len) _ltng_ds_set(&__r,__ah->d[__i]?__ah->d[__i]:\"\"); _ltng_ah_free(__ah); } free(__ahv); __r; })",
+                                    cexpr, idxe);
+                                free(idxe);
+                                if (!type_locked) result_type = TYPE_STRING;
+                            } else {
+                                CE_SNPRINTF_ADD(
+                                    "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ for(int _i=0;_i<__ah->len;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__ah->d[_i]?__ah->d[_i]:\"\"); } _ltng_ah_free(__ah); } free(__ahv); __r; })",
+                                    cexpr);
+                                if (!type_locked) result_type = TYPE_STRING;
+                            }
                         } else {
                             CE_SNPRINTF_ADD( "atof(%s)", cexpr);
                             if (!type_locked) result_type = TYPE_FLOAT;
@@ -1602,10 +1614,22 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 CE_SNPRINTF_ADD( "%s", cexpr);
                                 if (!type_locked) result_type = TYPE_STRING;
                             } else if (irt == TYPE_ARRAY) {
-                                CE_SNPRINTF_ADD(
-                                    "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ for(int _i=0;_i<__ah->len;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__ah->d[_i]?__ah->d[_i]:\"\"); } _ltng_ah_free(__ah); } free(__ahv); __r; })",
-                                    cexpr);
-                                if (!type_locked) result_type = TYPE_STRING;
+                                if (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+                                    lexer_next(lexer); /* [ */
+                                    char *idxe = (char*)malloc(65536); if(idxe) idxe[0]=0;
+                                    collect_expression(lexer, table, &idxe, &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                                    if (lexer_peek(lexer).type == TOKEN_RBRACKET) lexer_next(lexer);
+                                    CE_SNPRINTF_ADD(
+                                        "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ int __i=(int)(%s); if(__i>0) __i--; else if(__i<0) __i=__ah->len+__i; if(__i>=0&&__i<__ah->len) _ltng_ds_set(&__r,__ah->d[__i]?__ah->d[__i]:\"\"); _ltng_ah_free(__ah); } free(__ahv); __r; })",
+                                        cexpr, idxe);
+                                    free(idxe);
+                                    if (!type_locked) result_type = TYPE_STRING;
+                                } else {
+                                    CE_SNPRINTF_ADD(
+                                        "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ for(int _i=0;_i<__ah->len;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__ah->d[_i]?__ah->d[_i]:\"\"); } _ltng_ah_free(__ah); } free(__ahv); __r; })",
+                                        cexpr);
+                                    if (!type_locked) result_type = TYPE_STRING;
+                                }
                             } else {
                                 CE_SNPRINTF_ADD( "atof(%s)", cexpr);
                                 if (!type_locked) result_type = TYPE_FLOAT;
@@ -1701,10 +1725,22 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 CE_SNPRINTF_ADD( "%s", cexpr);
                                 if (!type_locked) result_type = TYPE_STRING;
                             } else if (crt == TYPE_ARRAY) {
-                                CE_SNPRINTF_ADD(
-                                    "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ for(int _i=0;_i<__ah->len;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__ah->d[_i]?__ah->d[_i]:\"\"); } _ltng_ah_free(__ah); } free(__ahv); __r; })",
-                                    cexpr);
-                                if (!type_locked) result_type = TYPE_STRING;
+                                if (lexer_peek(lexer).type == TOKEN_LBRACKET) {
+                                    lexer_next(lexer); /* [ */
+                                    char *idxe = (char*)malloc(65536); if(idxe) idxe[0]=0;
+                                    collect_expression(lexer, table, &idxe, &(int){65536}, 1, 0, NULL, NULL, NULL, NULL);
+                                    if (lexer_peek(lexer).type == TOKEN_RBRACKET) lexer_next(lexer);
+                                    CE_SNPRINTF_ADD(
+                                        "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ int __i=(int)(%s); if(__i>0) __i--; else if(__i<0) __i=__ah->len+__i; if(__i>=0&&__i<__ah->len) _ltng_ds_set(&__r,__ah->d[__i]?__ah->d[__i]:\"\"); _ltng_ah_free(__ah); } free(__ahv); __r; })",
+                                        cexpr, idxe);
+                                    free(idxe);
+                                    if (!type_locked) result_type = TYPE_STRING;
+                                } else {
+                                    CE_SNPRINTF_ADD(
+                                        "({ char *__ahv=_ltng_ds_new(%s); _ltng_ah *__ah=_ltng_ah_unpack(__ahv); char *__r=_ltng_ds_new(\"\"); if(__ah){ for(int _i=0;_i<__ah->len;_i++){ if(_i) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__ah->d[_i]?__ah->d[_i]:\"\"); } _ltng_ah_free(__ah); } free(__ahv); __r; })",
+                                        cexpr);
+                                    if (!type_locked) result_type = TYPE_STRING;
+                                }
                             } else {
                                 CE_SNPRINTF_ADD( "atof(%s)", cexpr);
                                 if (!type_locked) result_type = TYPE_FLOAT;

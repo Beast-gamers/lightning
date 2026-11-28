@@ -1,0 +1,12 @@
+function take(a) {
+    write(a.length)
+    write(a[1])
+}
+take([1, 2, 3])
+
+function make() {
+    let a = [10, 20, 30]
+    return a
+}
+write(make()[1])
+write(make()[3])
