@@ -597,22 +597,52 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
     if (pos < 0) { free(tmp); return 0; }
 
     size_t tl = strlen(t);
-    char *lhs_raw = (char*)malloc(tl + 1);
-    char *rhs_raw = (char*)malloc(tl + 1);
-    if(!lhs_raw||!rhs_raw){ free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
-    int lp = pos; if (lp < 0) lp = 0;
-    memcpy(lhs_raw, t, (size_t)lp); lhs_raw[lp]=0;
-    memcpy(rhs_raw, t+pos+1, tl - (size_t)(pos+1)); rhs_raw[tl - (size_t)(pos+1)] = 0;
+
+    /* Find RHS operand boundary: stop at top-level operator with precedence <= * / % */
+    int rhs_end = (int)tl;
+    {
+        int d=0, in_s=0, in_c=0, esc2=0;
+        for (int i = pos + 1; t[i]; i++) {
+            char c = t[i];
+            if (in_s) { if (esc2) esc2=0; else if (c=='\\') esc2=1; else if (c=='"') in_s=0; continue; }
+            if (in_c) { if (esc2) esc2=0; else if (c=='\\') esc2=1; else if (c=='\'') in_c=0; continue; }
+            if (c=='"') { in_s=1; continue; }
+            if (c=='\'') { in_c=1; continue; }
+            if (c=='('||c=='['||c=='{') { d++; continue; }
+            if (c==')'||c==']'||c=='}') { if (d>0) d--; continue; }
+            if (d != 0) continue;
+            /* at top level: stop at operators with precedence <= * / % */
+            if (c=='+' || c=='-') {
+                /* skip unary +/- */
+                int k=i-1; while (k>pos && (t[k]==' '||t[k]=='\t')) k--;
+                char prev = (k>pos) ? t[k] : 0;
+                int unary = (!prev || prev=='('||prev=='['||prev==','||prev=='='||prev=='?'||prev==':'||
+                             prev=='!'||prev=='<'||prev=='>'||prev=='&'||prev=='|'||prev=='^'||prev=='%'||
+                             prev=='+'||prev=='-'||prev=='*'||prev=='/');
+                if (!unary) { rhs_end = i; break; }
+            } else if (c=='*' || c=='/' || c=='%') { rhs_end = i; break; }
+            else if (c=='=' || c=='!' || c=='<' || c=='>' || c=='&' || c=='|' || c=='^' || c=='?' || c==':') { rhs_end = i; break; }
+            else if (c==',') { rhs_end = i; break; }
+        }
+    }
+
+    char *lhs_raw = (char*)malloc((size_t)pos + 1);
+    char *rhs_raw = (char*)malloc((size_t)(rhs_end - pos - 1) + 1);
+    char *rhs_tail = (char*)malloc(tl - (size_t)rhs_end + 1);
+    if(!lhs_raw||!rhs_raw||!rhs_tail){ free(lhs_raw); free(rhs_raw); free(rhs_tail); free(tmp); return 0; }
+    memcpy(lhs_raw, t, (size_t)pos); lhs_raw[pos]=0;
+    memcpy(rhs_raw, t+pos+1, (size_t)(rhs_end-pos-1)); rhs_raw[rhs_end-pos-1]=0;
+    memcpy(rhs_tail, t+rhs_end, tl-(size_t)rhs_end); rhs_tail[tl-rhs_end]=0;
 
     /* trim lhs/rhs */
     char *a=lhs_raw; while(*a==' '||*a=='\t') a++; size_t la=strlen(a); while(la>0&&(a[la-1]==' '||a[la-1]=='\t')) a[--la]=0;
     char *b=rhs_raw; while(*b==' '||*b=='\t') b++; size_t lb=strlen(b); while(lb>0&&(b[lb-1]==' '||b[lb-1]=='\t')) b[--lb]=0;
-    if (!*a || !*b) { free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
+    if (!*a || !*b) { free(lhs_raw); free(rhs_raw); free(rhs_tail); free(tmp); return 0; }
 
     /* Recursively rewrite lhs to protect inner left-associative ops (e.g. a/b/c). */
     size_t lhs_cap = outsz > 0 ? outsz : (strlen(a) + 64);
     char *lhs_rw = (char*)malloc(lhs_cap);
-    if(!lhs_rw){ free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
+    if(!lhs_rw){ free(lhs_raw); free(rhs_raw); free(rhs_tail); free(tmp); return 0; }
     int lhs_changed = cg_rewrite_divmod(lhs_rw, lhs_cap, a, is_float, line, col);
     const char *lhs_final = lhs_changed ? lhs_rw : a;
 
@@ -620,10 +650,22 @@ static int cg_rewrite_divmod(char *out, size_t outsz, const char *expr, int is_f
         const char *_fmt = is_float ? (op=='/'?"_LTNG_DIV_D(%s,%s,%d,%d)":"_LTNG_FMOD_D(%s,%s,%d,%d)")
                                      : (op=='/'?"_LTNG_DIV_LL(%s,%s,%d,%d)":"_LTNG_MOD_LL(%s,%s,%d,%d)");
         int _n = snprintf(NULL,0,_fmt, lhs_final,b,line,col);
-        if (_n < 0 || (size_t)_n >= outsz) { free(lhs_rw); free(lhs_raw); free(rhs_raw); free(tmp); return 0; }
+        size_t tail_len = strlen(rhs_tail);
+        if (_n < 0 || (size_t)_n + tail_len >= outsz) { free(lhs_rw); free(lhs_raw); free(rhs_raw); free(rhs_tail); free(tmp); return 0; }
         snprintf(out,outsz,_fmt, lhs_final,b,line,col);
+        strcat(out, rhs_tail);
     }
-    free(lhs_rw); free(lhs_raw); free(rhs_raw); free(tmp);
+    int _tail_has = cg_expr_has_divmod(rhs_tail);
+    free(lhs_rw); free(lhs_raw); free(rhs_raw); free(rhs_tail); free(tmp);
+    if (_tail_has) {
+        char *_again = (char*)malloc(outsz);
+        if (_again) {
+            if (cg_rewrite_divmod(_again, outsz, out, is_float, line, col)) {
+                snprintf(out, outsz, "%s", _again);
+            }
+            free(_again);
+        }
+    }
     return 1;
 }
 
@@ -2317,7 +2359,7 @@ void codegen(Program *program, SymbolTable *table, FILE *out, ErrorState *errors
     fprintf(out, "static int _ltng_is_boolstr(const char *s){ if(!s) return 0; const char *e=s+strlen(s); while(e>s && (e[-1]==' '||e[-1]=='\\t'||e[-1]=='\\n'||e[-1]=='\\r')) e--; size_t n=(size_t)(e-s); return (n==4&&strncmp(s,\"true\",4)==0)||(n==5&&strncmp(s,\"false\",5)==0)||(n==1&&(*s=='t'||*s=='f')); }\n");
     fprintf(out, "static long long _ltng_strict_toint(const char *s, int line, int col){ const char *t=_ltng_trim_ws(s?s:\"\"); if(_ltng_is_boolstr(t)) { char c=*t; return (c=='t')?1:0; } if(!_ltng_is_valid_numstr(t,1)){ char *m=_ltng_ds_fmt(\"ValueError: cannot convert \\\"%%s\\\" to int\", s?s:\"\"); _ltng_throw_value(\"ValueError\", m, line, col); free(m); } return (long long)atoll(t); }\n");
     fprintf(out, "static double _ltng_strict_tofloat(const char *s, int line, int col){ const char *t=_ltng_trim_ws(s?s:\"\"); if(_ltng_is_boolstr(t)) { char c=*t; return (c=='t')?1.0:0.0; } if(!_ltng_is_valid_numstr(t,1)){ char *m=_ltng_ds_fmt(\"ValueError: cannot convert \\\"%%s\\\" to float\", s?s:\"\"); _ltng_throw_value(\"ValueError\", m, line, col); free(m); } return atof(t); }\n");
-    fprintf(out, "static char *_ltng_strict_tochar(const char *s, int line, int col){ static char *b[32]={0}; static int i; i=(i+1)%%32; if(!s) s=\"\"; if(_ltng_is_num_str(s)){ int cv=(int)atoll(s); char tmp[2]={(char)cv,0}; _ltng_ds_set(&b[i],tmp); return b[i]; } if(!s[0]){ char *m=_ltng_ds_fmt(\"ValueError: cannot convert empty string to char\"); _ltng_throw_value(\"ValueError\", m, line, col); free(m); } char tmp[2]={s[0],0}; _ltng_ds_set(&b[i],tmp); return b[i]; }\n");
+    fprintf(out, "static char *_ltng_strict_tochar(const char *s, int line, int col){ static char *b[32]={0}; static int i; i=(i+1)%%32; const char *t=_ltng_trim_ws(s?s:\"\"); if(_ltng_is_valid_numstr(t,0)){ int cv=(int)atoll(t); char tmp[2]={(char)cv,0}; _ltng_ds_set(&b[i],tmp); return b[i]; } if(!t[0]){ char *m=_ltng_ds_fmt(\"ValueError: cannot convert empty string to char\"); _ltng_throw_value(\"ValueError\", m, line, col); free(m); } char tmp[2]={t[0],0}; _ltng_ds_set(&b[i],tmp); return b[i]; }\n");
     fprintf(out, "static char *_ltng_add_sn(const char *a, const char *b){ static char *buf[32]={0}; static int i=0; i=(i+1)%%32; if(_ltng_is_num_str(a)&&_ltng_is_num_str(b)){ double na=atof(a?a:\"0\"),nb=atof(b?b:\"0\"); _ltng_ds_setfmt(&buf[i],\"%%g\",na+nb); } else { _ltng_ds_setfmt(&buf[i],\"%%s%%s\",a?a:\"\",b?b:\"\"); } return buf[i]; }\n");
     fprintf(out, "static long long _ltng_div0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Division by zero\", line, col); return 0; }\n");
     fprintf(out, "static long long _ltng_mod0_ll(int line, int col){ _ltng_throw_value(\"DivisionError\", \"Modulo by zero\", line, col); return 0; }\n");

@@ -28,6 +28,10 @@ All notable changes to the Lightning project in this development effort are docu
 - Phase 1 Step 4 completed: default-typed parameters now drive body/expression typing without locking params; call results use pass-through call-site specialization for direct, nested/chained, method, sole-call, argument, and first-class/indirect calls; `typeof` uses the same specialized call-result typing. Homogeneous array element assignment preserves/coerces to the inferred element dtype instead of de-typing the whole array; compound element assignment is supported.
 
 ### Fixed
+- `cg_rewrite_divmod` now respects operator precedence for RHS operand boundaries and rewrites remaining tail div/mod ops, fixing miscompiled expressions like `10 / (b-c) + 1`. Added `development/tests/runtime/phase1_divmod_unusual_forms.ltng` (+ `.expected`).
+- Strict runtime `tochar` trims whitespace and accepts whitespace-padded numeric char codes. Updated `development/tests/runtime/phase1_tochar_strict.ltng`.
+- Typed-catch parse diagnostic now includes the unexpected token value. Added `development/tests/runtime/phase4_catch_ordering.ltng` (+ `.expected`); documented catch-all ordering in limitations.
+- `tobool`/string truthiness now trims whitespace and matches `0/f/false` case-insensitively (runtime and literal conversion paths). Added `development/tests/runtime/phase1_tobool_case_ws.ltng` (+ `.expected`).
 - Strict runtime `tochar` now throws `ValueError` on empty string input (runtime/compiled conversion path). Added `development/tests/runtime/phase1_tochar_strict.ltng` (+ `.expected`).
 - Strict runtime `toint`/`tofloat` accept surrounding whitespace and whitespace-padded bool strings. Added `development/tests/runtime/phase1_conversion_ws.ltng` (+ `.expected`).
 - Strict runtime `toint`/`tofloat` now accept bool strings (`true/false/t/f`) in variable/complex expression conversions. Added `development/tests/runtime/phase1_conversion_bool_vars.ltng` (+ `.expected`).

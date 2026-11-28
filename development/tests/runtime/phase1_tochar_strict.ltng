@@ -4,3 +4,7 @@ let s = "ab"
 write(tochar(s))
 let n = "65"
 write(tochar(n))
+let ws = " 65 "
+write(tochar(ws))
+let ws2 = " ab "
+write(tochar(ws2))

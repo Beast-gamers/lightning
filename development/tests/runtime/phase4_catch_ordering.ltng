@@ -1,0 +1,7 @@
+try {
+    throw error("A", "a")
+} catch (e) {
+    write("all:" + e.type)
+} catch (A e) {
+    write("typed")
+}

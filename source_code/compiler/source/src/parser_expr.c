@@ -829,8 +829,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
     int comparison_or_logical = 0;
     int depth_content_start[64];
     int depth_in_str_concat[64]; /* 1 if this paren depth is inside an outer string-concat context */
+    int depth_divmod_wrap[64];  /* 0=none,1=NZDIV_LL,2=NZMOD_LL,3=NZDIV_D,4=NZMOD_D */
+    int depth_divmod_line[64], depth_divmod_col[64];
     depth_content_start[0] = 0;
     depth_in_str_concat[0] = 0;
+    depth_divmod_wrap[0] = 0; depth_divmod_line[0] = 0; depth_divmod_col[0] = 0;
 
     while (lexer->current < lexer->count) {
         Token tok = lexer_peek(lexer);
@@ -2583,15 +2586,38 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                 break;
             case TOKEN_LPAREN:
                 pending_numeric_unary = 0;
-                CE_SNPRINTF_ADD( "(");
-                paren_depth++;
-                if (paren_depth < 64) {
-                    depth_content_start[paren_depth] = pos;
-                    depth_in_str_concat[paren_depth] = (has_string_concat || result_type == TYPE_STRING) ? 1 : 0;
+                if (pending_divmod) {
+                    int _w = (result_type == TYPE_FLOAT) ? (pending_divmod_is_mod ? 4 : 3) : (pending_divmod_is_mod ? 2 : 1);
+                    static const char *_wn[] = {"", "_LTNG_NZDIV_LL", "_LTNG_NZMOD_LL", "_LTNG_NZDIV_D", "_LTNG_NZMOD_D"};
+                    CE_SNPRINTF_ADD( "(%s(", _wn[_w]);
+                    paren_depth++;
+                    if (paren_depth < 64) {
+                        depth_content_start[paren_depth] = pos;
+                        depth_in_str_concat[paren_depth] = (has_string_concat || result_type == TYPE_STRING) ? 1 : 0;
+                        depth_divmod_wrap[paren_depth] = _w;
+                        depth_divmod_line[paren_depth] = pending_divmod_line;
+                        depth_divmod_col[paren_depth] = pending_divmod_col;
+                    }
+                    pending_divmod = 0; pending_mod_op_pos = -1;
+                } else {
+                    CE_SNPRINTF_ADD( "(");
+                    paren_depth++;
+                    if (paren_depth < 64) {
+                        depth_content_start[paren_depth] = pos;
+                        depth_in_str_concat[paren_depth] = (has_string_concat || result_type == TYPE_STRING) ? 1 : 0;
+                        depth_divmod_wrap[paren_depth] = 0;
+                    }
                 }
                 break;
             case TOKEN_RPAREN:
-                CE_SNPRINTF_ADD( ")");
+                {
+                    int _dw = (paren_depth > 0 && paren_depth < 64) ? depth_divmod_wrap[paren_depth] : 0;
+                    if (_dw) {
+                        CE_SNPRINTF_ADD( ",%d,%d))", depth_divmod_line[paren_depth], depth_divmod_col[paren_depth]);
+                    } else {
+                        CE_SNPRINTF_ADD( ")");
+                    }
+                }
                 if (paren_depth > 0) {
                     int _was_str_concat = (paren_depth < 64) ? depth_in_str_concat[paren_depth] : 0;
                     paren_depth--;

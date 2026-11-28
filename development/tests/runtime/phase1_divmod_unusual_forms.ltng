@@ -1,0 +1,13 @@
+let b = 1
+let c = 1
+try { write(10 / (b - c) + 1) } catch (e) { write(e.type) }
+try {
+    let arr = [1,2,3]
+    write(arr[10 / (b-c)])
+} catch (e) { write(e.type) }
+function divtest(x, y) { return x / y }
+try { write(divtest(10, b-c)) } catch (e) { write(e.type) }
+let x = 10
+let y = 2
+let z = 0
+try { write(x / y + x / (z + 0)) } catch (e) { write(e.type) }

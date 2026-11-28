@@ -4706,8 +4706,9 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
             lexer_next(lexer); /* ( */
             Token first = lexer_next(lexer);
             if (!token_is_name(first) || is_ltng_reserved(first.value)) {
-                error_state_add(parser_errors, first.line, first.col,
-                    "Expected catch variable name");
+                char *msg = _ltng_cfmt("Expected catch variable name, got '%s'", first.value ? first.value : "");
+                error_state_add(parser_errors, first.line, first.col, msg ? msg : "Expected catch variable name");
+                free(msg);
             } else {
                 Token second = lexer_peek(lexer);
                 if (token_is_name(second) && !is_ltng_reserved(second.value) && second.type != TOKEN_RPAREN) {
@@ -4730,8 +4731,9 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
             /* catch e { ... } */
             Token var = lexer_next(lexer);
             if (is_ltng_reserved(var.value)) {
-                error_state_add(parser_errors, var.line, var.col,
-                    "Expected catch variable name");
+                char *msg = _ltng_cfmt("Expected catch variable name, got '%s'", var.value ? var.value : "");
+                error_state_add(parser_errors, var.line, var.col, msg ? msg : "Expected catch variable name");
+                free(msg);
             } else {
                 free(catch_var_src); catch_var_src = ltng_strdup(var.value);
                 has_var = 1;
