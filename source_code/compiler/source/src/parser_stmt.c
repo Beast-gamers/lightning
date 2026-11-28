@@ -4711,7 +4711,43 @@ ASTNode *parse_try(Lexer *lexer, SymbolTable *table) {
                 free(msg);
             } else {
                 Token second = lexer_peek(lexer);
-                if (token_is_name(second) && !is_ltng_reserved(second.value) && second.type != TOKEN_RPAREN) {
+                if (second.type == TOKEN_COMMA) {
+                    /* catch (TypeA, TypeB e) */
+                    char *types = ltng_strdup(first.value);
+                    while (lexer_peek(lexer).type == TOKEN_COMMA) {
+                        lexer_next(lexer); /* , */
+                        Token tn = lexer_next(lexer);
+                        if (!token_is_name(tn) || is_ltng_reserved(tn.value)) {
+                            error_state_add(parser_errors, tn.line, tn.col, "Expected catch type name");
+                            break;
+                        }
+                        if (lexer_peek(lexer).type == TOKEN_RPAREN) {
+                            /* last ident before RPAREN is var name */
+                            free(catch_var_src); catch_var_src = ltng_strdup(tn.value);
+                            has_var = 1;
+                            break;
+                        }
+                        if (lexer_peek(lexer).type == TOKEN_COMMA) {
+                            /* another type */
+                            char *nt = _ltng_cfmt("%s|%s", types, tn.value);
+                            free(types); types = nt ? nt : ltng_strdup("");
+                            continue;
+                        }
+                        /* next token is not comma/rparen - tn is a type, and next should be var */
+                        {
+                            char *nt = _ltng_cfmt("%s|%s", types, tn.value);
+                            free(types); types = nt ? nt : ltng_strdup("");
+                        }
+                        Token vn = lexer_peek(lexer);
+                        if (token_is_name(vn) && !is_ltng_reserved(vn.value) && vn.type != TOKEN_RPAREN) {
+                            lexer_next(lexer);
+                            free(catch_var_src); catch_var_src = ltng_strdup(vn.value);
+                            has_var = 1;
+                        }
+                        break;
+                    }
+                    { free(cn->catch_type); cn->catch_type = types; }
+                } else if (token_is_name(second) && !is_ltng_reserved(second.value) && second.type != TOKEN_RPAREN) {
                     /* catch (Type e) */
                     lexer_next(lexer);
                     { free(cn->catch_type); cn->catch_type = ltng_strdup(first.value); }

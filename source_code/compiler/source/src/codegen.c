@@ -1583,7 +1583,21 @@ static void codegen_try(FILE *out, ASTNode *node, SymbolTable *table, int indent
             ASTNode *cbind = old_style ? node : cc;
 
             if (has_type) {
-                pad(out, indent + 2); fprintf(out, "if (strcmp(_ltng_exc_s(_ltng_exc_type), \"%s\") == 0) {\n", ct);
+                pad(out, indent + 2); fprintf(out, "if (");
+                {
+                    const char *p = ct;
+                    int first_t = 1;
+                    while (*p) {
+                        const char *bar = strchr(p, '|');
+                        int len = bar ? (int)(bar - p) : (int)strlen(p);
+                        if (!first_t) fprintf(out, " || ");
+                        fprintf(out, "strcmp(_ltng_exc_s(_ltng_exc_type), \"%.*s\") == 0", len, p);
+                        first_t = 0;
+                        if (!bar) break;
+                        p = bar + 1;
+                    }
+                }
+                fprintf(out, ") {\n");
             } else {
                 pad(out, indent + 2); fprintf(out, "{\n");
             }

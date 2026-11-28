@@ -13,7 +13,7 @@
 8. **Sole-call typing inference gaps (partial)** - Reduce conservative string fallback in more sole-call/propagation paths without breaking mixed/unknown cases.
 9. **Copy/slice general expression-context gaps (partial)** - Expand where copy/slice results can be used, but still within non-first-class array-value limits.
 10. **Base-param UDM array-receiver detection gaps (partial)** - Improve detection/handling for `base` array usage patterns not caught by current pre-scan.
-11. **Exception model ergonomics** - e.g., better catch-type matching utilities/patterns or clearer runtime error typing; still without inheritance/user-defined exception classes.
+11. [x] **Exception model ergonomics** - e.g., better catch-type matching utilities/patterns or clearer runtime error typing; still without inheritance/user-defined exception classes.
 
 ## Tier 3 — Hard (cross-cutting semantics/runtime)
 12. **`+` add/concat ambiguity** - Making mixed string/numeric `+` deterministic and intuitive without breaking legacy behavior is semantically risky.

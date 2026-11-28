@@ -1,0 +1,13 @@
+try {
+    throw error("B", "x")
+} catch (A, B e) {
+    write(e.type)
+}
+
+try {
+    throw error("C", "x")
+} catch (A, B e) {
+    write("bad")
+} catch (e) {
+    write(e.type)
+}
