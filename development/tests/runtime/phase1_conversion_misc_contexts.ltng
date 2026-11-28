@@ -1,0 +1,14 @@
+let s = "hello"
+write(tostring(123))
+write(tobool("2"))
+write(tochar("ab"))
+function conv_s(x) { return tostring(x) }
+function conv_b(x) { return tobool(x) }
+function conv_c(x) { return tochar(x) }
+write(conv_s(45))
+write(conv_b("0"))
+write(conv_c("z"))
+let arr = [tostring(1), tochar("xy"), tobool("")]
+write(arr[1])
+write(arr[2])
+write(arr[3])
