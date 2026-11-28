@@ -1439,19 +1439,24 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                         } else if (is_simple_str_lit) {
                             int bv = 1;
                             int slen = lit_end - lit_start;
+                            int ss = lit_start, se = lit_end;
+                            while (ss < se && (inner[ss]==' '||inner[ss]=='\t')) ss++;
+                            while (se > ss && (inner[se-1]==' '||inner[se-1]=='\t')) se--;
+                            slen = se - ss;
                             if (slen == 0) bv = 0;
-                            else if (slen == 1 && inner[lit_start] == '0') bv = 0;
-                            else if (slen == 1 && inner[lit_start] == 'f') bv = 0;
-                            else if (slen == 5 && memcmp(inner + lit_start, "false", 5) == 0) bv = 0;
+                            else if (slen == 1 && inner[ss] == '0') bv = 0;
+                            else if (slen == 1 && (inner[ss] == 'f' || inner[ss] == 'F')) bv = 0;
+                            else if (slen == 5) {
+                                char l5[6]; for(int i=0;i<5;i++){ char c=inner[ss+i]; l5[i]=(c>='A'&&c<='Z')?(char)(c-'A'+'a'):c; } l5[5]=0;
+                                if (strcmp(l5,"false")==0) bv = 0;
+                            }
                             CE_SNPRINTF_ADD( "%d", bv);
                         } else if (inner_is_cnum && inner_ctype == TYPE_BOOL) {
                             CE_SNPRINTF_ADD( "((%s)?1:0)", inner_expr);
                         } else if (inner_is_cnum) {
                             CE_SNPRINTF_ADD( "((%s)!=0?1:0)", inner_expr);
                         } else {
-                            CE_SNPRINTF_ADD(
-                                "((%s)[0]!='\\0'&&strcmp(%s,\"0\")!=0&&strcmp(%s,\"false\")!=0&&strcmp(%s,\"f\")!=0?1:0)",
-                                inner_expr, inner_expr, inner_expr, inner_expr);
+                            CE_SNPRINTF_ADD("(_ltng_str_truthy(%s)?1:0)", inner_expr);
                         }
                         if (!type_locked) {
                             if (arithmetic_used || comparison_or_logical) {

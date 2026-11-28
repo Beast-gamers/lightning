@@ -1,0 +1,10 @@
+let a = "TRUE"
+write(tobool(a))
+let b = "False"
+write(tobool(b))
+let c = " 0 "
+write(tobool(c))
+let d = " F "
+write(tobool(d))
+write(tobool("false"))
+write(tobool(" 1 "))
