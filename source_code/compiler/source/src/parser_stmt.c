@@ -3186,9 +3186,17 @@ void parse_set(Lexer *lexer, SymbolTable *table) {
         int expr_rhs_src_cap = 65536;
         char *expr_rhs_src = (char*)malloc(expr_rhs_src_cap); if(expr_rhs_src) expr_rhs_src[0]=0;
         int rpos = 0;
+        int _rhs_paren=0, _rhs_brack=0, _rhs_brace=0;
         while (lexer->current < lexer->count) {
             Token rt = lexer->tokens[lexer->current];
             if (rt.type == TOKEN_NEWLINE || rt.type == TOKEN_EOF) break;
+            if (rt.type == TOKEN_RBRACE && _rhs_paren==0 && _rhs_brack==0 && _rhs_brace==0) break;
+            if (rt.type == TOKEN_LPAREN) _rhs_paren++;
+            else if (rt.type == TOKEN_RPAREN) { if (_rhs_paren>0) _rhs_paren--; }
+            else if (rt.type == TOKEN_LBRACKET) _rhs_brack++;
+            else if (rt.type == TOKEN_RBRACKET) { if (_rhs_brack>0) _rhs_brack--; }
+            else if (rt.type == TOKEN_LBRACE) _rhs_brace++;
+            else if (rt.type == TOKEN_RBRACE) { if (_rhs_brace>0) _rhs_brace--; }
             if (rpos > 0) { STMT_APPEND(expr_rhs_src, expr_rhs_src_cap, rpos, " "); }
             token_append_source(&expr_rhs_src, &rpos, &expr_rhs_src_cap, rt);
             lexer->current++;
