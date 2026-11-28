@@ -1,0 +1,9 @@
+let s = "bad"
+try { if (toint(s) > 0) { write("x") } } catch (e) { write(e.type) }
+try { if (tofloat(s) > 0.0) { write("x") } } catch (e) { write(e.type) }
+try { let a = [toint(s)] } catch (e) { write(e.type) }
+try { let b = [tofloat(s)] } catch (e) { write(e.type) }
+function conv_i(x) { return toint(x) }
+function conv_f(x) { return tofloat(x) }
+try { write(conv_i(s)) } catch (e) { write(e.type) }
+try { write(conv_f(s)) } catch (e) { write(e.type) }
