@@ -1,0 +1,9 @@
+let s = "abc"
+write(toint(s))
+write(tofloat(s))
+let e = ""
+write(toint(e))
+write(tofloat(e))
+let n = "12x"
+write(toint(n))
+write(tofloat(n))

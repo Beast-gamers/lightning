@@ -1,0 +1,10 @@
+let a = 10
+let b = 1
+let c = 1
+try { write(a / (b - c)) } catch (e) { write(e.type) }
+try { write(a % (b - c)) } catch (e) { write(e.type) }
+let d = 0
+try { write(a / (d + 0)) } catch (e) { write(e.type) }
+try { write(a % (d * 5)) } catch (e) { write(e.type) }
+write(a / (b + c))
+write(a % (b + c))
