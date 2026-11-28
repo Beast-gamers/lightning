@@ -28,6 +28,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Phase 1 Step 4 completed: default-typed parameters now drive body/expression typing without locking params; call results use pass-through call-site specialization for direct, nested/chained, method, sole-call, argument, and first-class/indirect calls; `typeof` uses the same specialized call-result typing. Homogeneous array element assignment preserves/coerces to the inferred element dtype instead of de-typing the whole array; compound element assignment is supported.
 
 ### Fixed
+- Strict runtime `toint`/`tofloat` now accept bool strings (`true/false/t/f`) in variable/complex expression conversions. Added `development/tests/runtime/phase1_conversion_bool_vars.ltng` (+ `.expected`).
 - Parser: scalar `set` compound assignments (`+=`, `-=`, `*=`, `/=`, `%=`) now stop RHS collection at block-closing `}` at depth 0, fixing use inside `try`/blocks on a single line. Added `development/tests/runtime/phase1_divmod_compound_zero.ltng` (+ `.expected`).
 - Runtime `toint`/`tofloat` on invalid numeric strings now throw `ValueError` in covered conversion-expression paths (instead of silent `atoll`/`atof` 0). Added runtime-invalid conversion and complex divisor subexpression guard tests; updated limitations/docs.
 - Switch case labels now use full expression collection (`collect_expression_ex`), fixing conversion builtins and complex expressions in case labels. Added `development/tests/runtime/phase1_switch_case_conversion.ltng` (+ `.expected`).

@@ -1,0 +1,6 @@
+let b = true
+write(toint(b))
+write(tofloat(b))
+let c = false
+write(toint(c))
+write(tofloat(c))
