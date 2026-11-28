@@ -1,0 +1,6 @@
+let a = "1.2.3"
+try { write(tofloat(a)) } catch (e) { write(e.type) }
+let b = "1e2"
+try { write(toint(b)) } catch (e) { write(e.type) }
+let c = "--1"
+try { write(toint(c)) } catch (e) { write(e.type) }

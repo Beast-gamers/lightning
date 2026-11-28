@@ -61,7 +61,7 @@ These limitations were identified in the initial audit and remain relevant acros
 - Compile-time detection/rejection of literal division/modulo by zero (int and float literal forms).
 - Improved numeric promotion in key mixed expressions, comparison normalization for numeric conversion helpers, and return/call/indirect-call expression typing fixes (including self-reference/body-parsing cases) to prevent incorrect string typing/internal compile failures.
 - Support for explicit type declarations `let x = float` and `let x = char`.
-- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**230 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context.
+- Additional Phase 1 runtime/semantic negative tests added, including Step 2 conversion/alias coverage and follow-up stabilization fixes; latest full suite passes (**231 PASS, 0 FAIL, 0 SKIP**). Step 2 conversion behavior is broadly exercised but not exhaustively proven for every permutation/context.
 
 ### Remaining limitations
 - **Distinct int/float semantics (addressed in covered paths):** Step 4/5 work made int/float behavior consistent across covered expression, assignment, comparison, codegen, and runtime paths; rare edge cases may remain in less-common emitted forms.
