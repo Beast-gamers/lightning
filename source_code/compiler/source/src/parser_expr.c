@@ -1481,9 +1481,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                 "({ char *_tc=_ltng_ds_fmt(\"%%c\",(char)(int)(%s)); char *_r=_ltng_as(_tc); free(_tc); _r; })",
                                 inner_expr);
                         } else {
-                            CE_SNPRINTF_ADD(
-                                "_ltng_as((_ltng_is_num_str(%s)?((char[]){(char)atoll(%s),0}):((char[]){(%s)[0]? (%s)[0]:0,0})))",
-                                inner_expr, inner_expr, inner_expr, inner_expr);
+                            CE_SNPRINTF_ADD("_ltng_strict_tochar(%s, %d, %d)", inner_expr, tok.line, tok.col);
                         }
                         if (!type_locked) result_type = TYPE_CHAR;
                     }

@@ -1,0 +1,6 @@
+let e = ""
+try { write(tochar(e)) } catch (err) { write(err.type) }
+let s = "ab"
+write(tochar(s))
+let n = "65"
+write(tochar(n))
