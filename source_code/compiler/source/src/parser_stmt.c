@@ -1189,10 +1189,11 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char **cexpr,
             Token mname = lexer_peek(lexer);
             /* Array method chain on expression result (e.g. getArray().sort()) */
             if ((mname.type == TOKEN_IDENT || token_is_name(mname)) &&
-                (strcmp(mname.value,"push")==0||strcmp(mname.value,"pop")==0||strcmp(mname.value,"insert")==0||
-                 strcmp(mname.value,"remove")==0||strcmp(mname.value,"contains")==0||strcmp(mname.value,"index_of")==0||
-                 strcmp(mname.value,"sort")==0||strcmp(mname.value,"reverse")==0||strcmp(mname.value,"copy")==0||strcmp(mname.value,"slice")==0) &&
-                lexer->current + 1 < lexer->count && lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN) {
+                ((strcmp(mname.value,"push")==0||strcmp(mname.value,"pop")==0||strcmp(mname.value,"insert")==0||
+                  strcmp(mname.value,"remove")==0||strcmp(mname.value,"contains")==0||strcmp(mname.value,"index_of")==0||
+                  strcmp(mname.value,"sort")==0||strcmp(mname.value,"reverse")==0||strcmp(mname.value,"copy")==0||strcmp(mname.value,"slice")==0) &&
+                 lexer->current + 1 < lexer->count && lexer->tokens[lexer->current + 1].type == TOKEN_LPAREN) ||
+                (strcmp(mname.value,"length")==0 && (lexer->current + 1 >= lexer->count || lexer->tokens[lexer->current + 1].type != TOKEN_LPAREN))) {
                 lexer_next(lexer); /* consume method name */
                 static int _ahc_id = 0; int aid = _ahc_id++;
                 char *prefix = (char*)malloc(16384); int prefix_cap = 16384; if(!prefix){SNPRINTF_FULL(*cexpr, "%s", "");chained=1;continue;} prefix[0]=0; int pp = 0;
@@ -1203,6 +1204,12 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char **cexpr,
                 Token cm = mname; int has_chain=1;
                 while (has_chain && !chain_err) {
                     step++;
+                    if (strcmp(cm.value,"length")==0) {
+                        SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"%%d\", (int)(__tl%d)); })", aid);
+                        has_scalar = 1;
+                        has_chain = 0;
+                        break;
+                    }
                     if (lexer_peek(lexer).type != TOKEN_LPAREN) { chain_err=1; break; }
                     lexer_next(lexer);
                     has_scalar = 1; (void)has_scalar;
@@ -1268,7 +1275,7 @@ int append_immediate_call_chains(Lexer *lexer, SymbolTable *table, char **cexpr,
                         SNPRINTF_FULL(final_expr,"({ _ltng_retbuf_fmt(\"%%d\",__ir%d_%d); })",aid,step);
                     } else { chain_err=1; break; }
                     has_chain=0;
-                    if(lexer_peek(lexer).type==TOKEN_DOT){ int sd=lexer->current; lexer_next(lexer); Token nm=lexer_peek(lexer); if((nm.type==TOKEN_IDENT||token_is_name(nm)) && (strcmp(nm.value,"push")==0||strcmp(nm.value,"pop")==0||strcmp(nm.value,"insert")==0||strcmp(nm.value,"remove")==0||strcmp(nm.value,"contains")==0||strcmp(nm.value,"index_of")==0||strcmp(nm.value,"sort")==0||strcmp(nm.value,"reverse")==0||strcmp(nm.value,"copy")==0||strcmp(nm.value,"slice")==0)){ lexer_next(lexer); cm=nm; has_chain=1; } else lexer->current=sd; }
+                    if(lexer_peek(lexer).type==TOKEN_DOT){ int sd=lexer->current; lexer_next(lexer); Token nm=lexer_peek(lexer); if((nm.type==TOKEN_IDENT||token_is_name(nm)) && (strcmp(nm.value,"push")==0||strcmp(nm.value,"pop")==0||strcmp(nm.value,"insert")==0||strcmp(nm.value,"remove")==0||strcmp(nm.value,"contains")==0||strcmp(nm.value,"index_of")==0||strcmp(nm.value,"sort")==0||strcmp(nm.value,"reverse")==0||strcmp(nm.value,"copy")==0||strcmp(nm.value,"slice")==0||strcmp(nm.value,"length")==0)){ lexer_next(lexer); cm=nm; has_chain=1; } else lexer->current=sd; }
                 }
                 if (chain_err) { SNPRINTF_FULL(*cexpr, "%s", "\"\""); free(prefix); free(final_expr); }
                 else {
@@ -6262,6 +6269,109 @@ void parse_return(Lexer *lexer, SymbolTable *table) {
             record_return_obj_schema(temp_mangled);
             emit(node);
             return;
+        }
+        /* array literal return: return [1,2,3] */
+        if (next.type == TOKEN_LBRACKET) {
+            lexer_next(lexer); /* consume [ */
+            static int _ret_arr = 0; _ret_arr++;
+            char *temp_mangled = _ltng_cfmt("__ret_arr_%d", _ret_arr);
+            ASTNode *arr = create_node(NODE_ARRAY_LIT, temp_mangled, "");
+            if (!parse_array_literal(lexer, table, arr)) {
+                error_state_add(parser_errors, kw.line, kw.col, "Invalid array literal in return");
+                skip_to_newline(lexer);
+                free(temp_mangled);
+                return;
+            }
+            symbol_table_add(table, temp_mangled, TYPE_ARRAY);
+            symbol_table_set_array_dims(table, temp_mangled, arr->array_dim_count, arr->array_dims);
+            symbol_table_set_array_elem_type(table, temp_mangled, arr->array_elem_type);
+            const char *cname = symbol_table_get_cname(table, temp_mangled);
+            ASTNode *letn = create_node(NODE_LET, cname, arr->value);
+            letn->var_type = TYPE_ARRAY;
+            letn->array_dim_count = arr->array_dim_count;
+            letn->array_dims = malloc(arr->array_dim_count * sizeof(int));
+            for (int d = 0; d < arr->array_dim_count; d++) letn->array_dims[d] = arr->array_dims[d];
+            letn->array_elem_count = arr->array_elem_count;
+            letn->array_elem_type = arr->array_elem_type;
+            letn->is_expr = 0;
+            emit(letn);
+            char *pack = _ltng_cfmt("_ltng_ah_pack(%s_data, %s_len, %s_cap)", cname, cname, cname);
+            ASTNode *node = create_node(NODE_RETURN, "", pack ? pack : "");
+            node->var_type = TYPE_ARRAY;
+            node->is_expr = 1;
+            emit(node);
+            if ((g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
+                FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
+                if (efi) { efi->return_type = TYPE_ARRAY; efi->has_return_type = 1; }
+            }
+            free(pack);
+            free(temp_mangled);
+            return;
+        }
+        /* array copy/slice return: return a.copy() / return a.slice(...) */
+        if (next.type == TOKEN_IDENT && !is_type_keyword(next.value) && !is_bool_value(next.value)) {
+            char *rm_src = mangle_name_alloc(next.value);
+            if (symbol_table_has(table, rm_src) && symbol_table_get(table, rm_src) == TYPE_ARRAY &&
+                lexer->current + 2 < lexer->count &&
+                lexer->tokens[lexer->current + 1].type == TOKEN_DOT &&
+                (lexer->tokens[lexer->current + 2].type == TOKEN_IDENT || token_is_name(lexer->tokens[lexer->current + 2])) &&
+                (strcmp(lexer->tokens[lexer->current + 2].value, "copy") == 0 ||
+                 strcmp(lexer->tokens[lexer->current + 2].value, "slice") == 0) &&
+                lexer->current + 3 < lexer->count && lexer->tokens[lexer->current + 3].type == TOKEN_LPAREN) {
+                int saved_r = lexer->current;
+                lexer_next(lexer); /* ident */
+                lexer_next(lexer); /* dot */
+                Token mname_r = lexer_next(lexer);
+                lexer_next(lexer); /* ( */
+                char *start_expr = NULL; char *end_expr = NULL;
+                if (strcmp(mname_r.value, "slice") == 0) {
+                    start_expr = (char*)malloc(65536); if(start_expr) start_expr[0]=0;
+                    collect_expression(lexer, table, &start_expr, &(int){65536}, 1, 1, NULL,NULL,NULL,NULL);
+                    if (lexer_peek(lexer).type == TOKEN_COMMA) lexer_next(lexer);
+                    end_expr = (char*)malloc(65536); if(end_expr) end_expr[0]=0;
+                    collect_expression(lexer, table, &end_expr, &(int){65536}, 1, 0, NULL,NULL,NULL,NULL);
+                }
+                if (lexer_peek(lexer).type == TOKEN_RPAREN) lexer_next(lexer);
+                /* only if this is the sole expression */
+                Token after_r = lexer_peek(lexer);
+                if (after_r.type == TOKEN_NEWLINE || after_r.type == TOKEN_EOF || after_r.type == TOKEN_RBRACE) {
+                    const char *src_cname = symbol_table_get_cname(table, rm_src);
+                    static int _ret_ac = 0; _ret_ac++;
+                    char *tmpname = _ltng_cfmt("__ret_ac_%d", _ret_ac);
+                    char *tmpm = mangle_name_alloc(tmpname);
+                    free(tmpname);
+                    symbol_table_add(table, tmpm, TYPE_ARRAY);
+                    VarType src_et = symbol_table_get_array_elem_type(table, rm_src);
+                    symbol_table_set_array_elem_type(table, tmpm, src_et);
+                    int *_dims=NULL; int _dc=0;
+                    if (symbol_table_get_array_dims(table, rm_src, &_dims, &_dc)) symbol_table_set_array_dims(table, tmpm, _dc, _dims);
+                    ASTNode *tn = create_node(strcmp(mname_r.value,"copy")==0 ? NODE_ARRAY_COPY : NODE_ARRAY_SLICE, tmpm, (char*)src_cname);
+                    if (strcmp(mname_r.value, "slice") == 0) {
+                        char *idx = _ltng_cfmt("%s,%s", start_expr ? start_expr : "0", end_expr ? end_expr : "0");
+                        free(tn->array_index); tn->array_index = idx ? idx : ltng_strdup("0,0");
+                    }
+                    tn->var_type = TYPE_ARRAY;
+                    tn->array_elem_type = src_et;
+                    tn->array_elem_count = -1;
+                    tn->is_expr = 1;
+                    emit(tn);
+                    char *pack = _ltng_cfmt("_ltng_ah_pack(%s_data, %s_len, %s_cap)", tmpm, tmpm, tmpm);
+                    ASTNode *node = create_node(NODE_RETURN, "", pack ? pack : "");
+                    node->var_type = TYPE_ARRAY;
+                    node->is_expr = 1;
+                    emit(node);
+                    if ((g_enclosing_cname ? g_enclosing_cname[0] : 0)) {
+                        FuncInfo *efi = find_funcinfo_by_cname(g_enclosing_cname);
+                        if (efi) { efi->return_type = TYPE_ARRAY; efi->has_return_type = 1; }
+                    }
+                    free(pack); free(start_expr); free(end_expr); free(rm_src);
+                    return;
+                }
+                /* not sole expression, restore and fall through */
+                free(start_expr); free(end_expr);
+                lexer->current = saved_r;
+            }
+            free(rm_src);
         }
         /* Detect sole conversion call for return type inference */
         VarType conv_override = TYPE_NULL;

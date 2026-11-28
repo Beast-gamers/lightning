@@ -1971,6 +1971,11 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                             const char *_wc = "__tc"; /* working array cap */
                                             for (;;) {
                                                 _chain_step++;
+                                                if (strcmp(_cm.value, "length") == 0) {
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"({ _ltng_retbuf_fmt(\"%%d\", (int)(%s)); })", _wl);
+                                                    result_type = TYPE_STRING;
+                                                    break;
+                                                }
                                                 if (lexer_peek(lexer).type != TOKEN_LPAREN) {
                                                     error_state_add(parser_errors, _cm.line, _cm.col, "Expected '(' after array method name");
                                                     CE_GROW(4096);
@@ -2154,7 +2159,8 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                         (strcmp(nm.value, "push") == 0 || strcmp(nm.value, "pop") == 0 ||
                                                          strcmp(nm.value, "insert") == 0 || strcmp(nm.value, "remove") == 0 ||
                                                          strcmp(nm.value, "contains") == 0 || strcmp(nm.value, "index_of") == 0 ||
-                                                         strcmp(nm.value, "sort") == 0 || strcmp(nm.value, "reverse") == 0)) {
+                                                         strcmp(nm.value, "sort") == 0 || strcmp(nm.value, "reverse") == 0 ||
+                                                         strcmp(nm.value, "length") == 0)) {
                                                         lexer_next(lexer); /* consume method name */
                                                         _cm = nm;
                                                         continue;
@@ -2246,13 +2252,20 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     (strcmp(nm.value, "push")==0 || strcmp(nm.value, "pop")==0 ||
                                                      strcmp(nm.value, "insert")==0 || strcmp(nm.value, "remove")==0 ||
                                                      strcmp(nm.value, "contains")==0 || strcmp(nm.value, "index_of")==0 ||
-                                                     strcmp(nm.value, "sort")==0 || strcmp(nm.value, "reverse")==0)) {
+                                                     strcmp(nm.value, "sort")==0 || strcmp(nm.value, "reverse")==0 ||
+                                                     strcmp(nm.value, "length")==0)) {
                                                     lexer_next(lexer);
                                                     _cm = nm; _has_chain = 1;
                                                 } else { lexer->current = saved_cdot; }
                                             }
                                             while (_has_chain && !_chain_err) {
                                                 _chain_step++;
+                                                if (strcmp(_cm.value, "length") == 0) {
+                                                    _has_scalar_result = 1;
+                                                    BUF_SET(&_final_expr, &_final_expr_cap,"({ _ltng_retbuf_fmt(\"%%d\", (int)(%s)); })", _wl);
+                                                    _has_chain = 0;
+                                                    continue;
+                                                }
                                                 if (lexer_peek(lexer).type != TOKEN_LPAREN) { _chain_err = 1; break; }
                                                 lexer_next(lexer);
                                                 _has_scalar_result = 1;
@@ -2313,7 +2326,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                 if (lexer_peek(lexer).type == TOKEN_DOT) {
                                                     int sd = lexer->current; lexer_next(lexer); Token nm = lexer_peek(lexer);
                                                     if ((nm.type==TOKEN_IDENT||token_is_name(nm)) &&
-                                                        (strcmp(nm.value,"push")==0||strcmp(nm.value,"pop")==0||strcmp(nm.value,"insert")==0||strcmp(nm.value,"remove")==0||strcmp(nm.value,"contains")==0||strcmp(nm.value,"index_of")==0||strcmp(nm.value,"sort")==0||strcmp(nm.value,"reverse")==0)) { lexer_next(lexer); _cm=nm; _has_chain=1; }
+                                                        (strcmp(nm.value,"push")==0||strcmp(nm.value,"pop")==0||strcmp(nm.value,"insert")==0||strcmp(nm.value,"remove")==0||strcmp(nm.value,"contains")==0||strcmp(nm.value,"index_of")==0||strcmp(nm.value,"sort")==0||strcmp(nm.value,"reverse")==0||strcmp(nm.value,"length")==0)) { lexer_next(lexer); _cm=nm; _has_chain=1; }
                                                     else lexer->current = sd;
                                                 }
                                             }
@@ -2324,7 +2337,7 @@ VarType collect_expression_ex(Lexer *lexer, SymbolTable *table,
                                                     "({ char *__r=_ltng_ds_new(\"\"); for(int _fi=0;_fi<__tl;_fi++){ if(_fi) _ltng_ds_append(&__r,\", \"); _ltng_ds_append(&__r,__td[_fi]?__td[_fi]:\"\"); } __r; })");
                                             }
                                             CE_SNPRINTF_ADD(
-                                                "({ %schar *__fres=(char*)(%s); for(int _fi=0;_i<__tl;_i++){if(__td[_fi])free(__td[_fi]);} free(__td); __fres; })",
+                                                "({ %schar *__fres=(char*)(%s); for(int _fi=0;_fi<__tl;_fi++){if(__td[_fi])free(__td[_fi]);} free(__td); __fres; })",
                                                 _chain_prefix, _final_expr);
                                             result_type = TYPE_STRING;
                                             free(arrname); free(lenname); free(capname); goto _arr_method_result_done;

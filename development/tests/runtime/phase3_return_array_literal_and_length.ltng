@@ -1,0 +1,31 @@
+function make() {
+    return [1, 2, 3]
+}
+let a = make()
+write(a.length)
+write(a[1])
+write(a[3])
+write(make().length)
+
+function make2() {
+    let b = [4, 5, 6, 7]
+    return b
+}
+write(make2().copy().length)
+write(make2().slice(2, 3))
+
+function make3() {
+    let c = [10, 20, 30]
+    return c.copy()
+}
+let d = make3()
+write(d.length)
+write(d[2])
+
+function make4() {
+    let e = [10, 20, 30, 40]
+    return e.slice(2, 4)
+}
+let g = make4()
+write(g.length)
+write(g[1])

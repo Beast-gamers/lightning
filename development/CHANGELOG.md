@@ -28,6 +28,7 @@ All notable changes to the Lightning project in this development effort are docu
 - Phase 1 Step 4 completed: default-typed parameters now drive body/expression typing without locking params; call results use pass-through call-site specialization for direct, nested/chained, method, sole-call, argument, and first-class/indirect calls; `typeof` uses the same specialized call-result typing. Homogeneous array element assignment preserves/coerces to the inferred element dtype instead of de-typing the whole array; compound element assignment is supported.
 
 ### Fixed
+- Tier 2 item 9: support `return [ ... ]` array literals, `return arr.copy()/slice(...)`, and `.length` on copy/slice/array-returning-call expression chains. Fixed write-arg copy/slice cleanup typo (`_fi/_i`). Added `phase3_return_array_literal_and_length` runtime test.
 - Tier 2 item 10: base-param pre-scan now detects any `base.method(...)` call as array use, fixing UDM-on-base dispatch in nested base-param UDMs. Added `phase3_base_udm_array_receiver` runtime test.
 - Tier 2 item 9: support `arr.copy()` and `arr.slice(...)` in `for (x in ...)` by emitting a declared temp array. Added `phase3_forin_copy_slice` runtime test.
 - Tier 2: reject provably incompatible literal/char/object/array values in push/insert on locked numeric/bool arrays. Added semantic neg tests.
